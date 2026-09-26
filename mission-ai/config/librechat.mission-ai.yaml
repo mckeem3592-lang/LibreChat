@@ -24,7 +24,8 @@ balance:
 
 endpoints:
   agents:
-    maxSteps: 30
+    recursionLimit: 50
+    maxRecursionLimit: 90
     maxSubagents: 10
     capabilities:
       - deferred_tools
