@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
 import { execFile } from 'node:child_process';
+import { readFile, unlink } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import WebSocket, { WebSocketServer } from 'ws';
 
@@ -50,9 +51,15 @@ async function openApp(args) {
 }
 
 async function screenshot() {
-  const file = `/tmp/mission-ai-${crypto.randomUUID()}.png`;
-  await execFileAsync('screencapture', ['-x', file]);
-  return { path: file };
+  const file = `/tmp/mission-ai-${crypto.randomUUID()}.jpg`;
+  try {
+    await execFileAsync('screencapture', ['-x', '-t', 'jpg', file]);
+    await execFileAsync('sips', ['-Z', '1600', file]);
+    const bytes = await readFile(file);
+    return { mimeType: 'image/jpeg', base64: bytes.toString('base64') };
+  } finally {
+    await unlink(file).catch(() => {});
+  }
 }
 
 function requireBrowser() {
