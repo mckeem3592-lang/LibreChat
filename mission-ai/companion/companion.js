@@ -50,6 +50,61 @@ async function openApp(args) {
   return { opened: name };
 }
 
+async function clickMac(args) {
+  const x = Number(args?.x);
+  const y = Number(args?.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > 20000 || y > 20000) {
+    throw new Error('invalid_coordinates');
+  }
+  await execFileAsync('osascript', [
+    '-e',
+    'on run argv',
+    '-e',
+    'tell application "System Events" to click at {(item 1 of argv as integer), (item 2 of argv as integer)}',
+    '-e',
+    'end run',
+    String(Math.round(x)),
+    String(Math.round(y)),
+  ]);
+  return { clicked: { x: Math.round(x), y: Math.round(y) } };
+}
+
+async function typeMac(args) {
+  const text = String(args?.text ?? '');
+  if (text.length > 20_000) throw new Error('text_too_long');
+  await execFileAsync('osascript', [
+    '-e',
+    'on run argv',
+    '-e',
+    'tell application "System Events" to keystroke (item 1 of argv)',
+    '-e',
+    'end run',
+    text,
+  ]);
+  return { typedLength: text.length };
+}
+
+async function keyMac(args) {
+  const key = String(args?.key || '').toLowerCase();
+  const keyCodes = new Map([
+    ['return', 36], ['enter', 36], ['tab', 48], ['escape', 53],
+    ['left', 123], ['right', 124], ['down', 125], ['up', 126],
+    ['pagedown', 121], ['pageup', 116], ['delete', 51],
+  ]);
+  const code = keyCodes.get(key);
+  if (code == null) throw new Error('key_not_allowed');
+  await execFileAsync('osascript', [
+    '-e',
+    'on run argv',
+    '-e',
+    'tell application "System Events" to key code (item 1 of argv as integer)',
+    '-e',
+    'end run',
+    String(code),
+  ]);
+  return { key };
+}
+
 async function screenshot() {
   const file = `/tmp/mission-ai-${crypto.randomUUID()}.jpg`;
   try {
@@ -92,6 +147,12 @@ async function dispatch(tool, args) {
       return await openApp(args);
     case 'mac.screenshot':
       return await screenshot();
+    case 'mac.click':
+      return await clickMac(args);
+    case 'mac.type':
+      return await typeMac(args);
+    case 'mac.key':
+      return await keyMac(args);
     case 'browser.get_state':
     case 'browser.click':
     case 'browser.type':
