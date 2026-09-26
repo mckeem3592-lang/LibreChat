@@ -68,10 +68,28 @@ try {
     { $group: { _id: null, microUsd: { $sum: { $multiply: ['$tokenValue', -1] } } } },
   ]).toArray();
 
-  const spend = Number(rows[0]?.microUsd || 0) / 1_000_000;
+  const microUsd = Number(rows[0]?.microUsd || 0);
+  const spend = microUsd / 1_000_000;
   const display = spend.toFixed(2);
+  const remainingCredits = Math.max(0, Math.floor(hard * 1_000_000 - microUsd));
 
-  if (spend >= hard) {
+  const balanceDocs = await connection.collection('balances')
+    .find({}, { projection: { _id: 1 } })
+    .limit(2)
+    .toArray();
+  if (balanceDocs.length > 1) {
+    console.error('Mission AI v1 budget guard is configured for a single-owner LibreChat instance; multiple balance records were detected.');
+    process.exitCode = 2;
+  } else if (balanceDocs.length === 1) {
+    await connection.collection('balances').updateOne(
+      { _id: balanceDocs[0]._id },
+      { $set: { tokenCredits: remainingCredits } },
+    );
+  }
+
+  if (process.exitCode === 2) {
+    // Keep the fail-closed decision set above.
+  } else if (spend >= hard) {
     console.error('Mission AI monthly hard budget reached ($' + display + ' / $' + hard.toFixed(2) + '). Increase the budget explicitly before sending additional model requests.');
     process.exitCode = 2;
   } else if (spend >= economy) {
