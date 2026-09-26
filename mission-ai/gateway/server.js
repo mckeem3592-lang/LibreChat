@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
 import express from 'express';
-import { WebSocketServer } from 'ws';
+import WebSocket, { WebSocketServer } from 'ws';
 
 const PORT = Number(process.env.PORT || 8787);
 const DEVICE_TOKEN = process.env.MISSION_AI_DEVICE_TOKEN || '';
@@ -41,7 +41,7 @@ function requireToolAuth(req, res, next) {
 
 function getDevice(deviceId) {
   const socket = devices.get(deviceId);
-  if (!socket || socket.readyState !== socket.OPEN) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
     const error = new Error('device_offline');
     error.statusCode = 503;
     throw error;
