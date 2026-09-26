@@ -1,0 +1,6 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "mission-ai-budget",
+  "version": "0.1.0",
+  "description": "Enforces Mission AI monthly spend policy using LibreChat transaction records."
+}
