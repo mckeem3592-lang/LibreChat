@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import http from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import WebSocket from 'ws';
+import WebSocket, { WebSocketServer } from 'ws';
 
 const execFileAsync = promisify(execFile);
 const GATEWAY_URL = process.env.MISSION_AI_GATEWAY_URL || '';
@@ -56,7 +56,7 @@ async function screenshot() {
 }
 
 function requireBrowser() {
-  if (!extensionSocket || extensionSocket.readyState !== extensionSocket.OPEN) {
+  if (!extensionSocket || extensionSocket.readyState !== WebSocket.OPEN) {
     throw new Error('browser_extension_offline');
   }
   return extensionSocket;
@@ -101,7 +101,7 @@ const browserServer = http.createServer((req, res) => {
   res.end();
 });
 
-const browserWss = new WebSocket.Server({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
+const browserWss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
 
 browserServer.on('upgrade', (req, socket, head) => {
   if (req.socket.remoteAddress !== '127.0.0.1' && req.socket.remoteAddress !== '::1') {
