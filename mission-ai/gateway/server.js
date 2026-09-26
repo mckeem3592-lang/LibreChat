@@ -114,6 +114,9 @@ app.post('/v1/browser/open-url', toolHandler('browser.open_url'));
 app.post('/v1/mac/active-app', toolHandler('mac.active_app'));
 app.post('/v1/mac/open-app', toolHandler('mac.open_app'));
 app.post('/v1/mac/screenshot', toolHandler('mac.screenshot'));
+app.post('/v1/mac/click', toolHandler('mac.click'));
+app.post('/v1/mac/type', toolHandler('mac.type'));
+app.post('/v1/mac/key', toolHandler('mac.key'));
 
 server.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url || '/', 'http://localhost');
