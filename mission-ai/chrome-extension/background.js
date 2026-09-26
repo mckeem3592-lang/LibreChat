@@ -132,13 +132,6 @@ async function execute(tool, args) {
   throw new Error('tool_not_allowed');
 }
 
-chrome.action.onClicked.addListener(async () => {
-  const token = prompt('Mission AI browser token (stored only in Chrome local extension storage):');
-  if (!token) return;
-  await chrome.storage.local.set({ browserToken: token });
-  connect();
-});
-
 chrome.runtime.onInstalled.addListener(connect);
 chrome.runtime.onStartup.addListener(connect);
 connect();
