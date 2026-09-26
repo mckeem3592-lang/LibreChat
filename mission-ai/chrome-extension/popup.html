@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Mission AI</title>
+  <style>
+    body { font: 13px system-ui; width: 300px; margin: 16px; }
+    input { box-sizing: border-box; width: 100%; margin: 8px 0; padding: 8px; }
+    button { width: 100%; padding: 8px; }
+    #status { margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <strong>Mission AI Browser Bridge</strong>
+  <p>Enter the local browser token from your Mission AI companion setup.</p>
+  <input id="token" type="password" autocomplete="off" placeholder="Browser token">
+  <button id="save">Save & connect</button>
+  <div id="status">Checking…</div>
+  <script src="popup.js"></script>
+</body>
+</html>
