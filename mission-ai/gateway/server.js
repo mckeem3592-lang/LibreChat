@@ -259,5 +259,13 @@ wss.on('connection', (ws, deviceId) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
+  const providers = Object.fromEntries(
+    providerStatus().map(({ name, hasApiKey }) => [name, Boolean(hasApiKey)]),
+  );
   console.log(`Mission AI gateway listening on :${PORT}`);
+  console.log(
+    `Mission AI readiness: providers=${JSON.stringify(providers)} codeApi=${Boolean(
+      CODE_API_URL && CODE_BRIDGE_ADMIN_TOKEN,
+    )}`,
+  );
 });
