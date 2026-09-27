@@ -7,6 +7,15 @@ PLIST="$HOME/Library/LaunchAgents/com.missionai.companion.plist"
 DEVICE_SERVICE="mission-ai-device-token"
 LOG_DIR="$HOME/Library/Logs/MissionAI"
 
+# Resolve Node independently of interactive shell PATH.
+if ! command -v node >/dev/null 2>&1; then
+  if [[ -x /opt/homebrew/bin/node ]]; then
+    export PATH="/opt/homebrew/bin:$PATH"
+  elif [[ -x /usr/local/bin/node ]]; then
+    export PATH="/usr/local/bin:$PATH"
+  fi
+fi
+
 if ! command -v node >/dev/null 2>&1; then
   echo "Node.js 20+ is required. Install Node.js, then run this script again."
   exit 1
