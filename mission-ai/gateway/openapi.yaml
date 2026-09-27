@@ -164,8 +164,10 @@ paths:
                   properties:
                     args:
                       type: object
-                      required: [index]
+                      required: [snapshotId, elementKey, index]
                       properties:
+                        snapshotId: { type: string }
+                        elementKey: { type: string, maxLength: 400 }
                         index: { type: integer, minimum: 0 }
       responses:
         '200': { description: Click result }
@@ -185,8 +187,10 @@ paths:
                   properties:
                     args:
                       type: object
-                      required: [index, text]
+                      required: [snapshotId, elementKey, index, text]
                       properties:
+                        snapshotId: { type: string }
+                        elementKey: { type: string, maxLength: 400 }
                         index: { type: integer, minimum: 0 }
                         text: { type: string }
       responses:
