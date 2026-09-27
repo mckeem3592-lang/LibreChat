@@ -9,7 +9,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test *.test.js ../../plugin/mission-ai-budget/scripts/*.test.mjs",
-    "check": "for f in *.js; do node --check \"$f\"; done"
+    "check": "for f in *.js; do node --check \"$f\"; done",
+    "postinstall": "npm run check && npm test"
   },
   "dependencies": {
     "express": "^5.1.0",
