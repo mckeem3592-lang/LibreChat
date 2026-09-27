@@ -10,6 +10,7 @@ test('reports incomplete readiness without exposing secrets', () => {
       { name: 'google', hasApiKey: false, apiKeyEnv: 'GOOGLE_KEY' },
     ],
     connectedDevices: [],
+    deviceCapabilities: {},
     codeApiConfigured: true,
     pairingConfigured: true,
     costDashboardConfigured: true,
@@ -26,8 +27,38 @@ test('reports incomplete readiness without exposing secrets', () => {
     costDashboard: true,
     delegation: false,
     macDevice: false,
+    browserDirect: false,
+    browserExtension: false,
     pairing: true,
   });
   assert.equal(JSON.stringify(result).includes('OPENAI_API_KEY'), false);
   assert.equal(JSON.stringify(result).includes('ANTHROPIC_API_KEY'), false);
+});
+
+
+test('reports direct and extension browser capability readiness separately', () => {
+  const result = buildReadiness({
+    providers: [
+      { name: 'openai', hasApiKey: true },
+      { name: 'anthropic', hasApiKey: true },
+      { name: 'google', hasApiKey: true },
+    ],
+    connectedDevices: ['mac-primary'],
+    deviceCapabilities: {
+      'mac-primary': ['mac.control', 'browser.direct_tabs'],
+    },
+    codeApiConfigured: true,
+    pairingConfigured: true,
+    costDashboardConfigured: true,
+    delegationEnabled: true,
+  });
+
+  assert.equal(result.checks.macDevice, true);
+  assert.equal(result.checks.browserDirect, true);
+  assert.equal(result.checks.browserExtension, false);
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.deviceCapabilities['mac-primary'], [
+    'mac.control',
+    'browser.direct_tabs',
+  ]);
 });
