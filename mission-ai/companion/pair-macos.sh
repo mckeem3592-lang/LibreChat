@@ -6,6 +6,14 @@ DEVICE_ID="${MISSION_AI_DEVICE_ID:-mac-primary}"
 SERVICE="mission-ai-device-token"
 CODE_PAIR_SERVICE="mission-ai-code-pairing-code"
 
+if ! command -v node >/dev/null 2>&1; then
+  if [[ -x /opt/homebrew/bin/node ]]; then
+    export PATH="/opt/homebrew/bin:$PATH"
+  elif [[ -x /usr/local/bin/node ]]; then
+    export PATH="/usr/local/bin:$PATH"
+  fi
+fi
+
 if ! command -v curl >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1; then
   echo "Mission AI pairing requires curl and Node.js 20+."
   exit 1
