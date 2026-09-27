@@ -62,3 +62,19 @@ test('reports direct and extension browser capability readiness separately', () 
     'browser.direct_tabs',
   ]);
 });
+
+
+test('connected paired Mac remains pairing-ready after pairing code expires', () => {
+  const result = buildReadiness({
+    connectedDevices: ['mac-primary'],
+    deviceCapabilities: {
+      'mac-primary': ['mac.control', 'browser.direct_tabs'],
+    },
+    pairingConfigured: false,
+  });
+
+  assert.equal(result.checks.pairing, true);
+  assert.equal(result.checks.macDevice, true);
+  assert.ok(result.missing.includes('browserExtension'));
+  assert.equal(result.missing.includes('pairing'), false);
+});
