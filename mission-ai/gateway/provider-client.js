@@ -177,6 +177,157 @@ async function executeGoogle({ model, prompt, system, maxOutputTokens, fetchImpl
   };
 }
 
+
+function interactionUsage(body, hasImage) {
+  const usage = body?.usage || {};
+  const details =
+    usage.output_tokens_by_modality ||
+    usage.outputTokensByModality ||
+    usage.candidatesTokensDetails ||
+    [];
+  const modalityCount = (name) =>
+    details
+      .filter((item) => String(item?.modality || '').toLowerCase() === name)
+      .reduce((sum, item) => sum + Number(item?.tokens ?? item?.tokenCount ?? 0), 0);
+
+  const imageOutputTokens = modalityCount('image');
+  const textOutputTokens = modalityCount('text');
+  const totalOutputTokens = Number(
+    usage.total_output_tokens ??
+      usage.totalOutputTokens ??
+      usage.candidatesTokenCount ??
+      0,
+  );
+
+  return {
+    inputTokens: Number(
+      usage.total_input_tokens ??
+        usage.totalInputTokens ??
+        usage.promptTokenCount ??
+        0,
+    ),
+    outputTokens:
+      textOutputTokens > 0
+        ? textOutputTokens
+        : hasImage
+          ? 0
+          : totalOutputTokens,
+    imageOutputTokens:
+      imageOutputTokens > 0
+        ? imageOutputTokens
+        : hasImage
+          ? totalOutputTokens
+          : 0,
+    cachedInputTokens: Number(
+      usage.total_cached_tokens ??
+        usage.totalCachedTokens ??
+        usage.cachedContentTokenCount ??
+        0,
+    ),
+    cacheWriteTokens: 0,
+  };
+}
+
+function interactionImages(body) {
+  const images = [];
+  const push = (item) => {
+    const data = item?.data;
+    const mimeType = item?.mime_type || item?.mimeType || 'image/png';
+    if (typeof data !== 'string' || data.length === 0) return;
+    images.push({ data, mimeType });
+  };
+
+  push(body?.output_image);
+  for (const step of body?.steps || []) {
+    for (const item of step?.content || []) {
+      if (item?.type === 'image') push(item);
+    }
+  }
+  for (const candidate of body?.candidates || []) {
+    for (const part of candidate?.content?.parts || []) {
+      if (part?.inlineData) push(part.inlineData);
+      if (part?.inline_data) push(part.inline_data);
+    }
+  }
+
+  const unique = new Map(images.map((image) => [`${image.mimeType}:${image.data}`, image]));
+  return [...unique.values()];
+}
+
+export async function executeImageProvider({
+  provider = 'google',
+  model,
+  prompt,
+  aspectRatio = '1:1',
+  imageSize = '1K',
+  referenceImage = null,
+  fetchImpl = fetch,
+}) {
+  if (provider !== 'google') {
+    throw new ProviderRequestError(provider, 400, 'image_provider_not_supported');
+  }
+  if (!model || !prompt) {
+    throw new ProviderRequestError(provider, 400, 'provider_input_invalid');
+  }
+
+  const allowedRatios = new Set([
+    '1:1', '1:4', '4:1', '1:8', '8:1', '2:3', '3:2', '3:4',
+    '4:3', '4:5', '5:4', '9:16', '16:9', '21:9',
+  ]);
+  const allowedSizes = new Set(['512', '1K', '2K', '4K']);
+  if (!allowedRatios.has(aspectRatio) || !allowedSizes.has(imageSize)) {
+    throw new ProviderRequestError(provider, 400, 'image_config_invalid');
+  }
+
+  const config = runtimeProvider('google');
+  const input = referenceImage
+    ? [
+        { type: 'text', text: String(prompt) },
+        {
+          type: 'image',
+          data: String(referenceImage.data || ''),
+          mime_type: String(referenceImage.mimeType || 'image/png'),
+        },
+      ]
+    : String(prompt);
+
+  const body = await jsonRequest(
+    'google',
+    `${config.baseUrl.replace(/\/$/, '')}/v1beta/interactions`,
+    {
+      method: 'POST',
+      headers: {
+        'x-goog-api-key': config.apiKey,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        input,
+        response_format: {
+          type: 'image',
+          aspect_ratio: aspectRatio,
+          image_size: imageSize,
+        },
+      }),
+    },
+    fetchImpl,
+  );
+
+  const images = interactionImages(body);
+  if (images.length === 0) {
+    throw new ProviderRequestError(provider, 502, 'image_output_missing');
+  }
+
+  return {
+    provider: 'google',
+    model: body?.model || model,
+    images,
+    text: typeof body?.output_text === 'string' ? body.output_text : '',
+    usage: interactionUsage(body, true),
+    requestId: body?.id || body?.responseId || null,
+  };
+}
+
 export async function executeProvider({
   provider,
   model,
