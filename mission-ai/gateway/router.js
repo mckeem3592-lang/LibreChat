@@ -1,9 +1,7 @@
+import { policyMode } from './routing-policy.js';
+
 export function budgetMode(spendUsd, budget) {
-  const spend = Number(spendUsd || 0);
-  if (spend >= Number(budget.hardUsd)) return 'blocked';
-  if (spend >= Number(budget.economyUsd)) return 'economy';
-  if (spend >= Number(budget.targetUsd)) return 'notice';
-  return 'normal';
+  return policyMode(spendUsd, budget);
 }
 
 export function chooseRoute(task, spendUsd, config) {
