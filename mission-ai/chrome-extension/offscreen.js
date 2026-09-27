@@ -3,11 +3,12 @@ let socket = null;
 let keepAliveTimer = null;
 let reconnectTimer = null;
 
-function publish(connected, error = null) {
+function publish(connected, error = null, phase = null) {
   chrome.runtime.sendMessage({
     type: 'mission-ai-offscreen-status',
     connected,
     error,
+    phase,
   }).catch(() => {});
 }
 
@@ -46,8 +47,8 @@ function connect(token) {
       ws = new WebSocket(`${LOOPBACK}?token=${encodeURIComponent(value)}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'websocket_constructor_failed';
-      publish(false, message);
-      resolve({ ok: false, error: message });
+      publish(false, message, 'websocket_construct');
+      resolve({ ok: false, error: `websocket_construct: ${message}` });
       return;
     }
 
@@ -60,7 +61,7 @@ function connect(token) {
     };
 
     ws.onopen = () => {
-      publish(true, null);
+      publish(true, null, 'connected');
       keepAliveTimer = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           try { ws.send(JSON.stringify({ type: 'keepalive' })); } catch {}
@@ -70,8 +71,8 @@ function connect(token) {
     };
 
     ws.onerror = () => {
-      publish(false, 'websocket_connection_failed');
-      finish({ ok: false, error: 'websocket_connection_failed' });
+      publish(false, 'websocket_connection_failed', 'websocket_error');
+      finish({ ok: false, error: 'websocket_error: websocket_connection_failed' });
     };
 
     ws.onclose = (event) => {
@@ -81,8 +82,8 @@ function connect(token) {
       }
       if (socket === ws) socket = null;
       const error = `websocket_closed_${event.code}`;
-      publish(false, error);
-      finish({ ok: false, error });
+      publish(false, error, 'websocket_close');
+      finish({ ok: false, error: `websocket_close: ${error}` });
       reconnectTimer = setTimeout(() => connect(value), 1500);
     };
 
@@ -128,4 +129,5 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 const savedToken = localStorage.getItem('mission-ai-browser-token');
+publish(false, null, 'offscreen_ready');
 if (savedToken) connect(savedToken);
