@@ -1,13 +1,25 @@
 {
   "manifest_version": 3,
   "name": "Mission AI Browser Bridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Lets the local Mission AI companion work with the active Chrome tab.",
-  "permissions": ["activeTab", "tabs", "scripting", "storage"],
-  "host_permissions": ["http://127.0.0.1:8766/*", "ws://127.0.0.1:8766/*"],
-  "background": { "service_worker": "background.js", "type": "module" },
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8766/*",
+    "ws://127.0.0.1:8766/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
   "action": {
     "default_title": "Mission AI Browser Bridge",
     "default_popup": "popup.html"
-  }
+  },
+  "minimum_chrome_version": "116"
 }
