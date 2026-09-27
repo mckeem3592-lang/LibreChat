@@ -29,7 +29,14 @@ For each development release, verify:
 
 ## Cost telemetry database access
 
-The gateway cost dashboard should use `MISSION_AI_MONGO_URI` with a dedicated MongoDB Atlas user that has read-only access to the LibreChat database. Do not reuse the primary LibreChat application credential unless a temporary development exception is explicitly approved.
+Use a dedicated MongoDB Atlas credential scoped to exactly these database roles:
+
+- `read` on the LibreChat database, for settled native transaction aggregation.
+- `readWrite` on the separate `MissionAI` database, for delegated-usage reservations and settlements.
+
+A single Atlas credential with those two scoped roles is sufficient. Set `MISSION_AI_MONGO_URI` to a connection string whose default database is LibreChat; the delegated ledger switches to `MissionAI` internally. `MISSION_AI_LEDGER_MONGO_URI` remains optional for deployments that prefer a separate ledger credential.
+
+Do not reuse the primary LibreChat application credential unless a temporary development exception is explicitly approved. Do not grant account administration, user administration, schema management, or unrestricted write access to LibreChat.
 
 The dashboard reads only the `transactions` collection and returns aggregated usage/cost metadata. It never returns message content, API keys, or raw credentials.
 
