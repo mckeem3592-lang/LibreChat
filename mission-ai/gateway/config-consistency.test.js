@@ -17,3 +17,12 @@ test('LibreChat Mission AI config keeps keyless web research enabled', async () 
   assert.match(text, /rerankerType:\s*none/);
   assert.equal(/keenableApiKey:/.test(text), false);
 });
+
+test('LibreChat Mission AI config keeps scheduled and background work enabled', async () => {
+  const text = await readFile(new URL('../config/librechat.mission-ai.yaml', import.meta.url), 'utf8');
+  assert.match(text, /schedules:\s*\n\s+use:\s*true/);
+  assert.match(text, /minIntervalMinutes:\s*60/);
+  assert.match(text, /backgroundTasks:\s*\n\s+completionWakeups:\s*true/);
+  assert.match(text, /defaultPinnedTools:/);
+  assert.match(text, /- 'mcp'/);
+});
