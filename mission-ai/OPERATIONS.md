@@ -40,3 +40,15 @@ The current development web services use Render Free instances. They may stop wh
 ## Promotion rule
 
 Do not promote Mission AI to production until representative browser, Mac, code, research, file, image, routing, budget, recovery, and cost-comparison scenarios have been exercised successfully.
+
+
+## Chrome control modes
+
+Mission AI has two Chrome control layers on the personal Mac:
+
+- Direct macOS Chrome automation is the resilient fallback for tab inventory, tab activation, opening a new tab, and closing explicitly selected tabs. It does not require the browser extension.
+- The Chrome extension remains the page-level control layer for DOM-aware state, click, type, scroll, and navigation.
+
+Closing tabs is treated as destructive because a tab may contain unsaved work. The local companion rejects direct tab-close calls unless `confirm=true` is supplied. Do not auto-close tabs merely because they appear unused.
+
+Temporary diagnostic tab-title/URL logging must remain disabled outside a short, deliberate development diagnostic window.
