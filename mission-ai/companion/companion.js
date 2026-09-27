@@ -5,6 +5,8 @@ import { readFile, unlink } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import WebSocket, { WebSocketServer } from 'ws';
 import { readSecret, writeSecret } from './keychain.js';
+import { normalizeMacControlError } from './permission-errors.js';
+import { reconnectDelayMs } from './reconnect-policy.js';
 
 const execFileAsync = promisify(execFile);
 const GATEWAY_URL = process.env.MISSION_AI_GATEWAY_URL || '';
@@ -18,7 +20,6 @@ if (!BROWSER_TOKEN) {
 }
 const DEVICE_ID = process.env.MISSION_AI_DEVICE_ID || 'mac-primary';
 const BROWSER_PORT = Number(process.env.MISSION_AI_BROWSER_PORT || 8765);
-const RECONNECT_MS = 3_000;
 const MAX_MESSAGE_BYTES = 1_000_000;
 
 if (!GATEWAY_URL || !DEVICE_TOKEN) {
@@ -33,6 +34,8 @@ const allowedApps = new Set(
 );
 
 let extensionSocket = null;
+let reconnectAttempt = 0;
+let reconnectTimer = null;
 let browserPairClaimed = false;
 const browserPairDeadline = Date.now() + 15 * 60 * 1000;
 
@@ -42,8 +45,16 @@ function safeEqual(a, b) {
   return left.length === right.length && crypto.timingSafeEqual(left, right);
 }
 
+async function runAccessibilityScript(args) {
+  try {
+    return await execFileAsync('osascript', args);
+  } catch (error) {
+    throw normalizeMacControlError('accessibility', error);
+  }
+}
+
 async function activeApp() {
-  const { stdout } = await execFileAsync('osascript', [
+  const { stdout } = await runAccessibilityScript([
     '-e',
     'tell application "System Events" to get name of first application process whose frontmost is true',
   ]);
@@ -63,7 +74,7 @@ async function clickMac(args) {
   if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > 20000 || y > 20000) {
     throw new Error('invalid_coordinates');
   }
-  await execFileAsync('osascript', [
+  await runAccessibilityScript([
     '-e',
     'on run argv',
     '-e',
@@ -79,7 +90,7 @@ async function clickMac(args) {
 async function typeMac(args) {
   const text = String(args?.text ?? '');
   if (text.length > 20_000) throw new Error('text_too_long');
-  await execFileAsync('osascript', [
+  await runAccessibilityScript([
     '-e',
     'on run argv',
     '-e',
@@ -100,7 +111,7 @@ async function keyMac(args) {
   ]);
   const code = keyCodes.get(key);
   if (code == null) throw new Error('key_not_allowed');
-  await execFileAsync('osascript', [
+  await runAccessibilityScript([
     '-e',
     'on run argv',
     '-e',
@@ -119,6 +130,8 @@ async function screenshot() {
     await execFileAsync('sips', ['-Z', '1600', file]);
     const bytes = await readFile(file);
     return { mimeType: 'image/jpeg', base64: bytes.toString('base64') };
+  } catch (error) {
+    throw normalizeMacControlError('screen-recording', error);
   } finally {
     await unlink(file).catch(() => {});
   }
@@ -245,7 +258,10 @@ function connectGateway() {
     headers: { authorization: `Bearer ${DEVICE_TOKEN}` },
   });
 
-  ws.on('open', () => console.log('Mission AI companion connected'));
+  ws.on('open', () => {
+    reconnectAttempt = 0;
+    console.log('Mission AI companion connected');
+  });
   ws.on('message', async (raw) => {
     let message;
     try {
@@ -268,7 +284,15 @@ function connectGateway() {
       );
     }
   });
-  ws.on('close', () => setTimeout(connectGateway, RECONNECT_MS));
+  ws.on('close', () => {
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    const delay = reconnectDelayMs(reconnectAttempt);
+    reconnectAttempt += 1;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connectGateway();
+    }, delay);
+  });
   ws.on('error', () => ws.close());
 }
 
