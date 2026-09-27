@@ -14,7 +14,7 @@ async function refresh() {
 document.getElementById('pair').addEventListener('click', async () => {
   status.textContent = 'Pairing…';
   try {
-    const response = await fetch('http://127.0.0.1:8765/browser/pair', {
+    const response = await fetch('http://127.0.0.1:8766/browser/pair', {
       method: 'GET',
       cache: 'no-store',
     });
