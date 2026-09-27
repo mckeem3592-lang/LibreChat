@@ -121,6 +121,8 @@ function currentReadiness() {
     connectedDevices: [...devices.keys()],
     codeApiConfigured: Boolean(CODE_API_URL && CODE_BRIDGE_ADMIN_TOKEN),
     costDashboardConfigured: Boolean(process.env.MISSION_AI_MONGO_URI || process.env.MONGO_URI),
+    delegationEnabled:
+      String(process.env.MISSION_AI_DELEGATION_ENABLED || '').toLowerCase() === 'true',
     pairingConfigured,
     build: process.env.RENDER_GIT_COMMIT || process.env.BUILD_COMMIT || null,
   });
