@@ -1,0 +1,50 @@
+{
+  "verifiedOn": "2026-09-27",
+  "currency": "USD",
+  "unit": "per_1m_tokens",
+  "models": {
+    "gpt-6-luna": {
+      "provider": "openai",
+      "input": 0.10,
+      "cachedInput": 0.01,
+      "cacheWrite": 0.125,
+      "output": 0.50
+    },
+    "gpt-6-sol": {
+      "provider": "openai",
+      "input": 2.00,
+      "cachedInput": 0.20,
+      "cacheWrite": 2.50,
+      "output": 10.00
+    },
+    "gpt-6-astra": {
+      "provider": "openai",
+      "input": 10.00,
+      "cachedInput": 1.00,
+      "cacheWrite": 12.50,
+      "output": 50.00
+    },
+    "claude-sonnet-5": {
+      "provider": "anthropic",
+      "input": 2.00,
+      "cachedInput": 0.20,
+      "cacheWrite": 2.50,
+      "output": 10.00
+    },
+    "gemini-3.8-flash": {
+      "provider": "google",
+      "input": 0.75,
+      "cachedInput": 0.075,
+      "cacheWrite": 0,
+      "output": 3.75
+    },
+    "gemini-3.1-flash-image": {
+      "provider": "google",
+      "input": 0.50,
+      "cachedInput": 0,
+      "cacheWrite": 0,
+      "output": 3.00,
+      "imageOutput": 60.00
+    }
+  }
+}
