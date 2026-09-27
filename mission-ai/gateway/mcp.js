@@ -28,6 +28,7 @@ export function createMissionMcpNodeHandler({
   getReadiness,
   getDashboard,
   route,
+  fallback,
 }) {
   const handler = createMcpHandler(() => {
     const server = new McpServer({
@@ -75,6 +76,23 @@ export function createMissionMcpNodeHandler({
         const result = await route(input);
         if (result.status >= 400) return { ...textResult(result.body), isError: true };
         return textResult(result.body);
+      },
+    );
+
+    server.registerTool(
+      'mission_fallback_plan',
+      {
+        description: 'Return the first currently available provider/model target for a routing role using a bounded fallback chain.',
+        inputSchema: z.object({
+          role: z.enum(['economy', 'primary', 'coding', 'reasoning', 'research', 'computer', 'image']),
+        }),
+      },
+      async ({ role }) => {
+        try {
+          return textResult({ ok: true, plan: await fallback(role) });
+        } catch (error) {
+          return errorResult(error);
+        }
       },
     );
 
