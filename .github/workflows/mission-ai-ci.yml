@@ -30,6 +30,8 @@ jobs:
           node --check plugin/mission-ai-budget/scripts/budget-guard.mjs
           node --check plugin/mission-ai-budget/scripts/budget-query.mjs
           node --check plugin/mission-ai-budget/scripts/budget-report.mjs
+      - name: Test Mac companion helpers
+        run: node --test mission-ai/companion/*.test.js
       - name: Validate JSON configuration
         run: |
           node -e "JSON.parse(require('fs').readFileSync('mission-ai/config/router.json','utf8'))"
