@@ -119,7 +119,7 @@ function currentReadiness() {
     providers: providerStatus(),
     connectedDevices: [...devices.keys()],
     codeApiConfigured: Boolean(CODE_API_URL && CODE_BRIDGE_ADMIN_TOKEN),
-    costDashboardConfigured: Boolean(process.env.MONGO_URI),
+    costDashboardConfigured: Boolean(process.env.MISSION_AI_MONGO_URI || process.env.MONGO_URI),
     pairingConfigured,
     build: process.env.RENDER_GIT_COMMIT || process.env.BUILD_COMMIT || null,
   });
@@ -309,6 +309,6 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(
     `Mission AI readiness: providers=${JSON.stringify(providers)} codeApi=${Boolean(
       CODE_API_URL && CODE_BRIDGE_ADMIN_TOKEN,
-    )} costDashboard=${Boolean(process.env.MONGO_URI)}`,
+    )} costDashboard=${Boolean(process.env.MISSION_AI_MONGO_URI || process.env.MONGO_URI)}`,
   );
 });
