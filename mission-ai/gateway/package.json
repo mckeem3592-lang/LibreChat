@@ -8,8 +8,8 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node --test *.test.js ../../plugin/mission-ai-budget/scripts/*.test.mjs",
-    "check": "for f in *.js; do node --check \"$f\"; done && node --check ../companion/companion.js && bash -n ../code-api/build.sh ../code-api/start.sh ../code-worker/install-macos.sh ../code-worker/uninstall-macos.sh",
+    "test": "node --test *.test.js ../companion/*.test.js ../chrome-extension/*.test.js ../../plugin/mission-ai-budget/scripts/*.test.mjs",
+    "check": "for f in *.js ../companion/*.js ../chrome-extension/*.js; do node --check \"$f\"; done && bash -n ../acceptance/check-macos.sh ../companion/install-macos.sh ../companion/pair-macos.sh ../code-api/build.sh ../code-api/start.sh ../code-worker/install-macos.sh ../code-worker/uninstall-macos.sh",
     "postinstall": "npm run check && npm test"
   },
   "dependencies": {
