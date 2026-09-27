@@ -160,7 +160,8 @@ server.on('upgrade', (req, socket, head) => {
     return;
   }
 
-  const token = url.searchParams.get('token') || '';
+  const auth = String(req.headers.authorization || '');
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   const deviceId = url.searchParams.get('deviceId') || '';
   if (!deviceId || !safeEqual(token, DEVICE_TOKEN)) {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
