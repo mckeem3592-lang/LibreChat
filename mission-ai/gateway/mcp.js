@@ -231,12 +231,20 @@ export function createMissionMcpNodeHandler({
         description: 'Click an indexed element from freshly read active-tab state.',
         inputSchema: z.object({
           deviceId: z.string().optional(),
+          snapshotId: z.string().min(1),
+          elementKey: z.string().min(1).max(400),
           index: z.number().int().nonnegative(),
         }),
       },
-      async ({ deviceId, index }) => {
+      async ({ deviceId, snapshotId, elementKey, index }) => {
         try {
-          return textResult(await invoke(deviceId || 'mac-primary', 'browser.click', { index }));
+          return textResult(
+            await invoke(deviceId || 'mac-primary', 'browser.click', {
+              snapshotId,
+              elementKey,
+              index,
+            }),
+          );
         } catch (error) {
           return errorResult(error);
         }
@@ -249,13 +257,22 @@ export function createMissionMcpNodeHandler({
         description: 'Type into an indexed active-tab text field. Password fields are denied locally.',
         inputSchema: z.object({
           deviceId: z.string().optional(),
+          snapshotId: z.string().min(1),
+          elementKey: z.string().min(1).max(400),
           index: z.number().int().nonnegative(),
           text: z.string().max(20000),
         }),
       },
-      async ({ deviceId, index, text }) => {
+      async ({ deviceId, snapshotId, elementKey, index, text }) => {
         try {
-          return textResult(await invoke(deviceId || 'mac-primary', 'browser.type', { index, text }));
+          return textResult(
+            await invoke(deviceId || 'mac-primary', 'browser.type', {
+              snapshotId,
+              elementKey,
+              index,
+              text,
+            }),
+          );
         } catch (error) {
           return errorResult(error);
         }
