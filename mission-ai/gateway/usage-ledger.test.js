@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createMemoryUsageLedger } from './usage-ledger.js';
+import { createMemoryUsageLedger, createMongoUsageLedger } from './usage-ledger.js';
 
 test('ledger reserves, settles, and reports monthly delegated spend', async () => {
   const ledger = createMemoryUsageLedger();
@@ -99,4 +99,22 @@ test('stale reservations are conservatively settled at the reserved amount', asy
     () => ledger.settle({ reservationId: reservation.reservationId, actualUsd: 1 }),
     /reservation_not_found/,
   );
+});
+
+
+test('Mongo ledger can reuse the least-privilege Mission AI native URI when no ledger URI is set', () => {
+  const originalNative = process.env.MISSION_AI_MONGO_URI;
+  const originalLedger = process.env.MISSION_AI_LEDGER_MONGO_URI;
+  try {
+    process.env.MISSION_AI_MONGO_URI = 'mongodb://example.invalid/LibreChat';
+    delete process.env.MISSION_AI_LEDGER_MONGO_URI;
+    const ledger = createMongoUsageLedger();
+    assert.equal(typeof ledger.summary, 'function');
+    assert.equal(typeof ledger.reserve, 'function');
+  } finally {
+    if (originalNative === undefined) delete process.env.MISSION_AI_MONGO_URI;
+    else process.env.MISSION_AI_MONGO_URI = originalNative;
+    if (originalLedger === undefined) delete process.env.MISSION_AI_LEDGER_MONGO_URI;
+    else process.env.MISSION_AI_LEDGER_MONGO_URI = originalLedger;
+  }
 });
