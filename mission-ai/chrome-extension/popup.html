@@ -6,15 +6,20 @@
   <style>
     body { font: 13px system-ui; width: 300px; margin: 16px; }
     input { box-sizing: border-box; width: 100%; margin: 8px 0; padding: 8px; }
-    button { width: 100%; padding: 8px; }
+    button { width: 100%; padding: 8px; margin-top: 8px; }
     #status { margin-top: 10px; }
+    #manual { margin-top: 14px; }
   </style>
 </head>
 <body>
   <strong>Mission AI Browser Bridge</strong>
-  <p>Enter the local browser token from your Mission AI companion setup.</p>
-  <input id="token" type="password" autocomplete="off" placeholder="Browser token">
-  <button id="save">Save & connect</button>
+  <p>Pair this Chrome profile with the Mission AI companion running on this Mac.</p>
+  <button id="pair">Pair with Mac</button>
+  <details id="manual">
+    <summary>Manual token</summary>
+    <input id="token" type="password" autocomplete="off" placeholder="Browser token">
+    <button id="save">Save token</button>
+  </details>
   <div id="status">Checking…</div>
   <script src="popup.js"></script>
 </body>
