@@ -1,10 +1,10 @@
-import { verifiedRouteRequest } from './route-api-v2.js';
+import { configuredRouteRequest } from './route-api-v3.js';
 
 export async function handleRoute(body = {}) {
   try {
     return {
       status: 200,
-      body: { ok: true, result: await verifiedRouteRequest(body) },
+      body: { ok: true, result: await configuredRouteRequest(body) },
     };
   } catch (error) {
     return {
