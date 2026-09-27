@@ -24,6 +24,7 @@ jobs:
         run: |
           npm run check --prefix mission-ai/gateway
           node --check mission-ai/companion/companion.js
+          node --check mission-ai/companion/keychain.js
           node --check mission-ai/chrome-extension/background.js
           node --check mission-ai/chrome-extension/popup.js
           node --check plugin/mission-ai-budget/scripts/budget-guard.mjs
