@@ -9,6 +9,9 @@ import { handleRoute } from './route-handler.js';
 const PORT = Number(process.env.PORT || 8787);
 const DEVICE_TOKEN = process.env.MISSION_AI_DEVICE_TOKEN || '';
 const TOOL_TOKEN = process.env.MISSION_AI_TOOL_TOKEN || '';
+const CODE_API_URL = (process.env.MISSION_AI_CODE_API_URL || '').replace(/\/$/, '');
+const CODE_BRIDGE_ADMIN_TOKEN = process.env.MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN || '';
+const CODE_WORKER_ID = process.env.MISSION_AI_CODE_WORKER_ID || 'mac-primary-code';
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TIMEOUT_MS = 120_000;
 
@@ -115,15 +118,43 @@ app.get('/health', (_req, res) => {
   });
 });
 
-app.post('/pair', (req, res) => {
+async function issueCodeWorkerPairing() {
+  if (!CODE_API_URL || !CODE_BRIDGE_ADMIN_TOKEN) return null;
+  const response = await fetch(`${CODE_API_URL}/bridge/pairings`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${CODE_BRIDGE_ADMIN_TOKEN}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ workerId: CODE_WORKER_ID }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error('code_worker_pairing_failed');
+  const body = await response.json();
+  if (!body?.code) throw new Error('code_worker_pairing_invalid');
+  return {
+    codeApiUrl: CODE_API_URL,
+    workerId: CODE_WORKER_ID,
+    code: body.code,
+    expiresAt: body.expiresAt || null,
+  };
+}
+
+app.post('/pair', async (req, res) => {
   try {
     const result = pairDevice({
       code: String(req.body?.code || ''),
       remoteAddress: req.ip || req.socket.remoteAddress || '',
     });
+    let codeWorker = null;
+    try {
+      codeWorker = await issueCodeWorkerPairing();
+    } catch {
+      console.warn('Mission AI code-worker pairing was unavailable during device pairing');
+    }
     console.log('Mission AI device paired');
     res.set('cache-control', 'no-store');
-    res.json({ ok: true, ...result });
+    res.json({ ok: true, ...result, codeWorker });
   } catch (error) {
     const status = error?.message === 'pair_rate_limited' ? 429 : 401;
     res.status(status).json({ ok: false, error: error.message });
