@@ -66,7 +66,7 @@ cat > "$PLIST" <<PLIST
   <dict>
     <key>MISSION_AI_GATEWAY_URL</key><string>$MISSION_AI_GATEWAY_URL</string>
     <key>MISSION_AI_DEVICE_ID</key><string>${MISSION_AI_DEVICE_ID:-mac-primary}</string>
-    <key>MISSION_AI_BROWSER_PORT</key><string>${MISSION_AI_BROWSER_PORT:-8765}</string>
+    <key>MISSION_AI_BROWSER_PORT</key><string>${MISSION_AI_BROWSER_PORT:-8766}</string>
     <key>MISSION_AI_ALLOWED_APPS</key><string>${MISSION_AI_ALLOWED_APPS:-Google Chrome,Finder,Microsoft Excel,Microsoft Word,Microsoft PowerPoint}</string>
   </dict>
   <key>RunAtLoad</key><true/>
@@ -80,7 +80,7 @@ PLIST
 launchctl bootout "gui/$(id -u)/com.missionai.companion" >/dev/null 2>&1 || true
 
 # Clean up only a stale Mission AI companion that is still holding the browser bridge port.
-STALE_PID="$(/usr/sbin/lsof -nP -iTCP:"${MISSION_AI_BROWSER_PORT:-8765}" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
+STALE_PID="$(/usr/sbin/lsof -nP -iTCP:"${MISSION_AI_BROWSER_PORT:-8766}" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
 if [[ -n "$STALE_PID" ]]; then
   STALE_COMMAND="$(ps -p "$STALE_PID" -o command= 2>/dev/null || true)"
   if [[ "$STALE_COMMAND" == *"/mission-ai/companion/companion.js"* ]]; then
@@ -93,7 +93,7 @@ if [[ -n "$STALE_PID" ]]; then
       sleep 0.25
     done
   else
-    echo "Browser bridge port ${MISSION_AI_BROWSER_PORT:-8765} is already in use by another process:"
+    echo "Browser bridge port ${MISSION_AI_BROWSER_PORT:-8766} is already in use by another process:"
     echo "$STALE_COMMAND"
     echo "Mission AI will not terminate a non-Mission-AI process automatically."
     exit 1
