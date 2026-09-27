@@ -34,9 +34,28 @@ const allowedApps = new Set(
 );
 
 let extensionSocket = null;
+let gatewaySocket = null;
 let gatewayConnected = false;
 let reconnectAttempt = 0;
 let reconnectTimer = null;
+
+function currentCapabilities() {
+  return [
+    'mac.control',
+    'browser.direct_tabs',
+    ...(extensionSocket?.readyState === WebSocket.OPEN ? ['browser.page_extension'] : []),
+  ];
+}
+
+function publishCapabilities() {
+  if (!gatewaySocket || gatewaySocket.readyState !== WebSocket.OPEN) return;
+  gatewaySocket.send(
+    JSON.stringify({
+      type: 'device_capabilities',
+      capabilities: currentCapabilities(),
+    }),
+  );
+}
 
 function safeEqual(a, b) {
   const left = Buffer.from(String(a));
@@ -413,6 +432,7 @@ browserServer.on('upgrade', (req, socket, head) => {
 browserWss.on('connection', (ws) => {
   if (extensionSocket && extensionSocket !== ws) extensionSocket.close(4001, 'replaced');
   extensionSocket = ws;
+  publishCapabilities();
   ws.on('message', (raw) => {
     try {
       const message = JSON.parse(raw.toString());
@@ -427,7 +447,10 @@ browserWss.on('connection', (ws) => {
     }
   });
   ws.on('close', () => {
-    if (extensionSocket === ws) extensionSocket = null;
+    if (extensionSocket === ws) {
+      extensionSocket = null;
+      publishCapabilities();
+    }
   });
 });
 
@@ -442,8 +465,10 @@ function connectGateway() {
   });
 
   ws.on('open', () => {
+    gatewaySocket = ws;
     gatewayConnected = true;
     reconnectAttempt = 0;
+    publishCapabilities();
     console.log('Mission AI companion connected');
   });
   ws.on('message', async (raw) => {
@@ -469,6 +494,7 @@ function connectGateway() {
     }
   });
   ws.on('close', () => {
+    if (gatewaySocket === ws) gatewaySocket = null;
     gatewayConnected = false;
     if (reconnectTimer) clearTimeout(reconnectTimer);
     const delay = reconnectDelayMs(reconnectAttempt);
