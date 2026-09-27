@@ -184,6 +184,7 @@ async function chromeActivateTab(args) {
 }
 
 async function chromeCloseTabs(args) {
+  if (args?.confirm !== true) throw new Error('confirmation_required');
   const requested = Array.isArray(args?.tabs) ? args.tabs : [];
   if (!requested.length || requested.length > 100) throw new Error('invalid_tab_selection');
 
@@ -295,6 +296,7 @@ async function dispatch(tool, args) {
     case 'browser.close_tabs':
       return await chromeCloseTabs(args);
     case 'browser.open_url_direct':
+    case 'browser.open_new_tab':
       return await chromeOpenUrl(args);
     case 'browser.get_state':
     case 'browser.click':
