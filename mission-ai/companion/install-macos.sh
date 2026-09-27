@@ -32,7 +32,7 @@ if [[ -n "${MISSION_AI_DEVICE_TOKEN:-}" ]]; then
 fi
 
 if ! security find-generic-password -a "$USER" -s "$DEVICE_SERVICE" -w >/dev/null 2>&1; then
-  "$ROOT_DIR/pair-macos.sh"
+  zsh "$ROOT_DIR/pair-macos.sh"
 fi
 
 cd "$ROOT_DIR"
