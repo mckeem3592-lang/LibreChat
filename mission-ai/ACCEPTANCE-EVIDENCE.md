@@ -37,3 +37,11 @@ This file records concrete development evidence. It is not a production approval
 - Native/ledger Mongo cost telemetry credential: not configured.
 - Full browser-extension page-control acceptance: pending.
 - Measured real-use monthly cost comparison: pending representative Mission AI usage.
+
+
+### Pinned code-worker boundary
+- The deployed Mac worker is pinned to LibreChat code-interpreter commit `67d75d859aee891923c40cde1db073489d74a424`.
+- Review of that exact commit confirms `--default-workspace` resolves to a private worker/deployment/workspace-specific directory beneath `~/.local/share/librechat/code/workspaces/`, rather than the user's home directory.
+- The pinned workspace implementation confines file operations to the registered root, rejects symlink/root escapes, supports create-only writes with `overwrite:false`, and exact-match edits.
+- Mission AI now explicitly starts the Mac worker with `native-srt` and the `restricted` command policy instead of relying on those upstream defaults.
+- CI rejects a Mission AI worker installer that switches to `trusted-vm` or adds a broad `--worker-dir`.
