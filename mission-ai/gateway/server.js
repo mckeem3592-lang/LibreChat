@@ -5,6 +5,7 @@ import WebSocket, { WebSocketServer } from 'ws';
 import { pairDevice } from './pairing.js';
 import { providerStatus } from './providers.js';
 import { handleRoute } from './route-handler.js';
+import { buildReadiness } from './readiness.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const DEVICE_TOKEN = process.env.MISSION_AI_DEVICE_TOKEN || '';
@@ -165,6 +166,25 @@ app.use('/v1', requireToolAuth);
 
 app.get('/v1/providers', (_req, res) => {
   res.json({ ok: true, providers: providerStatus() });
+});
+
+app.get('/v1/readiness', (_req, res) => {
+  const expiresAt = Date.parse(process.env.MISSION_AI_PAIR_EXPIRES_AT || '');
+  const pairingConfigured =
+    Boolean(process.env.MISSION_AI_PAIR_CODE) &&
+    Number.isFinite(expiresAt) &&
+    Date.now() <= expiresAt;
+
+  res.json({
+    ok: true,
+    readiness: buildReadiness({
+      providers: providerStatus(),
+      connectedDevices: [...devices.keys()],
+      codeApiConfigured: Boolean(CODE_API_URL && CODE_BRIDGE_ADMIN_TOKEN),
+      pairingConfigured,
+      build: process.env.RENDER_GIT_COMMIT || process.env.BUILD_COMMIT || null,
+    }),
+  });
 });
 
 app.post('/v1/route', async (req, res) => {
