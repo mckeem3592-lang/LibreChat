@@ -131,7 +131,7 @@ async function loadCatalog() {
 }
 
 export async function queryCostDashboard({
-  uri = process.env.MONGO_URI || '',
+  uri = process.env.MISSION_AI_MONGO_URI || process.env.MONGO_URI || '',
   timeZone = process.env.MISSION_AI_BUDGET_TIMEZONE || DEFAULT_TIME_ZONE,
   targetUsd = Number(process.env.MISSION_AI_BUDGET_TARGET_USD || 100),
   economyUsd = Number(process.env.MISSION_AI_BUDGET_ECONOMY_USD || 125),
