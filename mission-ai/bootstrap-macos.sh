@@ -60,6 +60,11 @@ ensure_node() {
 
 ensure_node
 
+NODE_BIN="$(command -v node)"
+NODE_DIR="$(dirname "$NODE_BIN")"
+export PATH="$NODE_DIR:$PATH"
+echo "Mission AI using Node: $NODE_BIN ($(node --version))"
+
 mkdir -p "$(dirname "$SOURCE_DIR")"
 if [[ -d "$SOURCE_DIR/.git" ]]; then
   git -C "$SOURCE_DIR" fetch --quiet origin "$BRANCH"
@@ -69,9 +74,9 @@ else
   git clone --quiet --branch "$BRANCH" --single-branch "$REPO_URL" "$SOURCE_DIR"
 fi
 
-zsh "$SOURCE_DIR/mission-ai/companion/install-macos.sh"
-zsh "$SOURCE_DIR/mission-ai/document-tools/install-macos.sh"
-bash "$SOURCE_DIR/mission-ai/code-worker/install-macos.sh"
+/bin/zsh -f "$SOURCE_DIR/mission-ai/companion/install-macos.sh"
+/bin/zsh -f "$SOURCE_DIR/mission-ai/document-tools/install-macos.sh"
+/bin/bash "$SOURCE_DIR/mission-ai/code-worker/install-macos.sh"
 
 EXTENSION_DIR="$SOURCE_DIR/mission-ai/chrome-extension"
 
