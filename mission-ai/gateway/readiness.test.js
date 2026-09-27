@@ -12,6 +12,7 @@ test('reports incomplete readiness without exposing secrets', () => {
     connectedDevices: [],
     codeApiConfigured: true,
     pairingConfigured: true,
+    costDashboardConfigured: true,
     build: 'abc123',
   });
 
@@ -21,6 +22,7 @@ test('reports incomplete readiness without exposing secrets', () => {
     anthropic: true,
     google: false,
     codeApi: true,
+    costDashboard: true,
     macDevice: false,
     pairing: true,
   });
