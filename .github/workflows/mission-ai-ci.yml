@@ -30,11 +30,17 @@ jobs:
           node --check plugin/mission-ai-budget/scripts/budget-guard.mjs
           node --check plugin/mission-ai-budget/scripts/budget-query.mjs
           node --check plugin/mission-ai-budget/scripts/budget-report.mjs
+          bash -n mission-ai/bootstrap-macos.sh
+          bash -n mission-ai/document-tools/install-macos.sh
+          python3 -m py_compile mission-ai/document-tools/verify.py
       - name: Test Mac companion helpers
         run: node --test mission-ai/companion/*.test.js
       - name: Validate JSON configuration
         run: |
           node -e "JSON.parse(require('fs').readFileSync('mission-ai/config/router.json','utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('mission-ai/config/provider-catalog.json','utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('mission-ai/config/provider-fallbacks.json','utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('mission-ai/config/pricing.json','utf8'))"
           node -e "JSON.parse(require('fs').readFileSync('mission-ai/chrome-extension/manifest.json','utf8'))"
           node -e "JSON.parse(require('fs').readFileSync('plugin/mission-ai-budget/plugin.json','utf8'))"
           node -e "JSON.parse(require('fs').readFileSync('plugin/mission-ai-budget/ai.librechat/hooks/hooks.json','utf8'))"
