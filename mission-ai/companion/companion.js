@@ -4,20 +4,25 @@ import { execFile } from 'node:child_process';
 import { readFile, unlink } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import WebSocket, { WebSocketServer } from 'ws';
+import { readSecret, writeSecret } from './keychain.js';
 
 const execFileAsync = promisify(execFile);
 const GATEWAY_URL = process.env.MISSION_AI_GATEWAY_URL || '';
-const DEVICE_TOKEN = process.env.MISSION_AI_DEVICE_TOKEN || '';
-const BROWSER_TOKEN = process.env.MISSION_AI_BROWSER_TOKEN || '';
+const DEVICE_TOKEN =
+  process.env.MISSION_AI_DEVICE_TOKEN || (await readSecret('mission-ai-device-token'));
+let BROWSER_TOKEN =
+  process.env.MISSION_AI_BROWSER_TOKEN || (await readSecret('mission-ai-browser-token'));
+if (!BROWSER_TOKEN) {
+  BROWSER_TOKEN = crypto.randomBytes(32).toString('base64url');
+  await writeSecret('mission-ai-browser-token', BROWSER_TOKEN);
+}
 const DEVICE_ID = process.env.MISSION_AI_DEVICE_ID || 'mac-primary';
 const BROWSER_PORT = Number(process.env.MISSION_AI_BROWSER_PORT || 8765);
 const RECONNECT_MS = 3_000;
 const MAX_MESSAGE_BYTES = 1_000_000;
 
-if (!GATEWAY_URL || !DEVICE_TOKEN || !BROWSER_TOKEN) {
-  throw new Error(
-    'MISSION_AI_GATEWAY_URL, MISSION_AI_DEVICE_TOKEN, and MISSION_AI_BROWSER_TOKEN are required',
-  );
+if (!GATEWAY_URL || !DEVICE_TOKEN) {
+  throw new Error('MISSION_AI_GATEWAY_URL and a paired Mission AI device credential are required');
 }
 
 const allowedApps = new Set(
