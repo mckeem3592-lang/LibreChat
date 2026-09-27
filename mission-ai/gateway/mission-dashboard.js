@@ -76,6 +76,9 @@ export async function queryMissionDashboard({
 } = {}) {
   const nativeDashboard = await nativeReader({ now });
   const ledger = usageLedger || defaultUsageLedger();
+  if (typeof ledger.reconcileStaleReservations === 'function') {
+    await ledger.reconcileStaleReservations({ now });
+  }
   const options = { now, timeZone: nativeDashboard.timeZone };
   const [delegatedSummary, delegatedBreakdown] = await Promise.all([
     ledger.summary(options),
