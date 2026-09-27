@@ -1,42 +1,56 @@
 # Mission AI
 
-Mission AI extends this LibreChat deployment without forking core behavior unnecessarily.
+Mission AI extends this LibreChat deployment without unnecessary core forks.
 
 ## Architecture
 
-- **LibreChat on Render** remains the primary chat UI and provider/agent platform.
-- **LibreChat attached code environments** handle project files, shell commands, Git workspaces, and background code execution on the user's Mac through the outbound `@librechat/code` worker architecture.
-- **Mission AI Gateway** runs in the cloud and exposes narrowly scoped tool calls. It never accepts unauthenticated device traffic.
-- **Mission AI Companion** runs on macOS, creates an outbound WebSocket to the gateway, and exposes only allowlisted native actions.
-- **Mission AI Chrome extension** controls the user's existing Chrome profile and active tab. It connects only to the loopback companion.
+- **LibreChat on Render** remains the primary chat UI and agent platform.
+- **Mission AI Gateway** is a separate Render development service that handles routing and narrowly scoped tool calls.
+- **Mission AI Code API** is a separate Render development service for attached code sessions and worker coordination.
+- **Mission AI Companion** runs on macOS and maintains an outbound device connection.
+- **Mission AI Chrome extension** works with the user's existing Chrome profile and active tab through the local companion.
+- **Mission AI budget plugin** tracks settled LibreChat transaction spend against the configured monthly policy.
 
 No inbound public port is opened on the Mac.
 
-## Security model
+## Development isolation
 
-1. Cloud-to-device tool calls require `MISSION_AI_TOOL_TOKEN`.
-2. The Mac-to-cloud device connection requires `MISSION_AI_DEVICE_TOKEN`.
-3. Chrome-to-companion traffic is loopback-only and requires `MISSION_AI_BROWSER_TOKEN`.
-4. Password fields are never filled by the browser tool.
-5. Native app launching is allowlisted.
-6. Arbitrary shell execution is intentionally not implemented here; LibreChat's code worker is used instead because it already provides workspace-scoped approval controls.
-7. Browser page content is treated as untrusted data. It cannot alter system instructions or silently gain new native capabilities.
+All Mission AI development work belongs on `mission-ai-v1` and the separate Mission AI Render services. Production LibreChat stays on `main` until end-to-end acceptance passes.
 
-## Components
+The preserved baseline branch must remain available for rollback.
 
-- `gateway/` — cloud relay and HTTP tool API.
-- `companion/` — macOS outbound companion.
-- `chrome-extension/` — active-tab browser bridge.
+## Current development services
 
-## Current milestone
+- `mission-ai-gateway-mckee`
+- `mission-ai-code-api-mckee`
+- `mission-ai-code-redis`
 
-Phase 1 establishes a safe browser/native-control transport while preserving the production LibreChat deployment. It does not modify `main`, MongoDB data, or live Render environment variables.
+Both web services currently use Render Free compute and may stop while idle. That is acceptable for development, but final always-on availability requires a deliberate hosting-plan decision.
 
-Next milestones:
+## Implemented foundation
 
-1. Deploy the gateway as a separate Render service.
-2. Pair the Mac companion.
-3. Load the Chrome extension unpacked and validate active-tab control.
-4. Connect gateway tools to LibreChat through an Agent Action/MCP adapter.
-5. Enable/configure OpenAI + Gemini alongside the existing Anthropic provider.
-6. Add dollar-denominated routing, budget enforcement, and dashboarding on top of LibreChat's existing provider token/cache usage records.
+- Provider-independent route selection with explicit model overrides.
+- OpenAI, Anthropic, and Google provider catalog scaffolding.
+- $100 target, $125 economy threshold, and $175 hard monthly budget policy.
+- Read-only monthly settled-spend reporting helpers.
+- Development build checks and automated tests.
+- One-time Mac pairing flow.
+- Keychain-backed Mac companion credentials.
+- Outbound-only Mac device connection.
+- Local-loopback Chrome bridge.
+- Attached Code API and Mac code-worker enrollment.
+- Durable agent checkpointer configuration.
+- Background-task and scheduled-work configuration fragments.
+
+## Remaining acceptance work
+
+1. Complete provider authorization for every enabled provider and verify readiness without exposing credentials.
+2. Run the Mac bootstrap on the user's machine and approve the required macOS permissions.
+3. Load the Chrome extension and run real active-tab interaction tests.
+4. Exercise attached code sessions from LibreChat against the Mac worker.
+5. Expose settled-spend reporting through the final dashboard experience.
+6. Verify provider fallback, recovery after restart/sleep, and representative end-to-end workflows.
+7. Produce a measured real-use cost comparison before any subscription decision.
+8. Promote to production only after the acceptance checks pass.
+
+See `OPERATIONS.md` for deployment validation notes.
