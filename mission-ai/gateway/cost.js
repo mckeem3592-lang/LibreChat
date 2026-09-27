@@ -24,6 +24,11 @@ export function normalizedBillableUsage(provider, usage = {}) {
   const outputTokens = finiteNonnegative(usage.outputTokens, 'output_tokens');
   const cachedInputTokens = finiteNonnegative(usage.cachedInputTokens, 'cached_input_tokens');
   const cacheWriteTokens = finiteNonnegative(usage.cacheWriteTokens, 'cache_write_tokens');
+  const cacheWrite5mTokens = finiteNonnegative(
+    usage.cacheWrite5mTokens ?? cacheWriteTokens,
+    'cache_write_5m_tokens',
+  );
+  const cacheWrite1hTokens = finiteNonnegative(usage.cacheWrite1hTokens, 'cache_write_1h_tokens');
   const imageOutputTokens = finiteNonnegative(usage.imageOutputTokens, 'image_output_tokens');
 
   if (provider === 'anthropic') {
@@ -32,6 +37,8 @@ export function normalizedBillableUsage(provider, usage = {}) {
       outputTokens,
       cachedInputTokens,
       cacheWriteTokens,
+      cacheWrite5mTokens,
+      cacheWrite1hTokens,
       imageOutputTokens,
     };
   }
@@ -45,6 +52,8 @@ export function normalizedBillableUsage(provider, usage = {}) {
     outputTokens,
     cachedInputTokens,
     cacheWriteTokens,
+    cacheWrite5mTokens,
+    cacheWrite1hTokens,
     imageOutputTokens,
   };
 }
@@ -60,7 +69,11 @@ export function calculateUsageCost(provider, model, usage, pricing) {
   const components = {
     inputUsd: perMillion(billable.inputTokens, modelPricing.input),
     cachedInputUsd: perMillion(billable.cachedInputTokens, modelPricing.cachedInput),
-    cacheWriteUsd: perMillion(billable.cacheWriteTokens, modelPricing.cacheWrite),
+    cacheWriteUsd: perMillion(billable.cacheWrite5mTokens, modelPricing.cacheWrite),
+    cacheWrite1hUsd: perMillion(
+      billable.cacheWrite1hTokens,
+      modelPricing.cacheWrite1h ?? modelPricing.cacheWrite,
+    ),
     outputUsd: perMillion(billable.outputTokens, modelPricing.output),
     imageOutputUsd: perMillion(billable.imageOutputTokens, modelPricing.imageOutput),
   };
