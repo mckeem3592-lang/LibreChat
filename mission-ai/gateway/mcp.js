@@ -103,10 +103,11 @@ export function createMissionMcpNodeHandler({
         description: 'Run a task through Mission AI provider routing with bounded provider fallback. This may incur provider API charges.',
         inputSchema: z.object({
           task: z.string(),
-          monthSpendUsd: z.number().nonnegative(),
           prompt: z.string().min(1).max(200000),
           system: z.string().max(50000).optional(),
           maxOutputTokens: z.number().int().min(1).max(32768).optional(),
+          project: z.string().max(200).optional(),
+          conversationId: z.string().max(200).optional(),
         }),
       },
       async (input) => {
