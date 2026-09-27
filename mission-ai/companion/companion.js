@@ -154,6 +154,35 @@ async function chromeListTabs() {
   return { tabs };
 }
 
+async function chromeActivateTab(args) {
+  const windowIndex = Number(args?.windowIndex);
+  const tabIndex = Number(args?.tabIndex);
+  if (
+    !Number.isInteger(windowIndex) || windowIndex < 1 ||
+    !Number.isInteger(tabIndex) || tabIndex < 1
+  ) {
+    throw new Error('invalid_tab_selection');
+  }
+
+  await execFileAsync('osascript', [
+    '-e', 'on run argv',
+    '-e', 'set w to item 1 of argv as integer',
+    '-e', 'set t to item 2 of argv as integer',
+    '-e', 'tell application "Google Chrome"',
+    '-e', 'if w > (count of windows) then error "window_not_found"',
+    '-e', 'if t > (count of tabs of window w) then error "tab_not_found"',
+    '-e', 'set active tab index of window w to t',
+    '-e', 'set index of window w to 1',
+    '-e', 'activate',
+    '-e', 'end tell',
+    '-e', 'end run',
+    String(windowIndex),
+    String(tabIndex),
+  ]);
+
+  return { windowIndex, tabIndex };
+}
+
 async function chromeCloseTabs(args) {
   const requested = Array.isArray(args?.tabs) ? args.tabs : [];
   if (!requested.length || requested.length > 100) throw new Error('invalid_tab_selection');
@@ -261,6 +290,8 @@ async function dispatch(tool, args) {
       return await keyMac(args);
     case 'browser.list_tabs':
       return await chromeListTabs();
+    case 'browser.activate_tab':
+      return await chromeActivateTab(args);
     case 'browser.close_tabs':
       return await chromeCloseTabs(args);
     case 'browser.open_url_direct':
