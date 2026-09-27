@@ -77,6 +77,16 @@ else
   fail "Document toolchain is not installed"
 fi
 
+if pgrep -x "Google Chrome" >/dev/null 2>&1; then
+  if osascript -e 'tell application "Google Chrome" to return (count of tabs of every window) as string' >/dev/null 2>&1; then
+    ok "Direct Chrome tab automation is available"
+  else
+    warn "Direct Chrome tab automation could not query the running Chrome session"
+  fi
+else
+  warn "Google Chrome is not running — direct tab automation was not exercised"
+fi
+
 if [[ -n "$BROWSER_TOKEN" ]]; then
   HEALTH="$(curl --silent --show-error --max-time 10     -H "Authorization: Bearer $BROWSER_TOKEN"     "$HEALTH_URL" 2>/dev/null || true)"
 
