@@ -5,6 +5,8 @@ let socket;
 let reconnectTimer;
 let reconnectAttempt = 0;
 let latestSnapshot = null;
+let keepAliveTimer = null;
+let lastConnectionError = null;
 
 function reconnectDelayMs(attempt) {
   const count = Number.isInteger(attempt) && attempt >= 0 ? attempt : 0;
@@ -20,9 +22,29 @@ async function connect() {
   clearTimeout(reconnectTimer);
   const token = await getToken();
   if (!token) return;
-  socket = new WebSocket(`${LOOPBACK}?token=${encodeURIComponent(token)}`);
+  try {
+    socket = new WebSocket(`${LOOPBACK}?token=${encodeURIComponent(token)}`);
+  } catch (error) {
+    lastConnectionError = error instanceof Error ? error.message : 'websocket_constructor_failed';
+    const delay = reconnectDelayMs(reconnectAttempt);
+    reconnectAttempt += 1;
+    reconnectTimer = setTimeout(connect, delay);
+    return;
+  }
   socket.onopen = () => {
     reconnectAttempt = 0;
+    lastConnectionError = null;
+    if (keepAliveTimer) clearInterval(keepAliveTimer);
+    keepAliveTimer = setInterval(() => {
+      if (socket?.readyState === WebSocket.OPEN) {
+        try {
+          socket.send(JSON.stringify({ type: 'keepalive' }));
+        } catch {}
+      }
+    }, 20_000);
+  };
+  socket.onerror = () => {
+    lastConnectionError = 'websocket_connection_failed';
   };
   socket.onmessage = async (event) => {
     let message;
@@ -51,8 +73,15 @@ async function connect() {
       }
     }
   };
-  socket.onclose = () => {
+  socket.onclose = (event) => {
     latestSnapshot = null;
+    if (keepAliveTimer) {
+      clearInterval(keepAliveTimer);
+      keepAliveTimer = null;
+    }
+    if (!lastConnectionError) {
+      lastConnectionError = `websocket_closed_${event.code}`;
+    }
     const delay = reconnectDelayMs(reconnectAttempt);
     reconnectAttempt += 1;
     reconnectTimer = setTimeout(connect, delay);
@@ -251,7 +280,11 @@ async function execute(tool, args) {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'mission-ai-status') {
-    sendResponse({ connected: socket?.readyState === WebSocket.OPEN });
+    sendResponse({
+      connected: socket?.readyState === WebSocket.OPEN,
+      error: lastConnectionError,
+      readyState: socket?.readyState ?? WebSocket.CLOSED,
+    });
     return;
   }
 
