@@ -45,3 +45,10 @@ This file records concrete development evidence. It is not a production approval
 - The pinned workspace implementation confines file operations to the registered root, rejects symlink/root escapes, supports create-only writes with `overwrite:false`, and exact-match edits.
 - Mission AI now explicitly starts the Mac worker with `native-srt` and the `restricted` command policy instead of relying on those upstream defaults.
 - CI rejects a Mission AI worker installer that switches to `trusted-vm` or adds a broad `--worker-dir`.
+
+
+### Code API dependency reproducibility
+- Upstream Code API source remains pinned to `67d75d859aee891923c40cde1db073489d74a424`.
+- The pinned upstream service has no service-level lockfile, so Mission AI now resolves a package lock first, verifies its SHA-256 against a checked-in approved fingerprint, and only then installs with `npm ci`.
+- Approved dependency lock SHA-256: `2e21aa25df9bb912765cc1ade7d3a5a6cf0f63580bc55357edeafd56bb606838`.
+- The first fingerprinted development build succeeded before the fingerprint was frozen.
