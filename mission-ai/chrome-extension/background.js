@@ -132,6 +132,21 @@ async function execute(tool, args) {
   throw new Error('tool_not_allowed');
 }
 
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === 'mission-ai-status') {
+    sendResponse({ connected: socket?.readyState === WebSocket.OPEN });
+    return;
+  }
+
+  if (message?.type === 'mission-ai-token-updated') {
+    try {
+      socket?.close(4000, 'credential_updated');
+    } catch {}
+    connect().finally(() => sendResponse({ ok: true }));
+    return true;
+  }
+});
+
 chrome.runtime.onInstalled.addListener(connect);
 chrome.runtime.onStartup.addListener(connect);
 connect();
