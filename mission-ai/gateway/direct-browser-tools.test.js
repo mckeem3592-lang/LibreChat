@@ -44,6 +44,13 @@ test('direct Chrome tab close requires explicit confirmation locally and over MC
 
   assert.ok(companion.includes("args?.confirm !== true"));
   assert.ok(companion.includes("confirmation_required"));
+  assert.ok(companion.includes("windowId"));
+  assert.ok(companion.includes("tabId"));
+  assert.ok(companion.includes("expectedUrl"));
+  assert.ok(companion.includes("tab_stale"));
   assert.ok(mcp.includes("confirm: z.literal(true)"));
+  assert.ok(mcp.includes("windowId: z.string().min(1)"));
+  assert.ok(mcp.includes("expectedUrl: z.string().url()"));
   assert.ok(openapi.includes("required: [confirm, tabs]"));
+  assert.ok(openapi.includes("required: [windowId, tabId, expectedUrl]"));
 });
