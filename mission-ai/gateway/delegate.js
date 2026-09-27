@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { configuredRouteRequest } from './route-api-v3.js';
 import { fallbackTargets } from './fallbacks.js';
 import { providerConfig } from './providers.js';
@@ -36,6 +37,8 @@ export async function delegateRequest({
   prompt,
   system = '',
   maxOutputTokens = 4096,
+  project = 'unassigned',
+  conversationId = '',
   fetchImpl = fetch,
   enabled,
   now = new Date(),
@@ -45,6 +48,11 @@ export async function delegateRequest({
 } = {}) {
   if (!delegationEnabled(enabled)) throw new Error('delegation_disabled');
   if (!prompt || typeof prompt !== 'string') throw new Error('delegation_prompt_required');
+
+  const conversationRef = conversationId
+    ? crypto.createHash('sha256').update(String(conversationId)).digest('hex').slice(0, 16)
+    : null;
+  const safeProject = String(project || 'unassigned').slice(0, 200);
 
   const dashboard = await dashboardReader({ now });
   const ledger = usageLedger || defaultUsageLedger();
@@ -94,6 +102,8 @@ export async function delegateRequest({
         model,
         role: target.role,
         task: String(task || 'chat'),
+        project: safeProject,
+        ...(conversationRef ? { conversationRef } : {}),
       },
     });
 
@@ -115,6 +125,8 @@ export async function delegateRequest({
           model,
           role: target.role,
           task: String(task || 'chat'),
+          project: safeProject,
+          ...(conversationRef ? { conversationRef } : {}),
           ...output.usage,
           pricingVerifiedOn: cost.pricingVerifiedOn,
         },
@@ -155,6 +167,8 @@ export async function delegateRequest({
             model,
             role: target.role,
             task: String(task || 'chat'),
+            project: safeProject,
+            ...(conversationRef ? { conversationRef } : {}),
             estimated: true,
             error: error.code,
           },
