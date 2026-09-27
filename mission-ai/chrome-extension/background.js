@@ -1,113 +1,58 @@
 import { createSnapshot, pageUrlAllowed, validateSnapshot } from './browser-snapshot.js';
 
-const LOOPBACK = 'ws://127.0.0.1:8766/browser';
-let socket = null;
-let browserToken = '';
 let latestSnapshot = null;
-let keepAliveTimer = null;
+let transportConnected = false;
 let lastConnectionError = 'pairing_required';
+let creatingOffscreen = null;
 
-function stopSocket(reason = 'reconnect') {
-  if (keepAliveTimer) {
-    clearInterval(keepAliveTimer);
-    keepAliveTimer = null;
+async function ensureOffscreen() {
+  const url = chrome.runtime.getURL('offscreen.html');
+  const contexts = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT'],
+    documentUrls: [url],
+  });
+  if (contexts.length > 0) return;
+
+  if (!creatingOffscreen) {
+    creatingOffscreen = chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: ['WORKERS'],
+      justification: 'Maintain the local Mission AI browser bridge transport.',
+    }).finally(() => {
+      creatingOffscreen = null;
+    });
   }
-  if (socket) {
-    try {
-      socket.onclose = null;
-      socket.onerror = null;
-      socket.close(4000, reason);
-    } catch {}
-  }
-  socket = null;
+  await creatingOffscreen;
 }
 
-function connectWithToken(token) {
-  browserToken = String(token || '');
+async function connectTransport(token) {
+  const browserToken = String(token || '');
   if (!browserToken) {
+    transportConnected = false;
     lastConnectionError = 'empty_token';
-    return Promise.resolve({ ok: false, error: lastConnectionError });
+    return { ok: false, error: lastConnectionError };
   }
 
-  stopSocket('credential_updated');
-  lastConnectionError = 'connecting';
-
-  return new Promise((resolve) => {
-    let settled = false;
-    let ws;
-    try {
-      ws = new WebSocket(`${LOOPBACK}?token=${encodeURIComponent(browserToken)}`);
-    } catch (error) {
-      lastConnectionError = error instanceof Error ? error.message : 'websocket_constructor_failed';
-      resolve({ ok: false, error: lastConnectionError });
-      return;
-    }
-
-    socket = ws;
-
-    const finish = (result) => {
-      if (settled) return;
-      settled = true;
-      resolve(result);
-    };
-
-    ws.onopen = () => {
+  try {
+    await ensureOffscreen();
+    const response = await chrome.runtime.sendMessage({
+      target: 'offscreen',
+      type: 'mission-ai-offscreen-connect',
+      token: browserToken,
+    });
+    if (response?.ok) {
+      transportConnected = true;
       lastConnectionError = null;
-      keepAliveTimer = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          try {
-            ws.send(JSON.stringify({ type: 'keepalive' }));
-          } catch {}
-        }
-      }, 20_000);
-      finish({ ok: true });
-    };
-
-    ws.onerror = () => {
-      lastConnectionError = 'websocket_connection_failed';
-      finish({ ok: false, error: lastConnectionError });
-    };
-
-    ws.onclose = (event) => {
-      if (keepAliveTimer) {
-        clearInterval(keepAliveTimer);
-        keepAliveTimer = null;
-      }
-      if (socket === ws) socket = null;
-      if (!lastConnectionError || lastConnectionError === 'connecting') {
-        lastConnectionError = `websocket_closed_${event.code}`;
-      }
-      finish({ ok: false, error: lastConnectionError });
-    };
-
-    ws.onmessage = async (event) => {
-      let message;
-      try {
-        message = JSON.parse(event.data);
-      } catch {
-        ws.close(1003, 'invalid_json');
-        return;
-      }
-      if (message?.type !== 'browser_tool' || typeof message.id !== 'string') return;
-      try {
-        const result = await execute(message.tool, message.args || {});
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'browser_result', id: message.id, ok: true, result }));
-        }
-      } catch (error) {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(
-            JSON.stringify({
-              type: 'browser_result',
-              id: message.id,
-              ok: false,
-              error: error instanceof Error ? error.message : 'browser_error',
-            }),
-          );
-        }
-      }
-    };
-  });
+      return { ok: true };
+    }
+    transportConnected = false;
+    lastConnectionError = response?.error || 'offscreen_connection_failed';
+    return { ok: false, error: lastConnectionError };
+  } catch (error) {
+    transportConnected = false;
+    lastConnectionError = error instanceof Error ? error.message : 'offscreen_connection_failed';
+    return { ok: false, error: lastConnectionError };
+  }
 }
 
 async function activeTab({ requireWeb = false } = {}) {
@@ -301,29 +246,37 @@ async function execute(tool, args) {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.target === 'offscreen') return;
+
   if (message?.type === 'mission-ai-status') {
     sendResponse({
-      connected: socket?.readyState === WebSocket.OPEN,
+      connected: transportConnected,
       error: lastConnectionError,
-      readyState: socket?.readyState ?? WebSocket.CLOSED,
     });
     return;
   }
 
   if (message?.type === 'mission-ai-set-token') {
-    connectWithToken(message.token)
-      .then(sendResponse)
-      .catch((error) =>
-        sendResponse({
-          ok: false,
-          error: error instanceof Error ? error.message : 'connection_failed',
-        }),
-      );
+    connectTransport(message.token).then(sendResponse);
     return true;
   }
 
-  if (message?.type === 'mission-ai-reconnect') {
-    connectWithToken(browserToken).then(sendResponse);
+  if (message?.type === 'mission-ai-offscreen-status') {
+    transportConnected = Boolean(message.connected);
+    lastConnectionError = message.error || null;
+    sendResponse({ ok: true });
+    return;
+  }
+
+  if (message?.type === 'mission-ai-browser-tool') {
+    execute(message.tool, message.args || {})
+      .then((result) => sendResponse({ ok: true, result }))
+      .catch((error) =>
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : 'browser_error',
+        }),
+      );
     return true;
   }
 });
