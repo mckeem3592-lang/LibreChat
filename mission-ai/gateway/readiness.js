@@ -4,6 +4,7 @@ export function buildReadiness({
   codeApiConfigured = false,
   pairingConfigured = false,
   costDashboardConfigured = false,
+  delegationEnabled = false,
   build = null,
 } = {}) {
   const providerMap = Object.fromEntries(
@@ -18,6 +19,7 @@ export function buildReadiness({
     google: providerMap.google === true,
     codeApi: Boolean(codeApiConfigured),
     costDashboard: Boolean(costDashboardConfigured),
+    delegation: Boolean(delegationEnabled),
     macDevice: connectedDevices.length > 0,
     pairing: Boolean(pairingConfigured),
   };
