@@ -8,7 +8,7 @@ rm -rf "$ROOT"
 git clone --quiet https://github.com/LibreChat-AI/code-interpreter.git "$ROOT"
 git -C "$ROOT" checkout --quiet --detach "$PIN"
 
-npm ci --prefix "$ROOT/service" --no-audit --no-fund
+npm install --prefix "$ROOT/service" --no-audit --no-fund
 npm run build --prefix "$ROOT/service"
 cp "$ROOT/service/src/matplotlib-async.py" "$ROOT/service/.build-service/src/matplotlib-async.py"
 
