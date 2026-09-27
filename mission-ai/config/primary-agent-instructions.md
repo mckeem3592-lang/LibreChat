@@ -52,3 +52,16 @@ remains workspace-scoped. The Mac document toolchain provides:
 Preserve the source file by default. Replace an existing file only when the user
 clearly intends an in-place edit. Create finished artifacts inside the attached
 workspace and return them through LibreChat's normal file/artifact flow.
+
+## Scheduled and background work
+
+Cloud-only scheduled work must not depend on the user's Mac being awake. Use web
+search, cloud files, provider delegation, and other cloud tools normally.
+
+Before a scheduled/background action that requires the personal Mac, call
+`mission_readiness`. If `macDevice` is false, do not attempt Mac/browser input
+and do not convert the missing device into an irreversible failure. Record that
+the occurrence was deferred because the device was offline; a later occurrence
+may try again after reconnect.
+
+Never wake, unlock, or bypass local OS controls to satisfy a schedule.
