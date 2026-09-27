@@ -136,6 +136,92 @@ paths:
       responses:
         '200': { description: Selected route }
         '402': { description: Monthly hard budget reached }
+  /v1/browser/list-tabs:
+    post:
+      operationId: browserListTabs
+      summary: List open Google Chrome tabs using direct macOS automation
+      description: Does not require the Mission AI Chrome extension.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolEnvelope'
+      responses:
+        '200': { description: Open Chrome tab inventory }
+  /v1/browser/activate-tab:
+    post:
+      operationId: browserActivateTab
+      summary: Activate a Google Chrome tab using direct macOS automation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ToolEnvelope'
+                - type: object
+                  properties:
+                    args:
+                      type: object
+                      required: [windowIndex, tabIndex]
+                      properties:
+                        windowIndex: { type: integer, minimum: 1 }
+                        tabIndex: { type: integer, minimum: 1 }
+      responses:
+        '200': { description: Tab activation result }
+  /v1/browser/open-new-tab:
+    post:
+      operationId: browserOpenNewTab
+      summary: Open an HTTP or HTTPS URL in a new Google Chrome tab
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ToolEnvelope'
+                - type: object
+                  properties:
+                    args:
+                      type: object
+                      required: [url]
+                      properties:
+                        url: { type: string, format: uri }
+      responses:
+        '200': { description: New tab result }
+  /v1/browser/close-tabs:
+    post:
+      operationId: browserCloseTabs
+      summary: Close explicitly selected Google Chrome tabs
+      description: Requires args.confirm=true because closing a tab can discard unsaved work.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ToolEnvelope'
+                - type: object
+                  properties:
+                    args:
+                      type: object
+                      required: [confirm, tabs]
+                      properties:
+                        confirm: { type: boolean, enum: [true] }
+                        tabs:
+                          type: array
+                          minItems: 1
+                          maxItems: 100
+                          items:
+                            type: object
+                            required: [windowIndex, tabIndex]
+                            properties:
+                              windowIndex: { type: integer, minimum: 1 }
+                              tabIndex: { type: integer, minimum: 1 }
+      responses:
+        '200': { description: Tab close result }
+        '502': { description: Confirmation required or local operation failed }
   /v1/browser/state:
     post:
       operationId: browserGetState
