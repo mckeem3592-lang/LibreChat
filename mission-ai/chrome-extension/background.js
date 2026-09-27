@@ -16,8 +16,8 @@ async function ensureOffscreen() {
   if (!creatingOffscreen) {
     creatingOffscreen = chrome.offscreen.createDocument({
       url: 'offscreen.html',
-      reasons: ['WORKERS'],
-      justification: 'Maintain the local Mission AI browser bridge transport.',
+      reasons: ['LOCAL_STORAGE'],
+      justification: 'Persist the local browser bridge credential in the offscreen transport context.',
     }).finally(() => {
       creatingOffscreen = null;
     });
