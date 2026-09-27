@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "budget": [
+    "spendUsd",
+    "remainingUsd",
+    "mode",
+    "targetUsd",
+    "economyUsd",
+    "hardUsd",
+    "monthStart",
+    "timeZone"
+  ],
+  "providers": [
+    "name",
+    "hasApiKey",
+    "baseUrl"
+  ],
+  "device": [
+    "connectedDevices",
+    "pendingCalls"
+  ],
+  "deployment": [
+    "build"
+  ]
+}
