@@ -1,95 +1,113 @@
 import { createSnapshot, pageUrlAllowed, validateSnapshot } from './browser-snapshot.js';
 
 const LOOPBACK = 'ws://127.0.0.1:8766/browser';
-let socket;
-let reconnectTimer;
-let reconnectAttempt = 0;
+let socket = null;
+let browserToken = '';
 let latestSnapshot = null;
 let keepAliveTimer = null;
-let lastConnectionError = null;
+let lastConnectionError = 'pairing_required';
 
-function reconnectDelayMs(attempt) {
-  const count = Number.isInteger(attempt) && attempt >= 0 ? attempt : 0;
-  return Math.min(60000, 1000 * (2 ** Math.min(count, 16)));
-}
-
-let browserToken = '';
-
-async function getToken() {
-  return browserToken;
-}
-
-async function connect() {
-  clearTimeout(reconnectTimer);
-  const token = await getToken();
-  if (!token) {
-    lastConnectionError = 'pairing_required';
-    return;
+function stopSocket(reason = 'reconnect') {
+  if (keepAliveTimer) {
+    clearInterval(keepAliveTimer);
+    keepAliveTimer = null;
   }
-  try {
-    socket = new WebSocket(`${LOOPBACK}?token=${encodeURIComponent(token)}`);
-  } catch (error) {
-    lastConnectionError = error instanceof Error ? error.message : 'websocket_constructor_failed';
-    const delay = reconnectDelayMs(reconnectAttempt);
-    reconnectAttempt += 1;
-    reconnectTimer = setTimeout(connect, delay);
-    return;
-  }
-  socket.onopen = () => {
-    reconnectAttempt = 0;
-    lastConnectionError = null;
-    if (keepAliveTimer) clearInterval(keepAliveTimer);
-    keepAliveTimer = setInterval(() => {
-      if (socket?.readyState === WebSocket.OPEN) {
-        try {
-          socket.send(JSON.stringify({ type: 'keepalive' }));
-        } catch {}
-      }
-    }, 20_000);
-  };
-  socket.onerror = () => {
-    lastConnectionError = 'websocket_connection_failed';
-  };
-  socket.onmessage = async (event) => {
-    let message;
+  if (socket) {
     try {
-      message = JSON.parse(event.data);
-    } catch {
-      socket?.close(1003, 'invalid_json');
+      socket.onclose = null;
+      socket.onerror = null;
+      socket.close(4000, reason);
+    } catch {}
+  }
+  socket = null;
+}
+
+function connectWithToken(token) {
+  browserToken = String(token || '');
+  if (!browserToken) {
+    lastConnectionError = 'empty_token';
+    return Promise.resolve({ ok: false, error: lastConnectionError });
+  }
+
+  stopSocket('credential_updated');
+  lastConnectionError = 'connecting';
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let ws;
+    try {
+      ws = new WebSocket(`${LOOPBACK}?token=${encodeURIComponent(browserToken)}`);
+    } catch (error) {
+      lastConnectionError = error instanceof Error ? error.message : 'websocket_constructor_failed';
+      resolve({ ok: false, error: lastConnectionError });
       return;
     }
-    if (message?.type !== 'browser_tool' || typeof message.id !== 'string') return;
-    try {
-      const result = await execute(message.tool, message.args || {});
-      if (socket?.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'browser_result', id: message.id, ok: true, result }));
+
+    socket = ws;
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+
+    ws.onopen = () => {
+      lastConnectionError = null;
+      keepAliveTimer = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          try {
+            ws.send(JSON.stringify({ type: 'keepalive' }));
+          } catch {}
+        }
+      }, 20_000);
+      finish({ ok: true });
+    };
+
+    ws.onerror = () => {
+      lastConnectionError = 'websocket_connection_failed';
+      finish({ ok: false, error: lastConnectionError });
+    };
+
+    ws.onclose = (event) => {
+      if (keepAliveTimer) {
+        clearInterval(keepAliveTimer);
+        keepAliveTimer = null;
       }
-    } catch (error) {
-      if (socket?.readyState === WebSocket.OPEN) {
-        socket.send(
-          JSON.stringify({
-            type: 'browser_result',
-            id: message.id,
-            ok: false,
-            error: error instanceof Error ? error.message : 'browser_error',
-          }),
-        );
+      if (socket === ws) socket = null;
+      if (!lastConnectionError || lastConnectionError === 'connecting') {
+        lastConnectionError = `websocket_closed_${event.code}`;
       }
-    }
-  };
-  socket.onclose = (event) => {
-    latestSnapshot = null;
-    if (keepAliveTimer) {
-      clearInterval(keepAliveTimer);
-      keepAliveTimer = null;
-    }
-    if (!lastConnectionError) {
-      lastConnectionError = `websocket_closed_${event.code}`;
-    }
-    const delay = reconnectDelayMs(reconnectAttempt);
-    reconnectAttempt += 1;
-    reconnectTimer = setTimeout(connect, delay);
-  };
+      finish({ ok: false, error: lastConnectionError });
+    };
+
+    ws.onmessage = async (event) => {
+      let message;
+      try {
+        message = JSON.parse(event.data);
+      } catch {
+        ws.close(1003, 'invalid_json');
+        return;
+      }
+      if (message?.type !== 'browser_tool' || typeof message.id !== 'string') return;
+      try {
+        const result = await execute(message.tool, message.args || {});
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'browser_result', id: message.id, ok: true, result }));
+        }
+      } catch (error) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(
+            JSON.stringify({
+              type: 'browser_result',
+              id: message.id,
+              ok: false,
+              error: error instanceof Error ? error.message : 'browser_error',
+            }),
+          );
+        }
+      }
+    };
+  });
 }
 
 async function activeTab({ requireWeb = false } = {}) {
@@ -293,27 +311,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message?.type === 'mission-ai-set-token') {
-    browserToken = String(message.token || '');
-    if (!browserToken) {
-      sendResponse({ ok: false, error: 'empty_token' });
-      return;
-    }
-    try {
-      socket?.close(4000, 'credential_updated');
-    } catch {}
-    connect().finally(() => sendResponse({ ok: true }));
+    connectWithToken(message.token)
+      .then(sendResponse)
+      .catch((error) =>
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : 'connection_failed',
+        }),
+      );
     return true;
   }
 
-  if (message?.type === 'mission-ai-reconnect' || message?.type === 'mission-ai-token-updated') {
-    try {
-      socket?.close(4000, 'reconnect_requested');
-    } catch {}
-    connect().finally(() => sendResponse({ ok: true }));
+  if (message?.type === 'mission-ai-reconnect') {
+    connectWithToken(browserToken).then(sendResponse);
     return true;
   }
 });
-
-chrome.runtime.onInstalled.addListener(connect);
-chrome.runtime.onStartup.addListener(connect);
-connect();
