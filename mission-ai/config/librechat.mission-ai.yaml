@@ -44,6 +44,21 @@ endpoints:
       - ocr
       - run_in_background
       - tool_intents
+      - stateful_code_sessions
+    statefulCodeSessions:
+      allowedEnvironments:
+        - user
+        - agent-user
+        - conversation
+      conversationMoves:
+        enabled: true
+        allowAttachDetach: true
+      environments:
+        - id: attached-workers
+          name: Mission AI Mac
+          type: attached
+          baseURL: https://mission-ai-code-api-mckee.onrender.com/v1
+          default: true
     toolApproval:
       enabled: true
       mode: default
