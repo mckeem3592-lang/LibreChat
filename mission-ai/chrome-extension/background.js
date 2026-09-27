@@ -291,7 +291,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message?.type === 'mission-ai-offscreen-status') {
     transportConnected = Boolean(message.connected);
-    lastConnectionError = message.error || null;
+    lastConnectionError = message.error
+      ? `${message.phase || 'offscreen'}: ${message.error}`
+      : message.connected
+        ? null
+        : message.phase || lastConnectionError;
     sendResponse({ ok: true });
     return;
   }
