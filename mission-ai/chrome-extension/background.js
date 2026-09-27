@@ -1,6 +1,6 @@
 import { createSnapshot, pageUrlAllowed, validateSnapshot } from './browser-snapshot.js';
 
-const LOOPBACK = 'ws://127.0.0.1:8765/browser';
+const LOOPBACK = 'ws://127.0.0.1:8766/browser';
 let socket;
 let reconnectTimer;
 let reconnectAttempt = 0;
