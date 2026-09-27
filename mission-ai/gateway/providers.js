@@ -1,28 +1,33 @@
 const PROVIDERS = Object.freeze({
   openai: {
-    apiKeyEnv: 'OPENAI_API_KEY',
+    apiKeyEnvs: ['OPENAI_API_KEY'],
     baseUrlEnv: 'OPENAI_API_BASE_URL',
     defaultBaseUrl: 'https://api.openai.com/v1',
   },
   anthropic: {
-    apiKeyEnv: 'ANTHROPIC_API_KEY',
+    apiKeyEnvs: ['ANTHROPIC_API_KEY'],
     baseUrlEnv: 'ANTHROPIC_API_BASE_URL',
     defaultBaseUrl: 'https://api.anthropic.com',
   },
   google: {
-    apiKeyEnv: 'GOOGLE_KEY',
+    apiKeyEnvs: ['GEMINI_API_KEY', 'GOOGLE_KEY'],
     baseUrlEnv: 'GOOGLE_API_BASE_URL',
     defaultBaseUrl: 'https://generativelanguage.googleapis.com',
   },
 });
 
+function configuredKeyEnv(definition) {
+  return definition.apiKeyEnvs.find((name) => Boolean(process.env[name])) || definition.apiKeyEnvs[0];
+}
+
 export function providerConfig(name) {
   const definition = PROVIDERS[name];
   if (!definition) return null;
+  const apiKeyEnv = configuredKeyEnv(definition);
   return {
     name,
-    apiKeyEnv: definition.apiKeyEnv,
-    hasApiKey: Boolean(process.env[definition.apiKeyEnv]),
+    apiKeyEnv,
+    hasApiKey: Boolean(process.env[apiKeyEnv]),
     baseUrl: process.env[definition.baseUrlEnv] || definition.defaultBaseUrl,
   };
 }
