@@ -26,3 +26,31 @@ test('LibreChat Mission AI config keeps scheduled and background work enabled', 
   assert.match(text, /defaultPinnedTools:/);
   assert.match(text, /- 'mcp'/);
 });
+
+
+test('LibreChat direct Chrome policy keeps read-only inventory automatic and mutations reviewed', async () => {
+  const text = await readFile(new URL('../config/librechat.mission-ai.yaml', import.meta.url), 'utf8');
+  const allowSection = text.split('      allow:')[1]?.split('      deny:')[0] || '';
+  const askSection = text.split('      ask:')[1]?.split('      reason:')[0] || '';
+
+  assert.match(allowSection, /browser_list_tabs/);
+  assert.equal(/browser_close_tabs/.test(allowSection), false);
+
+  for (const tool of [
+    'browser_activate_tab',
+    'browser_open_new_tab',
+    'browser_close_tabs',
+  ]) {
+    assert.match(askSection, new RegExp(tool));
+  }
+});
+
+test('primary agent instructions require create-only file output by default', async () => {
+  const text = await readFile(
+    new URL('../config/primary-agent-instructions.md', import.meta.url),
+    'utf8',
+  );
+  assert.match(text, /overwrite:false/);
+  assert.match(text, /fails with a conflict rather than being replaced/);
+  assert.match(text, /Replace an existing file only when the user clearly intends an in-place edit/);
+});
