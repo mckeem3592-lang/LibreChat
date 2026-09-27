@@ -10,6 +10,7 @@ import { queryMissionDashboard } from './mission-dashboard.js';
 import { createMissionMcpNodeHandler } from './mcp.js';
 import { fallbackPlan } from './fallbacks.js';
 import { delegateRequest } from './delegate.js';
+import { buildCostComparison, comparisonCsv } from './cost-comparison.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const DEVICE_TOKEN = process.env.MISSION_AI_DEVICE_TOKEN || '';
@@ -141,6 +142,7 @@ const missionMcp = createMissionMcpNodeHandler({
   route: handleRoute,
   fallback: fallbackPlan,
   delegate: delegateRequest,
+  getCostComparison: async () => buildCostComparison(await queryMissionDashboard()),
 });
 
 app.get('/health', (_req, res) => {
@@ -222,6 +224,21 @@ app.get('/v1/dashboard', async (_req, res) => {
       ok: false,
       error: code === 'mongo_not_configured' ? code : 'dashboard_unavailable',
     });
+  }
+});
+
+app.get('/v1/cost-comparison', async (req, res) => {
+  res.set('cache-control', 'no-store');
+  try {
+    const comparison = buildCostComparison(await queryMissionDashboard());
+    if (String(req.query?.format || '').toLowerCase() === 'csv') {
+      res.type('text/csv').send(comparisonCsv(comparison));
+      return;
+    }
+    res.json({ ok: true, comparison });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : 'comparison_unavailable';
+    res.status(503).json({ ok: false, error: code });
   }
 });
 
