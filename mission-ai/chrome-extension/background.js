@@ -13,27 +13,17 @@ function reconnectDelayMs(attempt) {
   return Math.min(60000, 1000 * (2 ** Math.min(count, 16)));
 }
 
+let browserToken = '';
+
 async function getToken() {
-  const response = await fetch('http://127.0.0.1:8766/browser/pair', {
-    method: 'GET',
-    cache: 'no-store',
-  });
-  if (!response.ok) throw new Error(`pair_http_${response.status}`);
-  const body = await response.json();
-  if (!body?.ok || !body.browserToken) throw new Error('pair_invalid_response');
-  return body.browserToken;
+  return browserToken;
 }
 
 async function connect() {
   clearTimeout(reconnectTimer);
-  let token;
-  try {
-    token = await getToken();
-  } catch (error) {
-    lastConnectionError = error instanceof Error ? error.message : 'pairing_failed';
-    const delay = reconnectDelayMs(reconnectAttempt);
-    reconnectAttempt += 1;
-    reconnectTimer = setTimeout(connect, delay);
+  const token = await getToken();
+  if (!token) {
+    lastConnectionError = 'pairing_required';
     return;
   }
   try {
@@ -300,6 +290,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       readyState: socket?.readyState ?? WebSocket.CLOSED,
     });
     return;
+  }
+
+  if (message?.type === 'mission-ai-set-token') {
+    browserToken = String(message.token || '');
+    if (!browserToken) {
+      sendResponse({ ok: false, error: 'empty_token' });
+      return;
+    }
+    try {
+      socket?.close(4000, 'credential_updated');
+    } catch {}
+    connect().finally(() => sendResponse({ ok: true }));
+    return true;
   }
 
   if (message?.type === 'mission-ai-reconnect' || message?.type === 'mission-ai-token-updated') {
