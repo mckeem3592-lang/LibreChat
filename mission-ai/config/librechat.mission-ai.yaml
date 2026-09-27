@@ -102,6 +102,7 @@ endpoints:
         - 'mcp:mission-ai:mission_route'
         - 'mcp:mission-ai:mission_fallback_plan'
         - 'mcp:mission-ai:browser_get_state'
+        - 'mcp:mission-ai:browser_list_tabs'
         - 'mcp:mission-ai:mac_active_app'
         - 'mcp:mission-ai:mac_screenshot'
       deny:
@@ -111,6 +112,9 @@ endpoints:
         - 'mcp:mission-ai:browser_type'
         - 'mcp:mission-ai:browser_scroll'
         - 'mcp:mission-ai:browser_open_url'
+        - 'mcp:mission-ai:browser_activate_tab'
+        - 'mcp:mission-ai:browser_open_new_tab'
+        - 'mcp:mission-ai:browser_close_tabs'
         - 'mcp:mission-ai:mac_open_app'
         - 'mcp:mission-ai:mac_click'
         - 'mcp:mission-ai:mac_type'
