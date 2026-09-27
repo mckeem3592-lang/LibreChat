@@ -13,6 +13,7 @@ test('reports incomplete readiness without exposing secrets', () => {
     codeApiConfigured: true,
     pairingConfigured: true,
     costDashboardConfigured: true,
+    delegationEnabled: false,
     build: 'abc123',
   });
 
@@ -23,6 +24,7 @@ test('reports incomplete readiness without exposing secrets', () => {
     google: false,
     codeApi: true,
     costDashboard: true,
+    delegation: false,
     macDevice: false,
     pairing: true,
   });
