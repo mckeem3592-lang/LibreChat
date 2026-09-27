@@ -44,6 +44,20 @@ paths:
       responses:
         '200': { description: Monthly budget and usage dashboard }
         '503': { description: Cost telemetry database is not configured }
+  /v1/fallback/{role}:
+    get:
+      operationId: missionFallbackPlan
+      summary: Return the bounded currently available provider/model fallback target
+      parameters:
+        - name: role
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [economy, primary, coding, reasoning, research, computer, image]
+      responses:
+        '200': { description: Fallback plan }
+        '400': { description: Unknown or invalid role }
   /v1/route:
     post:
       operationId: missionRoute
