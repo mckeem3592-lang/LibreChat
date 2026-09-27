@@ -11,6 +11,7 @@ import { createMissionMcpNodeHandler } from './mcp.js';
 import { fallbackPlan } from './fallbacks.js';
 import { delegateRequest } from './delegate.js';
 import { buildCostComparison, comparisonCsv } from './cost-comparison.js';
+import { generateImage } from './image.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const DEVICE_TOKEN = process.env.MISSION_AI_DEVICE_TOKEN || '';
@@ -142,6 +143,7 @@ const missionMcp = createMissionMcpNodeHandler({
   fallback: fallbackPlan,
   delegate: delegateRequest,
   getCostComparison: async () => buildCostComparison(await queryMissionDashboard()),
+  generateImage,
 });
 
 app.use('/pair', express.json({ limit: '16kb' }));
@@ -256,6 +258,20 @@ app.get('/v1/fallback/:role', async (req, res) => {
       ok: false,
       error: error instanceof Error ? error.message : 'fallback_error',
     });
+  }
+});
+
+app.post('/v1/image', async (req, res) => {
+  try {
+    res.set('cache-control', 'no-store');
+    res.json(await generateImage(req.body || {}));
+  } catch (error) {
+    const code = error instanceof Error ? error.message : 'image_error';
+    const status =
+      code === 'delegation_disabled' ? 503 :
+      code === 'monthly_hard_limit' ? 402 :
+      code === 'image_prompt_required' || code === 'image_config_invalid' ? 400 : 502;
+    res.status(status).json({ ok: false, error: code });
   }
 });
 
