@@ -36,6 +36,20 @@ paths:
       summary: Return configured provider availability without credentials
       responses:
         '200': { description: Provider status }
+  /v1/cost-comparison:
+    get:
+      operationId: missionCostComparison
+      summary: Compare measured Mission AI spend with the $200 ChatGPT Pro baseline
+      parameters:
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [json, csv]
+      responses:
+        '200': { description: Monthly and annualized cost comparison }
+        '503': { description: Cost telemetry is not configured }
   /v1/dashboard:
     get:
       operationId: missionCostDashboard
