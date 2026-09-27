@@ -80,7 +80,11 @@ test('Anthropic adapter uses Messages API without unsupported sampling params', 
             input_tokens: 12,
             output_tokens: 8,
             cache_read_input_tokens: 2,
-            cache_creation_input_tokens: 1,
+            cache_creation_input_tokens: 5,
+            cache_creation: {
+              ephemeral_5m_input_tokens: 3,
+              ephemeral_1h_input_tokens: 2,
+            },
           },
         });
       },
@@ -90,7 +94,34 @@ test('Anthropic adapter uses Messages API without unsupported sampling params', 
     assert.equal(sent.temperature, undefined);
     assert.equal(request.options.headers['x-api-key'], 'secret');
     assert.equal(result.text, 'fixed');
-    assert.equal(result.usage.cacheWriteTokens, 1);
+    assert.equal(result.usage.cacheWriteTokens, 5);
+    assert.equal(result.usage.cacheWrite5mTokens, 3);
+    assert.equal(result.usage.cacheWrite1hTokens, 2);
+  });
+});
+
+test('Anthropic cache usage falls back to combined creation count when TTL detail is absent', async () => {
+  await withEnv({ ANTHROPIC_API_KEY: 'secret' }, async () => {
+    const result = await executeProvider({
+      provider: 'anthropic',
+      model: 'claude-sonnet-5',
+      prompt: 'fix code',
+      fetchImpl: async () =>
+        mockResponse({
+          id: 'msg_2',
+          model: 'claude-sonnet-5',
+          content: [{ type: 'text', text: 'fixed' }],
+          usage: {
+            input_tokens: 12,
+            output_tokens: 8,
+            cache_read_input_tokens: 2,
+            cache_creation_input_tokens: 4,
+          },
+        }),
+    });
+    assert.equal(result.usage.cacheWriteTokens, 4);
+    assert.equal(result.usage.cacheWrite5mTokens, 4);
+    assert.equal(result.usage.cacheWrite1hTokens, 0);
   });
 });
 
