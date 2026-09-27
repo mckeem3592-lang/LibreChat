@@ -2,6 +2,9 @@ import crypto from 'node:crypto';
 import http from 'node:http';
 import express from 'express';
 import WebSocket, { WebSocketServer } from 'ws';
+import { pairDevice } from './pairing.js';
+import { providerStatus } from './providers.js';
+import { handleRoute } from './route-handler.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const DEVICE_TOKEN = process.env.MISSION_AI_DEVICE_TOKEN || '';
@@ -15,6 +18,7 @@ if (!DEVICE_TOKEN || !TOOL_TOKEN) {
 
 const app = express();
 app.disable('x-powered-by');
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '1mb' }));
 
 const server = http.createServer(app);
@@ -98,14 +102,45 @@ function toolHandler(tool) {
 }
 
 app.get('/health', (_req, res) => {
+  const expiresAt = Date.parse(process.env.MISSION_AI_PAIR_EXPIRES_AT || '');
   res.json({
     ok: true,
     connectedDevices: [...devices.keys()],
     pendingCalls: pending.size,
+    pairingAvailable:
+      Boolean(process.env.MISSION_AI_PAIR_CODE) &&
+      Number.isFinite(expiresAt) &&
+      Date.now() <= expiresAt,
+    build: process.env.RENDER_GIT_COMMIT || process.env.BUILD_COMMIT || null,
   });
 });
 
+app.post('/pair', (req, res) => {
+  try {
+    const result = pairDevice({
+      code: String(req.body?.code || ''),
+      remoteAddress: req.ip || req.socket.remoteAddress || '',
+    });
+    console.log('Mission AI device paired');
+    res.set('cache-control', 'no-store');
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    const status = error?.message === 'pair_rate_limited' ? 429 : 401;
+    res.status(status).json({ ok: false, error: error.message });
+  }
+});
+
 app.use('/v1', requireToolAuth);
+
+app.get('/v1/providers', (_req, res) => {
+  res.json({ ok: true, providers: providerStatus() });
+});
+
+app.post('/v1/route', async (req, res) => {
+  const result = await handleRoute(req.body || {});
+  res.status(result.status).json(result.body);
+});
+
 app.post('/v1/browser/state', toolHandler('browser.get_state'));
 app.post('/v1/browser/click', toolHandler('browser.click'));
 app.post('/v1/browser/type', toolHandler('browser.type'));
@@ -142,6 +177,7 @@ wss.on('connection', (ws, deviceId) => {
   const old = devices.get(deviceId);
   if (old && old !== ws) old.close(4001, 'replaced');
   devices.set(deviceId, ws);
+  console.log(`Mission AI device connected: ${deviceId}`);
 
   ws.on('message', (raw) => {
     try {
@@ -156,6 +192,7 @@ wss.on('connection', (ws, deviceId) => {
 
   ws.on('close', () => {
     if (devices.get(deviceId) === ws) devices.delete(deviceId);
+    console.log(`Mission AI device disconnected: ${deviceId}`);
     for (const [id, item] of pending.entries()) {
       if (item.deviceId !== deviceId) continue;
       pending.delete(id);
