@@ -24,8 +24,9 @@ For each development release, verify:
 3. Package audit reports no known vulnerabilities at build time.
 4. The gateway binds the Render port.
 5. The Code API starts both worker queues.
-6. The Code API reports its worker health check passed.
-7. No production service deploy was triggered by the development commit.
+6. `GET /v1/health` on the Code API returns success; do not use the unsupported root path as the health probe.
+7. The Code API reports its worker health check passed.
+8. No production service deploy was triggered by the development commit.
 
 ## Cost telemetry database access
 
