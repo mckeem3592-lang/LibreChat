@@ -361,23 +361,6 @@ wss.on('connection', (ws, deviceId) => {
   });
 
   ws.send(JSON.stringify({ type: 'hello', deviceId }));
-
-  if (
-    deviceId === 'mac-primary' &&
-    String(process.env.MISSION_AI_TAB_INVENTORY_ON_CONNECT || '').toLowerCase() === 'true'
-  ) {
-    setTimeout(() => {
-      invoke(deviceId, 'browser.list_tabs', {}, 20_000)
-        .then((result) => {
-          console.log(`Mission AI tab inventory: ${JSON.stringify(result)}`);
-        })
-        .catch((error) => {
-          console.warn(
-            `Mission AI tab inventory failed: ${error instanceof Error ? error.message : 'unknown_error'}`,
-          );
-        });
-    }, 1000);
-  }
 });
 
 server.listen(PORT, '0.0.0.0', () => {
