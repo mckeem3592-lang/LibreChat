@@ -58,6 +58,10 @@ endpoints:
           name: Mission AI Mac
           type: attached
           baseURL: https://mission-ai-code-api-mckee.onrender.com/v1
+          owner: deployment
+          pairing:
+            workerId: mac-primary-code
+            tokenEnv: MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN
           default: true
     toolApproval:
       enabled: true
