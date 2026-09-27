@@ -2,10 +2,10 @@
   "verifiedOn": "2026-09-27",
   "providers": {
     "openai": {
-      "economy": "gpt-5.6-luna",
-      "primary": "gpt-5.6-sol",
-      "reasoning": "gpt-5.6-sol",
-      "computer": "gpt-5.6-sol"
+      "economy": "gpt-6-luna",
+      "primary": "gpt-6-sol",
+      "reasoning": "gpt-6-astra",
+      "computer": "gpt-6-sol"
     },
     "anthropic": {
       "coding": "claude-sonnet-5"
