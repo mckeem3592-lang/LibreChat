@@ -20,6 +20,7 @@ else
 fi
 
 zsh "$SOURCE_DIR/mission-ai/companion/install-macos.sh"
+zsh "$SOURCE_DIR/mission-ai/document-tools/install-macos.sh"
 bash "$SOURCE_DIR/mission-ai/code-worker/install-macos.sh"
 
 EXTENSION_DIR="$SOURCE_DIR/mission-ai/chrome-extension"
