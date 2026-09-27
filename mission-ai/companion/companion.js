@@ -37,7 +37,6 @@ let extensionSocket = null;
 let gatewayConnected = false;
 let reconnectAttempt = 0;
 let reconnectTimer = null;
-let browserPairOrigin = null;
 
 function safeEqual(a, b) {
   const left = Buffer.from(String(a));
@@ -231,10 +230,8 @@ const browserServer = http.createServer(async (req, res) => {
     req.method === 'GET' &&
     req.url === '/browser/pair' &&
     loopback &&
-    extensionOrigin &&
-    (!browserPairOrigin || browserPairOrigin === origin)
+    extensionOrigin
   ) {
-    browserPairOrigin = origin;
     res.setHeader('access-control-allow-origin', origin);
     res.setHeader('cache-control', 'no-store');
     res.setHeader('content-type', 'application/json');
