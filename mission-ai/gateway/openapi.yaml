@@ -44,6 +44,28 @@ paths:
       responses:
         '200': { description: Monthly budget and usage dashboard }
         '503': { description: Cost telemetry database is not configured }
+  /v1/delegate:
+    post:
+      operationId: missionDelegate
+      summary: Run an approval-gated paid provider delegation with bounded fallback
+      description: Disabled unless MISSION_AI_DELEGATION_ENABLED=true. May incur provider API charges.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [task, monthSpendUsd, prompt]
+              properties:
+                task: { type: string }
+                monthSpendUsd: { type: number, minimum: 0 }
+                prompt: { type: string }
+                system: { type: string }
+                maxOutputTokens: { type: integer, minimum: 1, maximum: 32768 }
+      responses:
+        '200': { description: Delegated response with normalized provider usage }
+        '402': { description: Monthly hard budget reached }
+        '503': { description: Delegation is disabled }
   /v1/fallback/{role}:
     get:
       operationId: missionFallbackPlan
