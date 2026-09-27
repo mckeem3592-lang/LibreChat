@@ -30,6 +30,40 @@ export function createMemoryUsageLedger() {
       const key = monthKey(now, timeZone);
       return { monthStart: key, ...getState(key) };
     },
+    async breakdown({ now = new Date(), timeZone = 'America/Denver' } = {}) {
+      const key = monthKey(now, timeZone);
+      const groups = {
+        byProvider: new Map(),
+        byModel: new Map(),
+        byTask: new Map(),
+        byProject: new Map(),
+      };
+      for (const event of events.values()) {
+        if (event.monthStart !== key || event.status !== 'settled') continue;
+        const amount = Number(event.actualUsd || 0);
+        const meta = event.metadata || {};
+        const values = {
+          byProvider: String(meta.provider || 'unknown'),
+          byModel: String(meta.model || 'unknown'),
+          byTask: String(meta.task || 'unknown'),
+          byProject: String(meta.project || 'unassigned'),
+        };
+        for (const [group, value] of Object.entries(values)) {
+          groups[group].set(value, Number(groups[group].get(value) || 0) + amount);
+        }
+      }
+      const serialize = (map, keyName) =>
+        [...map.entries()]
+          .map(([name, spendUsd]) => ({ [keyName]: name, spendUsd }))
+          .sort((a, b) => b.spendUsd - a.spendUsd);
+      return {
+        monthStart: key,
+        byProvider: serialize(groups.byProvider, 'provider'),
+        byModel: serialize(groups.byModel, 'model'),
+        byTask: serialize(groups.byTask, 'task'),
+        byProject: serialize(groups.byProject, 'project'),
+      };
+    },
     async reserve({
       reservationId = crypto.randomUUID(),
       reserveUsd,
@@ -109,6 +143,42 @@ export function createMongoUsageLedger({
         monthStart: key,
         settledUsd: Number(row?.settledUsd || 0),
         reservedUsd: Number(row?.reservedUsd || 0),
+      };
+    },
+
+    async breakdown({ now = new Date(), timeZone = 'America/Denver' } = {}) {
+      const key = monthKey(now, timeZone);
+      const database = await db();
+      const rows = await database.collection(EVENT_COLLECTION).aggregate([
+        { $match: { monthStart: key, status: 'settled' } },
+        {
+          $project: {
+            actualUsd: { $ifNull: ['$actualUsd', 0] },
+            provider: { $ifNull: ['$metadata.provider', 'unknown'] },
+            model: { $ifNull: ['$metadata.model', 'unknown'] },
+            task: { $ifNull: ['$metadata.task', 'unknown'] },
+            project: { $ifNull: ['$metadata.project', 'unassigned'] },
+          },
+        },
+      ]).toArray();
+
+      const aggregate = (field, keyName) => {
+        const totals = new Map();
+        for (const row of rows) {
+          const name = String(row[field] || 'unknown');
+          totals.set(name, Number(totals.get(name) || 0) + Number(row.actualUsd || 0));
+        }
+        return [...totals.entries()]
+          .map(([name, spendUsd]) => ({ [keyName]: name, spendUsd }))
+          .sort((a, b) => b.spendUsd - a.spendUsd);
+      };
+
+      return {
+        monthStart: key,
+        byProvider: aggregate('provider', 'provider'),
+        byModel: aggregate('model', 'model'),
+        byTask: aggregate('task', 'task'),
+        byProject: aggregate('project', 'project'),
       };
     },
 
