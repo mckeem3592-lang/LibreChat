@@ -1,10 +1,11 @@
-const tokenInput = document.getElementById('token');
 const status = document.getElementById('status');
 
-async function refresh() {
-  const { browserToken = '' } = await chrome.storage.local.get('browserToken');
-  tokenInput.value = browserToken;
+function refresh() {
   chrome.runtime.sendMessage({ type: 'mission-ai-status' }, (response) => {
+    if (chrome.runtime.lastError) {
+      status.textContent = 'Extension service worker unavailable';
+      return;
+    }
     status.textContent = response?.connected
       ? 'Connected to Mac companion'
       : response?.error
@@ -13,32 +14,11 @@ async function refresh() {
   });
 }
 
-document.getElementById('pair').addEventListener('click', async () => {
-  status.textContent = 'Pairing…';
-  try {
-    const response = await fetch('http://127.0.0.1:8766/browser/pair', {
-      method: 'GET',
-      cache: 'no-store',
-    });
-    if (!response.ok) throw new Error('pairing_unavailable');
-    const body = await response.json();
-    if (!body?.ok || !body.browserToken) throw new Error('pairing_failed');
-    await chrome.storage.local.set({ browserToken: body.browserToken });
-    chrome.runtime.sendMessage({ type: 'mission-ai-token-updated' }, () => refresh());
-  } catch {
-    status.textContent =
-      'Automatic pairing unavailable. Restart the companion and try again, or use Manual token.';
-  }
-});
-
-document.getElementById('save').addEventListener('click', async () => {
-  const token = tokenInput.value.trim();
-  if (!token) {
-    status.textContent = 'Enter a token first';
-    return;
-  }
-  await chrome.storage.local.set({ browserToken: token });
-  chrome.runtime.sendMessage({ type: 'mission-ai-token-updated' }, () => refresh());
+document.getElementById('pair').addEventListener('click', () => {
+  status.textContent = 'Connecting…';
+  chrome.runtime.sendMessage({ type: 'mission-ai-reconnect' }, () => {
+    setTimeout(refresh, 500);
+  });
 });
 
 refresh();
