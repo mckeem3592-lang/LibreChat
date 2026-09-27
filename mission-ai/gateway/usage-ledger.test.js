@@ -51,3 +51,26 @@ test('settlement cannot exceed the conservative reservation', async () => {
     /reservation_underestimated/,
   );
 });
+
+test('ledger reports privacy-safe provider model task and project breakdowns', async () => {
+  const ledger = createMemoryUsageLedger();
+  const now = new Date('2026-09-27T18:00:00Z');
+  const reservation = await ledger.reserve({
+    reserveUsd: 2,
+    directCapUsd: 10,
+    now,
+    metadata: {
+      provider: 'anthropic',
+      model: 'claude-sonnet-5',
+      task: 'coding',
+      project: 'mission-ai',
+    },
+  });
+  await ledger.settle({ reservationId: reservation.reservationId, actualUsd: 0.75 });
+  const breakdown = await ledger.breakdown({ now });
+  assert.deepEqual(breakdown.byProvider, [{ provider: 'anthropic', spendUsd: 0.75 }]);
+  assert.deepEqual(breakdown.byModel, [{ model: 'claude-sonnet-5', spendUsd: 0.75 }]);
+  assert.deepEqual(breakdown.byTask, [{ task: 'coding', spendUsd: 0.75 }]);
+  assert.deepEqual(breakdown.byProject, [{ project: 'mission-ai', spendUsd: 0.75 }]);
+  assert.equal(JSON.stringify(breakdown).includes('prompt'), false);
+});
