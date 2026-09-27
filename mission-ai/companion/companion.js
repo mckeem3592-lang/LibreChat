@@ -19,7 +19,7 @@ if (!BROWSER_TOKEN) {
   await writeSecret('mission-ai-browser-token', BROWSER_TOKEN);
 }
 const DEVICE_ID = process.env.MISSION_AI_DEVICE_ID || 'mac-primary';
-const BROWSER_PORT = Number(process.env.MISSION_AI_BROWSER_PORT || 8765);
+const BROWSER_PORT = Number(process.env.MISSION_AI_BROWSER_PORT || 8766);
 const MAX_MESSAGE_BYTES = 1_000_000;
 
 if (!GATEWAY_URL || !DEVICE_TOKEN) {
