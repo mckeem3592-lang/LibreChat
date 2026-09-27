@@ -34,6 +34,7 @@ const allowedApps = new Set(
 );
 
 let extensionSocket = null;
+let gatewayConnected = false;
 let reconnectAttempt = 0;
 let reconnectTimer = null;
 let browserPairClaimed = false;
@@ -184,12 +185,48 @@ async function dispatch(tool, args) {
   }
 }
 
-const browserServer = http.createServer((req, res) => {
+const browserServer = http.createServer(async (req, res) => {
   const remote = req.socket.remoteAddress;
   const loopback = remote === '127.0.0.1' || remote === '::1';
   const origin = String(req.headers.origin || '');
   const extensionOrigin =
     origin.startsWith('chrome-extension://') || origin.startsWith('moz-extension://');
+  const auth = String(req.headers.authorization || '');
+  const healthToken = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+
+  if (
+    req.method === 'GET' &&
+    req.url === '/health' &&
+    loopback &&
+    safeEqual(healthToken, BROWSER_TOKEN)
+  ) {
+    const accessibility = await activeApp()
+      .then(() => ({ ok: true }))
+      .catch((error) => ({
+        ok: false,
+        error: error instanceof Error ? error.message : 'accessibility_error',
+      }));
+    const screenRecording = await screenshot()
+      .then(() => ({ ok: true }))
+      .catch((error) => ({
+        ok: false,
+        error: error instanceof Error ? error.message : 'screen_recording_error',
+      }));
+    res.setHeader('cache-control', 'no-store');
+    res.setHeader('content-type', 'application/json');
+    res.end(
+      JSON.stringify({
+        ok: true,
+        deviceId: DEVICE_ID,
+        gatewayConnected,
+        extensionConnected:
+          Boolean(extensionSocket) && extensionSocket.readyState === WebSocket.OPEN,
+        accessibility,
+        screenRecording,
+      }),
+    );
+    return;
+  }
 
   if (
     req.method === 'GET' &&
@@ -259,6 +296,7 @@ function connectGateway() {
   });
 
   ws.on('open', () => {
+    gatewayConnected = true;
     reconnectAttempt = 0;
     console.log('Mission AI companion connected');
   });
@@ -285,6 +323,7 @@ function connectGateway() {
     }
   });
   ws.on('close', () => {
+    gatewayConnected = false;
     if (reconnectTimer) clearTimeout(reconnectTimer);
     const delay = reconnectDelayMs(reconnectAttempt);
     reconnectAttempt += 1;
