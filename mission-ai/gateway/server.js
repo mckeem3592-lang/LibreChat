@@ -34,7 +34,14 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
 const devices = new Map();
+const deviceCapabilities = new Map();
 const pending = new Map();
+
+const KNOWN_DEVICE_CAPABILITIES = new Set([
+  'mac.control',
+  'browser.direct_tabs',
+  'browser.page_extension',
+]);
 
 function safeEqual(a, b) {
   const left = Buffer.from(String(a));
@@ -120,6 +127,12 @@ function currentReadiness() {
   return buildReadiness({
     providers: providerStatus(),
     connectedDevices: [...devices.keys()],
+    deviceCapabilities: Object.fromEntries(
+      [...devices.keys()].map((deviceId) => [
+        deviceId,
+        [...(deviceCapabilities.get(deviceId) || [])],
+      ]),
+    ),
     codeApiConfigured: Boolean(CODE_API_URL && CODE_BRIDGE_ADMIN_TOKEN),
     costDashboardConfigured: Boolean(
       (process.env.MISSION_AI_MONGO_URI || process.env.MONGO_URI) &&
@@ -155,6 +168,12 @@ app.get('/health', (_req, res) => {
   res.json({
     ok: true,
     connectedDevices: [...devices.keys()],
+    deviceCapabilities: Object.fromEntries(
+      [...devices.keys()].map((deviceId) => [
+        deviceId,
+        [...(deviceCapabilities.get(deviceId) || [])],
+      ]),
+    ),
     pendingCalls: pending.size,
     pairingAvailable:
       Boolean(process.env.MISSION_AI_PAIR_CODE) &&
@@ -341,6 +360,13 @@ wss.on('connection', (ws, deviceId) => {
       const message = JSON.parse(raw.toString());
       if (message?.type === 'tool_result' && typeof message.id === 'string') {
         finishPending(message, deviceId);
+        return;
+      }
+      if (message?.type === 'device_capabilities' && Array.isArray(message.capabilities)) {
+        const safeCapabilities = message.capabilities
+          .filter((value) => typeof value === 'string' && KNOWN_DEVICE_CAPABILITIES.has(value))
+          .slice(0, 16);
+        deviceCapabilities.set(deviceId, new Set(safeCapabilities));
       }
     } catch {
       ws.close(1003, 'invalid_json');
@@ -348,7 +374,10 @@ wss.on('connection', (ws, deviceId) => {
   });
 
   ws.on('close', () => {
-    if (devices.get(deviceId) === ws) devices.delete(deviceId);
+    if (devices.get(deviceId) === ws) {
+      devices.delete(deviceId);
+      deviceCapabilities.delete(deviceId);
+    }
     console.log(`Mission AI device disconnected: ${deviceId}`);
     for (const [id, item] of pending.entries()) {
       if (item.deviceId !== deviceId) continue;
