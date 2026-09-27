@@ -24,6 +24,40 @@ components:
           additionalProperties: true
       additionalProperties: false
 paths:
+  /v1/readiness:
+    get:
+      operationId: missionReadiness
+      summary: Return non-secret Mission AI capability readiness
+      responses:
+        '200': { description: Readiness summary }
+  /v1/providers:
+    get:
+      operationId: missionProviders
+      summary: Return configured provider availability without credentials
+      responses:
+        '200': { description: Provider status }
+  /v1/dashboard:
+    get:
+      operationId: missionCostDashboard
+      summary: Return read-only monthly cost and usage telemetry
+      description: Aggregates settled LibreChat transaction metadata only. No message content or secrets are returned.
+      responses:
+        '200': { description: Monthly budget and usage dashboard }
+        '503': { description: Cost telemetry database is not configured }
+  /v1/route:
+    post:
+      operationId: missionRoute
+      summary: Select the configured provider/model role for a task under the current budget policy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200': { description: Selected route }
+        '402': { description: Monthly hard budget reached }
   /v1/browser/state:
     post:
       operationId: browserGetState
@@ -163,3 +197,39 @@ paths:
               $ref: '#/components/schemas/ToolEnvelope'
       responses:
         '200': { description: JPEG screenshot encoded as base64 }
+  /v1/mac/click:
+    post:
+      operationId: macClick
+      summary: Click screen coordinates on the paired Mac
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolEnvelope'
+      responses:
+        '200': { description: Click result }
+  /v1/mac/type:
+    post:
+      operationId: macType
+      summary: Type text using macOS accessibility input
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolEnvelope'
+      responses:
+        '200': { description: Type result }
+  /v1/mac/key:
+    post:
+      operationId: macKey
+      summary: Send an allowlisted keyboard key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolEnvelope'
+      responses:
+        '200': { description: Key result }
