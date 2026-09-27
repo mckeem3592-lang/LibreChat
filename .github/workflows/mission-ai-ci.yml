@@ -27,6 +27,8 @@ jobs:
           node --check mission-ai/companion/keychain.js
           node --check mission-ai/chrome-extension/background.js
           node --check mission-ai/chrome-extension/popup.js
+          node --check mission-ai/chrome-extension/browser-snapshot.js
+          node --test mission-ai/chrome-extension/browser-snapshot.test.js
           node --check plugin/mission-ai-budget/scripts/budget-guard.mjs
           node --check plugin/mission-ai-budget/scripts/budget-query.mjs
           node --check plugin/mission-ai-budget/scripts/budget-report.mjs
