@@ -54,3 +54,17 @@ test('direct Chrome tab close requires explicit confirmation locally and over MC
   assert.ok(openapi.includes("required: [confirm, tabs]"));
   assert.ok(openapi.includes("required: [windowId, tabId, expectedUrl]"));
 });
+
+
+test('Mac companion capability handshake is privacy-safe and browser-specific', async () => {
+  const [companion, server] = await Promise.all([
+    readFile(new URL('../companion/companion.js', root), 'utf8'),
+    text('./server.js'),
+  ]);
+  for (const capability of ['mac.control', 'browser.direct_tabs', 'browser.page_extension']) {
+    assert.ok(companion.includes(capability));
+    assert.ok(server.includes(capability));
+  }
+  assert.ok(companion.includes("type: 'device_capabilities'"));
+  assert.ok(server.includes("message?.type === 'device_capabilities'"));
+});
