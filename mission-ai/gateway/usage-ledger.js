@@ -144,7 +144,10 @@ export function createMemoryUsageLedger() {
 let cachedMongoLedger;
 
 export function createMongoUsageLedger({
-  uri = process.env.MISSION_AI_LEDGER_MONGO_URI || '',
+  uri =
+    process.env.MISSION_AI_LEDGER_MONGO_URI ||
+    process.env.MISSION_AI_MONGO_URI ||
+    '',
   dbName = process.env.MISSION_AI_LEDGER_DB || DEFAULT_DB,
 } = {}) {
   if (!uri) throw new Error('ledger_not_configured');
