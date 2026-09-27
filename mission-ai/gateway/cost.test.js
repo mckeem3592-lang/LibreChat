@@ -15,6 +15,7 @@ const pricing = {
       input: 2,
       cachedInput: 0.2,
       cacheWrite: 2.5,
+      cacheWrite1h: 4,
       output: 10,
     },
     'claude-sonnet-5': {
@@ -39,6 +40,8 @@ test('OpenAI cached input is not double counted as uncached input', () => {
       outputTokens: 100,
       cachedInputTokens: 400,
       cacheWriteTokens: 0,
+      cacheWrite5mTokens: 0,
+      cacheWrite1hTokens: 0,
       imageOutputTokens: 0,
     },
   );
@@ -57,6 +60,8 @@ test('Anthropic cache categories remain separate from uncached input', () => {
       outputTokens: 100,
       cachedInputTokens: 400,
       cacheWriteTokens: 100,
+      cacheWrite5mTokens: 100,
+      cacheWrite1hTokens: 0,
       imageOutputTokens: 0,
     },
   );
@@ -71,6 +76,25 @@ test('calculates provider-reported usage cost from versioned pricing', () => {
   );
   assert.equal(result.totalUsd, 0.00228);
   assert.equal(result.pricingVerifiedOn, '2026-09-27');
+});
+
+test('Anthropic cache write TTLs use separate official rates', () => {
+  const result = calculateUsageCost(
+    'anthropic',
+    'claude-sonnet-5',
+    {
+      inputTokens: 1000,
+      cachedInputTokens: 500,
+      cacheWriteTokens: 300,
+      cacheWrite5mTokens: 200,
+      cacheWrite1hTokens: 100,
+      outputTokens: 50,
+    },
+    pricing,
+  );
+  assert.equal(result.components.cacheWriteUsd, 0.0005);
+  assert.equal(result.components.cacheWrite1hUsd, 0.0004);
+  assert.equal(result.totalUsd, 0.0035);
 });
 
 test('preflight uses UTF-8 bytes as a conservative input-token upper bound', () => {
