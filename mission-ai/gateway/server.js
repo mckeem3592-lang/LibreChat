@@ -292,6 +292,7 @@ app.post('/v1/browser/list-tabs', toolHandler('browser.list_tabs'));
 app.post('/v1/browser/activate-tab', toolHandler('browser.activate_tab'));
 app.post('/v1/browser/close-tabs', toolHandler('browser.close_tabs'));
 app.post('/v1/browser/open-url-direct', toolHandler('browser.open_url_direct'));
+app.post('/v1/browser/open-new-tab', toolHandler('browser.open_new_tab'));
 app.post('/v1/browser/state', toolHandler('browser.get_state'));
 app.post('/v1/browser/click', toolHandler('browser.click'));
 app.post('/v1/browser/type', toolHandler('browser.type'));
