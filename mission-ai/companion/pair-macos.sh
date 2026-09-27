@@ -4,6 +4,7 @@ set -euo pipefail
 GATEWAY_URL="${MISSION_AI_GATEWAY_URL:-https://mission-ai-gateway-mckee.onrender.com}"
 DEVICE_ID="${MISSION_AI_DEVICE_ID:-mac-primary}"
 SERVICE="mission-ai-device-token"
+CODE_PAIR_SERVICE="mission-ai-code-pairing-code"
 
 if ! command -v curl >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1; then
   echo "Mission AI pairing requires curl and Node.js 20+."
@@ -29,6 +30,20 @@ process.stdin.on("end",()=>{
 });')"
 
 security add-generic-password -U -a "$USER" -s "$SERVICE" -w "$DEVICE_TOKEN" >/dev/null
-unset PAIR_CODE DEVICE_TOKEN RESPONSE PAYLOAD
+
+CODE_PAIRING_CODE="$(printf '%s' "$RESPONSE" | node -e '
+let body="";
+process.stdin.on("data",(chunk)=>body+=chunk);
+process.stdin.on("end",()=>{
+  const parsed=JSON.parse(body);
+  process.stdout.write(parsed.codeWorker?.code || "");
+});')"
+
+if [[ -n "$CODE_PAIRING_CODE" ]]; then
+  security add-generic-password -U -a "$USER" -s "$CODE_PAIR_SERVICE" -w "$CODE_PAIRING_CODE" >/dev/null
+fi
+
+unset PAIR_CODE DEVICE_TOKEN CODE_PAIRING_CODE RESPONSE PAYLOAD
 
 echo "Mission AI Mac paired successfully. Device credential stored in macOS Keychain."
+echo "If available, the one-time code-worker enrollment was also stored temporarily in Keychain."
