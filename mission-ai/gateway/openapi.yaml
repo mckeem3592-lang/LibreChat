@@ -58,6 +58,33 @@ paths:
       responses:
         '200': { description: Monthly budget and usage dashboard }
         '503': { description: Cost telemetry database is not configured }
+  /v1/image:
+    post:
+      operationId: missionGenerateImage
+      summary: Generate or edit an image with budget enforcement
+      description: Disabled unless paid delegation is enabled. Reference image data is accepted only on the authenticated endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                prompt: { type: string }
+                aspectRatio: { type: string }
+                imageSize: { type: string, enum: [512, 1K, 2K, 4K] }
+                referenceImage:
+                  type: object
+                  properties:
+                    data: { type: string }
+                    mimeType: { type: string, enum: [image/png, image/jpeg, image/webp] }
+                project: { type: string, maxLength: 200 }
+                conversationId: { type: string, maxLength: 200 }
+      responses:
+        '200': { description: Generated image data with exact usage cost metadata }
+        '402': { description: Monthly hard budget reached }
+        '503': { description: Paid delegation is disabled }
   /v1/delegate:
     post:
       operationId: missionDelegate
