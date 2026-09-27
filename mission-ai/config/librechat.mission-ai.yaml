@@ -97,7 +97,6 @@ endpoints:
         - 'mcp:mission-ai:mac_click'
         - 'mcp:mission-ai:mac_type'
         - 'mcp:mission-ai:mac_key'
-        - 'mcp:*:*'
       reason: 'Review {tool} before it runs.'
     checkpointer:
       type: mongo
