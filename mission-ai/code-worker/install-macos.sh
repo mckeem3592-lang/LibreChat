@@ -88,6 +88,7 @@ cat > "$PLIST" <<PLIST
   <key>EnvironmentVariables</key>
   <dict>
     <key>HOME</key><string>$HOME</string>
+    <key>PATH</key><string>$(dirname "$NODE_PATH"):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     <key>NODE_ENV</key><string>production</string>
     <key>LIBRECHAT_CODE_WORKER_ID</key><string>$WORKER_ID</string>
     <key>LIBRECHAT_CODE_IDENTITY_FILE</key><string>$IDENTITY_FILE</string>
