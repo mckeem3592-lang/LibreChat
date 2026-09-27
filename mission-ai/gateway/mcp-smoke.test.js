@@ -17,7 +17,8 @@ async function listen(handler) {
   };
 }
 
-test('MCP streamable HTTP initializes, lists tools, and calls readiness', async () => {
+test('MCP streamable HTTP initializes, lists tools, calls readiness, and audits safely', async () => {
+  const audits = [];
   const handler = createMissionMcpNodeHandler({
     invoke: async () => ({ ok: true }),
     getReadiness: async () => ({
@@ -45,6 +46,7 @@ test('MCP streamable HTTP initializes, lists tools, and calls readiness', async 
     generateImage: async () => {
       throw new Error('delegation_disabled');
     },
+    audit: (event) => audits.push(event),
   });
 
   const { server, url } = await listen(handler);
@@ -68,6 +70,21 @@ test('MCP streamable HTTP initializes, lists tools, and calls readiness', async 
     const body = JSON.parse(text.text);
     assert.equal(body.ok, true);
     assert.equal(body.readiness.build, 'test');
+
+    const browser = await client.callTool({
+      name: 'browser_get_state',
+      arguments: { deviceId: 'mac-primary' },
+    });
+    assert.equal(browser.isError, undefined);
+
+    assert.equal(audits.some((event) => event.action === 'mcp:mission_readiness'), true);
+    const browserAudit = audits.find((event) => event.action === 'mcp:browser_get_state');
+    assert.ok(browserAudit);
+    assert.equal(browserAudit.deviceId, 'mac-primary');
+    const serialized = JSON.stringify(audits);
+    assert.equal(serialized.includes('arguments'), false);
+    assert.equal(serialized.includes('prompt'), false);
+    assert.equal(serialized.includes('browserToken'), false);
   } finally {
     await client.close().catch(() => {});
     await new Promise((resolve) => server.close(resolve));
