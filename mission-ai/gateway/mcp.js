@@ -231,16 +231,16 @@ export function createMissionMcpNodeHandler({
         description: 'Activate a specific Google Chrome tab by window and tab index using direct macOS Chrome automation.',
         inputSchema: z.object({
           deviceId: z.string().optional(),
-          windowIndex: z.number().int().min(1),
-          tabIndex: z.number().int().min(1),
+          windowId: z.string().min(1),
+          tabId: z.string().min(1),
         }),
       },
-      async ({ deviceId, windowIndex, tabIndex }) => {
+      async ({ deviceId, windowId, tabId }) => {
         try {
           return textResult(
             await invoke(deviceId || 'mac-primary', 'browser.activate_tab', {
-              windowIndex,
-              tabIndex,
+              windowId,
+              tabId,
             }),
           );
         } catch (error) {
@@ -278,8 +278,9 @@ export function createMissionMcpNodeHandler({
           confirm: z.literal(true),
           tabs: z.array(
             z.object({
-              windowIndex: z.number().int().min(1),
-              tabIndex: z.number().int().min(1),
+              windowId: z.string().min(1),
+              tabId: z.string().min(1),
+              expectedUrl: z.string().url(),
             }),
           ).min(1).max(100),
         }),
