@@ -241,8 +241,9 @@ function connectGateway() {
   const base = GATEWAY_URL.replace(/^http/, 'ws').replace(/\/$/, '');
   const url = new URL(`${base}/device`);
   url.searchParams.set('deviceId', DEVICE_ID);
-  url.searchParams.set('token', DEVICE_TOKEN);
-  const ws = new WebSocket(url);
+  const ws = new WebSocket(url, {
+    headers: { authorization: `Bearer ${DEVICE_TOKEN}` },
+  });
 
   ws.on('open', () => console.log('Mission AI companion connected'));
   ws.on('message', async (raw) => {
