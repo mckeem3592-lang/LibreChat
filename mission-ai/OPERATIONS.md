@@ -44,6 +44,17 @@ The dashboard reads only the `transactions` collection and returns aggregated us
 
 The current development web services use Render Free instances. They may stop while idle and cold-start on the next request. This is acceptable for development validation but is not the final availability target. A deliberate hosting-plan decision is required before production acceptance of always-on local pairing or long-running cloud work.
 
+## Development deploy recovery
+
+Mission AI development uses fail-forward recovery and never uses production `main` as a recovery target.
+
+1. If a Render build fails before promotion, leave the prior live development deploy serving traffic. Inspect the failing test/build log, fix the defect on `mission-ai-v1`, and let auto-deploy validate the new commit.
+2. If a new development deploy becomes unhealthy after going live, identify the last known-good development commit/deploy, preserve its identifiers in the incident note, then either redeploy that development artifact or commit a fix/revert on `mission-ai-v1`.
+3. Never recover development by writing to production `main`, the production `My-Workstation-McKee` service, production MongoDB data, or the protected backup branch.
+4. After recovery, require the full development test suite, package audit, service health/startup, and device reconnect checks before considering the incident closed.
+
+A failed build must not replace the last known-good live development artifact. This behavior is exercised during development and recorded in `mission-ai/ACCEPTANCE-EVIDENCE.md`.
+
 ## Promotion rule
 
 Do not promote Mission AI to production until representative browser, Mac, code, research, file, image, routing, budget, recovery, and cost-comparison scenarios have been exercised successfully.
