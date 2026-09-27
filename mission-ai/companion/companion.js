@@ -122,6 +122,93 @@ async function keyMac(args) {
   return { key };
 }
 
+async function chromeListTabs() {
+  const script = [
+    '-e', 'set AppleScript\'s text item delimiters to "\\t"',
+    '-e', 'tell application "Google Chrome"',
+    '-e', 'set output to ""',
+    '-e', 'repeat with w from 1 to count of windows',
+    '-e', 'set tabCount to count of tabs of window w',
+    '-e', 'repeat with t from 1 to tabCount',
+    '-e', 'set theTab to tab t of window w',
+    '-e', 'set output to output & w & "\\t" & t & "\\t" & (title of theTab) & "\\t" & (URL of theTab) & linefeed',
+    '-e', 'end repeat',
+    '-e', 'end repeat',
+    '-e', 'return output',
+    '-e', 'end tell',
+  ];
+  const { stdout } = await execFileAsync('osascript', script);
+  const tabs = stdout
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => {
+      const [windowIndex, tabIndex, title, ...urlParts] = line.split('\t');
+      return {
+        windowIndex: Number(windowIndex),
+        tabIndex: Number(tabIndex),
+        title: title || '',
+        url: urlParts.join('\t') || '',
+      };
+    })
+    .filter((tab) => Number.isInteger(tab.windowIndex) && Number.isInteger(tab.tabIndex));
+  return { tabs };
+}
+
+async function chromeCloseTabs(args) {
+  const requested = Array.isArray(args?.tabs) ? args.tabs : [];
+  if (!requested.length || requested.length > 100) throw new Error('invalid_tab_selection');
+
+  const groups = new Map();
+  for (const item of requested) {
+    const windowIndex = Number(item?.windowIndex);
+    const tabIndex = Number(item?.tabIndex);
+    if (!Number.isInteger(windowIndex) || windowIndex < 1 || !Number.isInteger(tabIndex) || tabIndex < 1) {
+      throw new Error('invalid_tab_selection');
+    }
+    if (!groups.has(windowIndex)) groups.set(windowIndex, []);
+    groups.get(windowIndex).push(tabIndex);
+  }
+
+  let closed = 0;
+  for (const [windowIndex, tabIndexes] of groups.entries()) {
+    const sorted = [...new Set(tabIndexes)].sort((a, b) => b - a);
+    for (const tabIndex of sorted) {
+      await execFileAsync('osascript', [
+        '-e', 'on run argv',
+        '-e', 'set w to item 1 of argv as integer',
+        '-e', 'set t to item 2 of argv as integer',
+        '-e', 'tell application "Google Chrome"',
+        '-e', 'if w ≤ (count of windows) then',
+        '-e', 'if t ≤ (count of tabs of window w) then close tab t of window w',
+        '-e', 'end if',
+        '-e', 'end tell',
+        '-e', 'end run',
+        String(windowIndex),
+        String(tabIndex),
+      ]);
+      closed += 1;
+    }
+  }
+  return { closed };
+}
+
+async function chromeOpenUrl(args) {
+  const url = new URL(String(args?.url || ''));
+  if (!['http:', 'https:'].includes(url.protocol)) throw new Error('url_not_allowed');
+  await execFileAsync('osascript', [
+    '-e', 'on run argv',
+    '-e', 'set targetUrl to item 1 of argv',
+    '-e', 'tell application "Google Chrome"',
+    '-e', 'activate',
+    '-e', 'if (count of windows) = 0 then make new window',
+    '-e', 'tell front window to make new tab at end of tabs with properties {URL:targetUrl}',
+    '-e', 'end tell',
+    '-e', 'end run',
+    url.toString(),
+  ]);
+  return { url: url.toString() };
+}
+
 async function screenshot() {
   const file = `/tmp/mission-ai-${crypto.randomUUID()}.jpg`;
   try {
@@ -172,6 +259,12 @@ async function dispatch(tool, args) {
       return await typeMac(args);
     case 'mac.key':
       return await keyMac(args);
+    case 'browser.list_tabs':
+      return await chromeListTabs();
+    case 'browser.close_tabs':
+      return await chromeCloseTabs(args);
+    case 'browser.open_url_direct':
+      return await chromeOpenUrl(args);
     case 'browser.get_state':
     case 'browser.click':
     case 'browser.type':
