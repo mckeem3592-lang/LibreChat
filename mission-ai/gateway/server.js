@@ -28,7 +28,6 @@ if (!DEVICE_TOKEN || !TOOL_TOKEN) {
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
-app.use(express.json({ limit: '1mb' }));
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
@@ -145,6 +144,10 @@ const missionMcp = createMissionMcpNodeHandler({
   getCostComparison: async () => buildCostComparison(await queryMissionDashboard()),
 });
 
+app.use('/pair', express.json({ limit: '16kb' }));
+app.use('/v1', requireToolAuth, express.json({ limit: '12mb' }));
+app.use('/mcp', requireToolAuth, express.json({ limit: '12mb' }));
+
 app.get('/health', (_req, res) => {
   const expiresAt = Date.parse(process.env.MISSION_AI_PAIR_EXPIRES_AT || '');
   res.json({
@@ -201,8 +204,6 @@ app.post('/pair', async (req, res) => {
     res.status(status).json({ ok: false, error: error.message });
   }
 });
-
-app.use('/v1', requireToolAuth);
 
 app.get('/v1/providers', (_req, res) => {
   res.json({ ok: true, providers: providerStatus() });
@@ -283,7 +284,7 @@ app.post('/v1/mac/click', toolHandler('mac.click'));
 app.post('/v1/mac/type', toolHandler('mac.type'));
 app.post('/v1/mac/key', toolHandler('mac.key'));
 
-app.all('/mcp', requireToolAuth, (req, res) => {
+app.all('/mcp', (req, res) => {
   void missionMcp(req, res, req.body);
 });
 
