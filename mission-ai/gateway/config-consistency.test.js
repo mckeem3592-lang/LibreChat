@@ -9,3 +9,11 @@ test('routing config includes required route classes', async () => {
     assert.ok(config.routes[name]);
   }
 });
+
+test('LibreChat Mission AI config keeps keyless web research enabled', async () => {
+  const text = await readFile(new URL('../config/librechat.mission-ai.yaml', import.meta.url), 'utf8');
+  assert.match(text, /searchProvider:\s*keenable/);
+  assert.match(text, /scraperProvider:\s*keenable/);
+  assert.match(text, /rerankerType:\s*none/);
+  assert.equal(/keenableApiKey:/.test(text), false);
+});
