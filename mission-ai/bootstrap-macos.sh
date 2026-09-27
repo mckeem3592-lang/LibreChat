@@ -39,3 +39,11 @@ echo "macOS may ask for Accessibility and Screen Recording permissions when"
 echo "Mission AI first uses mouse/keyboard or screenshots. Approve Mission AI's"
 echo "Node/Terminal process when prompted."
 open -a "Google Chrome" "chrome://extensions/" >/dev/null 2>&1 || true
+
+echo
+echo "Running Mission AI local acceptance check..."
+zsh "$SOURCE_DIR/mission-ai/acceptance/check-macos.sh" || true
+echo
+echo "If the check shows macOS permission warnings, approve them in:"
+echo "  System Settings > Privacy & Security > Accessibility"
+echo "  System Settings > Privacy & Security > Screen Recording"
