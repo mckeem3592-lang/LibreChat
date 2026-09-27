@@ -124,7 +124,7 @@ test('preflight reservation prevents a request that could cross the hard cap', a
         prompt: 'x'.repeat(100000),
         maxOutputTokens: 32768,
         enabled: true,
-        dashboardReader: dashboard(173),
+        dashboardReader: dashboard(174.99),
         usageLedger: createMemoryUsageLedger(),
         fetchImpl: async () => { calls += 1; return response({}); },
       }),
