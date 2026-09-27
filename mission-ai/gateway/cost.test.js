@@ -15,7 +15,6 @@ const pricing = {
       input: 2,
       cachedInput: 0.2,
       cacheWrite: 2.5,
-      cacheWrite1h: 4,
       output: 10,
     },
     'claude-sonnet-5': {
@@ -23,6 +22,7 @@ const pricing = {
       input: 2,
       cachedInput: 0.2,
       cacheWrite: 2.5,
+      cacheWrite1h: 4,
       output: 10,
     },
   },
