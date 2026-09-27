@@ -1,6 +1,12 @@
 const LOOPBACK = 'ws://127.0.0.1:8765/browser';
 let socket;
 let reconnectTimer;
+let reconnectAttempt = 0;
+
+function reconnectDelayMs(attempt) {
+  const count = Number.isInteger(attempt) && attempt >= 0 ? attempt : 0;
+  return Math.min(60000, 1000 * (2 ** Math.min(count, 16)));
+}
 
 async function getToken() {
   const stored = await chrome.storage.local.get('browserToken');
@@ -12,6 +18,9 @@ async function connect() {
   const token = await getToken();
   if (!token) return;
   socket = new WebSocket(`${LOOPBACK}?token=${encodeURIComponent(token)}`);
+  socket.onopen = () => {
+    reconnectAttempt = 0;
+  };
   socket.onmessage = async (event) => {
     const message = JSON.parse(event.data);
     if (message?.type !== 'browser_tool') return;
@@ -30,7 +39,9 @@ async function connect() {
     }
   };
   socket.onclose = () => {
-    reconnectTimer = setTimeout(connect, 3000);
+    const delay = reconnectDelayMs(reconnectAttempt);
+    reconnectAttempt += 1;
+    reconnectTimer = setTimeout(connect, delay);
   };
 }
 
