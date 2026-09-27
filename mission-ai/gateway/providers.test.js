@@ -14,3 +14,23 @@ test('provider status exposes readiness without credential values', () => {
     else process.env.OPENAI_API_KEY = previous;
   }
 });
+
+test('google prefers GEMINI_API_KEY and remains compatible with GOOGLE_KEY', () => {
+  const gemini = process.env.GEMINI_API_KEY;
+  const legacy = process.env.GOOGLE_KEY;
+  try {
+    delete process.env.GEMINI_API_KEY;
+    process.env.GOOGLE_KEY = 'legacy';
+    assert.equal(providerConfig('google').apiKeyEnv, 'GOOGLE_KEY');
+    assert.equal(providerConfig('google').hasApiKey, true);
+
+    process.env.GEMINI_API_KEY = 'official';
+    assert.equal(providerConfig('google').apiKeyEnv, 'GEMINI_API_KEY');
+    assert.equal(providerConfig('google').hasApiKey, true);
+  } finally {
+    if (gemini === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = gemini;
+    if (legacy === undefined) delete process.env.GOOGLE_KEY;
+    else process.env.GOOGLE_KEY = legacy;
+  }
+});
