@@ -26,6 +26,15 @@ export function chooseAvailableTarget(targets, readiness = {}) {
   return null;
 }
 
+export async function fallbackTargets(role, policy) {
+  const fallbackPolicy = policy || await loadPolicy();
+  const targets = fallbackPolicy?.roles?.[role];
+  if (!Array.isArray(targets) || targets.length === 0) {
+    throw new Error('fallback_role_not_configured');
+  }
+  return targets.map((target) => parseTarget(target));
+}
+
 export async function providerReadiness() {
   return Object.fromEntries(
     ['openai', 'anthropic', 'google'].map((name) => [
@@ -39,18 +48,18 @@ export async function fallbackPlan(role, {
   readiness,
   policy,
 } = {}) {
-  const fallbackPolicy = policy || await loadPolicy();
-  const targets = fallbackPolicy?.roles?.[role];
-  if (!Array.isArray(targets) || targets.length === 0) throw new Error('fallback_role_not_configured');
-
+  const targets = await fallbackTargets(role, policy);
   const state = readiness || await providerReadiness();
-  const selected = chooseAvailableTarget(targets, state);
+  const selected = chooseAvailableTarget(
+    targets.map(({ provider, role: targetRole }) => `${provider}:${targetRole}`),
+    state,
+  );
   if (!selected) {
     return {
       available: false,
       role,
       attempts: targets.length,
-      targets: targets.map((target) => parseTarget(target)),
+      targets,
     };
   }
 
@@ -58,7 +67,11 @@ export async function fallbackPlan(role, {
   return {
     available: true,
     role,
-    attempts: targets.indexOf(`${selected.provider}:${selected.role}`) + 1,
+    attempts:
+      targets.findIndex(
+        ({ provider, role: targetRole }) =>
+          provider === selected.provider && targetRole === selected.role,
+      ) + 1,
     selected: { ...selected, model },
   };
 }
