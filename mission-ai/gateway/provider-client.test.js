@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { executeProvider, ProviderRequestError } from './provider-client.js';
+import { executeProvider, executeImageProvider, ProviderRequestError } from './provider-client.js';
 
 function withEnv(values, fn) {
   const original = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]));
@@ -138,5 +138,83 @@ test('provider errors do not expose credential values', async () => {
         return true;
       },
     );
+  });
+});
+
+test('Gemini image adapter parses base64 image output and modality usage', async () => {
+  await withEnv({ GEMINI_API_KEY: 'secret', GOOGLE_KEY: null }, async () => {
+    let request;
+    const result = await executeImageProvider({
+      model: 'gemini-3.1-flash-image',
+      prompt: 'draw a moon',
+      aspectRatio: '16:9',
+      imageSize: '2K',
+      fetchImpl: async (url, options) => {
+        request = { url, options };
+        return mockResponse({
+          id: 'img_1',
+          model: 'gemini-3.1-flash-image',
+          steps: [
+            {
+              type: 'model_output',
+              content: [
+                {
+                  type: 'image',
+                  data: 'aW1hZ2U=',
+                  mime_type: 'image/png',
+                },
+              ],
+            },
+          ],
+          usage: {
+            total_input_tokens: 12,
+            total_output_tokens: 1680,
+            output_tokens_by_modality: [
+              { modality: 'image', tokens: 1680 },
+            ],
+          },
+        });
+      },
+    });
+
+    const sent = JSON.parse(request.options.body);
+    assert.match(request.url, /\/v1beta\/interactions$/);
+    assert.equal(sent.response_format.aspect_ratio, '16:9');
+    assert.equal(sent.response_format.image_size, '2K');
+    assert.deepEqual(result.images, [{ data: 'aW1hZ2U=', mimeType: 'image/png' }]);
+    assert.equal(result.usage.outputTokens, 0);
+    assert.equal(result.usage.imageOutputTokens, 1680);
+  });
+});
+
+test('Gemini image adapter supports reference-image editing without logging credentials', async () => {
+  await withEnv({ GEMINI_API_KEY: 'secret', GOOGLE_KEY: null }, async () => {
+    let request;
+    const result = await executeImageProvider({
+      model: 'gemini-3.1-flash-image',
+      prompt: 'make the sky darker',
+      referenceImage: { data: 'cmVm', mimeType: 'image/png' },
+      fetchImpl: async (_url, options) => {
+        request = options;
+        return mockResponse({
+          id: 'img_2',
+          output_image: { data: 'ZWRpdA==', mime_type: 'image/png' },
+          usage: {
+            total_input_tokens: 300,
+            total_output_tokens: 1120,
+            output_tokens_by_modality: [{ modality: 'image', tokens: 1120 }],
+          },
+        });
+      },
+    });
+
+    const sent = JSON.parse(request.body);
+    assert.equal(Array.isArray(sent.input), true);
+    assert.deepEqual(sent.input[1], {
+      type: 'image',
+      data: 'cmVm',
+      mime_type: 'image/png',
+    });
+    assert.equal(result.images[0].data, 'ZWRpdA==');
   });
 });
