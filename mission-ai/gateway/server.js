@@ -7,6 +7,7 @@ import { providerStatus } from './providers.js';
 import { handleRoute } from './route-handler.js';
 import { buildReadiness } from './readiness.js';
 import { queryCostDashboard } from './dashboard.js';
+import { createMissionMcpNodeHandler } from './mcp.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const DEVICE_TOKEN = process.env.MISSION_AI_DEVICE_TOKEN || '';
@@ -106,6 +107,30 @@ function toolHandler(tool) {
   };
 }
 
+function currentReadiness() {
+  const expiresAt = Date.parse(process.env.MISSION_AI_PAIR_EXPIRES_AT || '');
+  const pairingConfigured =
+    Boolean(process.env.MISSION_AI_PAIR_CODE) &&
+    Number.isFinite(expiresAt) &&
+    Date.now() <= expiresAt;
+
+  return buildReadiness({
+    providers: providerStatus(),
+    connectedDevices: [...devices.keys()],
+    codeApiConfigured: Boolean(CODE_API_URL && CODE_BRIDGE_ADMIN_TOKEN),
+    costDashboardConfigured: Boolean(process.env.MONGO_URI),
+    pairingConfigured,
+    build: process.env.RENDER_GIT_COMMIT || process.env.BUILD_COMMIT || null,
+  });
+}
+
+const missionMcp = createMissionMcpNodeHandler({
+  invoke,
+  getReadiness: currentReadiness,
+  getDashboard: queryCostDashboard,
+  route: handleRoute,
+});
+
 app.get('/health', (_req, res) => {
   const expiresAt = Date.parse(process.env.MISSION_AI_PAIR_EXPIRES_AT || '');
   res.json({
@@ -170,23 +195,7 @@ app.get('/v1/providers', (_req, res) => {
 });
 
 app.get('/v1/readiness', (_req, res) => {
-  const expiresAt = Date.parse(process.env.MISSION_AI_PAIR_EXPIRES_AT || '');
-  const pairingConfigured =
-    Boolean(process.env.MISSION_AI_PAIR_CODE) &&
-    Number.isFinite(expiresAt) &&
-    Date.now() <= expiresAt;
-
-  res.json({
-    ok: true,
-    readiness: buildReadiness({
-      providers: providerStatus(),
-      connectedDevices: [...devices.keys()],
-      codeApiConfigured: Boolean(CODE_API_URL && CODE_BRIDGE_ADMIN_TOKEN),
-      costDashboardConfigured: Boolean(process.env.MONGO_URI),
-      pairingConfigured,
-      build: process.env.RENDER_GIT_COMMIT || process.env.BUILD_COMMIT || null,
-    }),
-  });
+  res.json({ ok: true, readiness: currentReadiness() });
 });
 
 app.get('/v1/dashboard', async (_req, res) => {
@@ -220,6 +229,10 @@ app.post('/v1/mac/screenshot', toolHandler('mac.screenshot'));
 app.post('/v1/mac/click', toolHandler('mac.click'));
 app.post('/v1/mac/type', toolHandler('mac.type'));
 app.post('/v1/mac/key', toolHandler('mac.key'));
+
+app.all('/mcp', requireToolAuth, (req, res) => {
+  void missionMcp(req, res, req.body);
+});
 
 server.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url || '/', 'http://localhost');
