@@ -6,7 +6,7 @@ import { pairDevice } from './pairing.js';
 import { providerStatus } from './providers.js';
 import { handleRoute } from './route-handler.js';
 import { buildReadiness } from './readiness.js';
-import { queryCostDashboard } from './dashboard.js';
+import { queryMissionDashboard } from './mission-dashboard.js';
 import { createMissionMcpNodeHandler } from './mcp.js';
 import { fallbackPlan } from './fallbacks.js';
 import { delegateRequest } from './delegate.js';
@@ -120,9 +120,15 @@ function currentReadiness() {
     providers: providerStatus(),
     connectedDevices: [...devices.keys()],
     codeApiConfigured: Boolean(CODE_API_URL && CODE_BRIDGE_ADMIN_TOKEN),
-    costDashboardConfigured: Boolean(process.env.MISSION_AI_MONGO_URI || process.env.MONGO_URI),
+    costDashboardConfigured: Boolean(
+      (process.env.MISSION_AI_MONGO_URI || process.env.MONGO_URI) &&
+      process.env.MISSION_AI_LEDGER_MONGO_URI,
+    ),
     delegationEnabled:
-      String(process.env.MISSION_AI_DELEGATION_ENABLED || '').toLowerCase() === 'true',
+      String(process.env.MISSION_AI_DELEGATION_ENABLED || '').toLowerCase() === 'true' &&
+      Boolean(process.env.MISSION_AI_MONGO_URI || process.env.MONGO_URI) &&
+      Boolean(process.env.MISSION_AI_LEDGER_MONGO_URI) &&
+      providerStatus().some(({ hasApiKey }) => Boolean(hasApiKey)),
     pairingConfigured,
     build: process.env.RENDER_GIT_COMMIT || process.env.BUILD_COMMIT || null,
   });
@@ -131,7 +137,7 @@ function currentReadiness() {
 const missionMcp = createMissionMcpNodeHandler({
   invoke,
   getReadiness: currentReadiness,
-  getDashboard: queryCostDashboard,
+  getDashboard: queryMissionDashboard,
   route: handleRoute,
   fallback: fallbackPlan,
   delegate: delegateRequest,
@@ -207,7 +213,7 @@ app.get('/v1/readiness', (_req, res) => {
 app.get('/v1/dashboard', async (_req, res) => {
   res.set('cache-control', 'no-store');
   try {
-    const dashboard = await queryCostDashboard();
+    const dashboard = await queryMissionDashboard();
     res.json({ ok: true, dashboard });
   } catch (error) {
     const code = error instanceof Error ? error.message : 'dashboard_unavailable';
@@ -326,6 +332,9 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(
     `Mission AI readiness: providers=${JSON.stringify(providers)} codeApi=${Boolean(
       CODE_API_URL && CODE_BRIDGE_ADMIN_TOKEN,
-    )} costDashboard=${Boolean(process.env.MISSION_AI_MONGO_URI || process.env.MONGO_URI)}`,
+    )} costDashboard=${Boolean(
+      (process.env.MISSION_AI_MONGO_URI || process.env.MONGO_URI) &&
+      process.env.MISSION_AI_LEDGER_MONGO_URI,
+    )}`,
   );
 });
