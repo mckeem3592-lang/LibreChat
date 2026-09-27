@@ -164,10 +164,10 @@ paths:
                   properties:
                     args:
                       type: object
-                      required: [windowIndex, tabIndex]
+                      required: [windowId, tabId]
                       properties:
-                        windowIndex: { type: integer, minimum: 1 }
-                        tabIndex: { type: integer, minimum: 1 }
+                        windowId: { type: string, minLength: 1 }
+                        tabId: { type: string, minLength: 1 }
       responses:
         '200': { description: Tab activation result }
   /v1/browser/open-new-tab:
@@ -215,10 +215,11 @@ paths:
                           maxItems: 100
                           items:
                             type: object
-                            required: [windowIndex, tabIndex]
+                            required: [windowId, tabId, expectedUrl]
                             properties:
-                              windowIndex: { type: integer, minimum: 1 }
-                              tabIndex: { type: integer, minimum: 1 }
+                              windowId: { type: string, minLength: 1 }
+                              tabId: { type: string, minLength: 1 }
+                              expectedUrl: { type: string, format: uri }
       responses:
         '200': { description: Tab close result }
         '502': { description: Confirmation required or local operation failed }
