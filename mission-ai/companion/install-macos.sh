@@ -69,6 +69,27 @@ cat > "$PLIST" <<PLIST
 PLIST
 
 launchctl bootout "gui/$(id -u)/com.missionai.companion" >/dev/null 2>&1 || true
+
+# Clean up only a stale Mission AI companion that is still holding the browser bridge port.
+STALE_PID="$(/usr/sbin/lsof -nP -iTCP:"${MISSION_AI_BROWSER_PORT:-8765}" -sTCP:LISTEN -t 2>/dev/null | head -1 || true)"
+if [[ -n "$STALE_PID" ]]; then
+  STALE_COMMAND="$(ps -p "$STALE_PID" -o command= 2>/dev/null || true)"
+  if [[ "$STALE_COMMAND" == *"/mission-ai/companion/companion.js"* ]]; then
+    echo "Stopping stale Mission AI companion process $STALE_PID..."
+    kill "$STALE_PID" >/dev/null 2>&1 || true
+    for _ in {1..20}; do
+      if ! kill -0 "$STALE_PID" >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.25
+    done
+  else
+    echo "Browser bridge port ${MISSION_AI_BROWSER_PORT:-8765} is already in use by another process:"
+    echo "$STALE_COMMAND"
+    echo "Mission AI will not terminate a non-Mission-AI process automatically."
+    exit 1
+  fi
+fi
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
 launchctl enable "gui/$(id -u)/com.missionai.companion"
 launchctl kickstart -k "gui/$(id -u)/com.missionai.companion"
