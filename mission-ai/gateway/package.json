@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test *.test.js ../../plugin/mission-ai-budget/scripts/*.test.mjs",
-    "check": "for f in *.js; do node --check \"$f\"; done",
+    "check": "for f in *.js; do node --check \"$f\"; done && bash -n ../code-api/build.sh ../code-api/start.sh ../code-worker/install-macos.sh ../code-worker/uninstall-macos.sh",
     "postinstall": "npm run check && npm test"
   },
   "dependencies": {
