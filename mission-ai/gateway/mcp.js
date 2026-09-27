@@ -31,6 +31,7 @@ export function createMissionMcpNodeHandler({
   fallback,
   delegate,
   getCostComparison,
+  generateImage,
 }) {
   const handler = createMcpHandler(() => {
     const server = new McpServer({
@@ -129,6 +130,45 @@ export function createMissionMcpNodeHandler({
       async (input) => {
         try {
           return textResult(await delegate(input));
+        } catch (error) {
+          return errorResult(error);
+        }
+      },
+    );
+
+    server.registerTool(
+      'mission_generate_image',
+      {
+        description: 'Generate or edit an image with the configured Mission AI image provider. This may incur provider API charges.',
+        inputSchema: z.object({
+          prompt: z.string().min(1).max(200000),
+          aspectRatio: z.enum(['1:1', '1:4', '4:1', '1:8', '8:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']).optional(),
+          imageSize: z.enum(['512', '1K', '2K', '4K']).optional(),
+          referenceImage: z.object({
+            data: z.string().max(11000000),
+            mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']),
+          }).optional(),
+          project: z.string().max(200).optional(),
+          conversationId: z.string().max(200).optional(),
+        }),
+      },
+      async (input) => {
+        try {
+          const result = await generateImage(input);
+          const { images, ...metadata } = result;
+          return {
+            content: [
+              ...images.map((image) => ({
+                type: 'image',
+                data: image.data,
+                mimeType: image.mimeType,
+              })),
+              {
+                type: 'text',
+                text: JSON.stringify({ ok: true, ...metadata, imageCount: images.length }),
+              },
+            ],
+          };
         } catch (error) {
           return errorResult(error);
         }
