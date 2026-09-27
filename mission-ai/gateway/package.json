@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node --test *.test.js",
+    "test": "node --test *.test.js ../../plugin/mission-ai-budget/scripts/*.test.mjs",
     "check": "node --check server.js && node --check router.js && node --check route-api.js && node --check routing-policy.js && node --check safe-route-api.js"
   },
   "dependencies": {
