@@ -127,12 +127,23 @@ async function executeAnthropic({ model, prompt, system, maxOutputTokens, fetchI
       .filter((part) => part?.type === 'text' && typeof part.text === 'string')
       .map((part) => part.text)
       .join(''),
-    usage: {
-      inputTokens: Number(body?.usage?.input_tokens || 0),
-      outputTokens: Number(body?.usage?.output_tokens || 0),
-      cachedInputTokens: Number(body?.usage?.cache_read_input_tokens || 0),
-      cacheWriteTokens: Number(body?.usage?.cache_creation_input_tokens || 0),
-    },
+    usage: (() => {
+      const cacheCreation = body?.usage?.cache_creation || {};
+      const cacheWrite5mTokens = Number(cacheCreation?.ephemeral_5m_input_tokens || 0);
+      const cacheWrite1hTokens = Number(cacheCreation?.ephemeral_1h_input_tokens || 0);
+      const reportedCacheWriteTokens = Number(body?.usage?.cache_creation_input_tokens || 0);
+      const detailedCacheWriteTokens = cacheWrite5mTokens + cacheWrite1hTokens;
+      return {
+        inputTokens: Number(body?.usage?.input_tokens || 0),
+        outputTokens: Number(body?.usage?.output_tokens || 0),
+        cachedInputTokens: Number(body?.usage?.cache_read_input_tokens || 0),
+        cacheWriteTokens:
+          detailedCacheWriteTokens > 0 ? detailedCacheWriteTokens : reportedCacheWriteTokens,
+        cacheWrite5mTokens:
+          detailedCacheWriteTokens > 0 ? cacheWrite5mTokens : reportedCacheWriteTokens,
+        cacheWrite1hTokens,
+      };
+    })(),
     requestId: body?.id || null,
   };
 }
