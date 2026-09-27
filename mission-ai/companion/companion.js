@@ -33,6 +33,8 @@ const allowedApps = new Set(
 );
 
 let extensionSocket = null;
+let browserPairClaimed = false;
+const browserPairDeadline = Date.now() + 15 * 60 * 1000;
 
 function safeEqual(a, b) {
   const left = Buffer.from(String(a));
@@ -170,6 +172,28 @@ async function dispatch(tool, args) {
 }
 
 const browserServer = http.createServer((req, res) => {
+  const remote = req.socket.remoteAddress;
+  const loopback = remote === '127.0.0.1' || remote === '::1';
+  const origin = String(req.headers.origin || '');
+  const extensionOrigin =
+    origin.startsWith('chrome-extension://') || origin.startsWith('moz-extension://');
+
+  if (
+    req.method === 'GET' &&
+    req.url === '/browser/pair' &&
+    loopback &&
+    extensionOrigin &&
+    !browserPairClaimed &&
+    Date.now() <= browserPairDeadline
+  ) {
+    browserPairClaimed = true;
+    res.setHeader('access-control-allow-origin', origin);
+    res.setHeader('cache-control', 'no-store');
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ ok: true, browserToken: BROWSER_TOKEN }));
+    return;
+  }
+
   res.writeHead(404);
   res.end();
 });
