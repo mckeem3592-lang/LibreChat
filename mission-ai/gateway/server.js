@@ -6,6 +6,7 @@ import { pairDevice } from './pairing.js';
 import { providerStatus } from './providers.js';
 import { handleRoute } from './route-handler.js';
 import { buildReadiness } from './readiness.js';
+import { queryCostDashboard } from './dashboard.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const DEVICE_TOKEN = process.env.MISSION_AI_DEVICE_TOKEN || '';
@@ -181,10 +182,26 @@ app.get('/v1/readiness', (_req, res) => {
       providers: providerStatus(),
       connectedDevices: [...devices.keys()],
       codeApiConfigured: Boolean(CODE_API_URL && CODE_BRIDGE_ADMIN_TOKEN),
+      costDashboardConfigured: Boolean(process.env.MONGO_URI),
       pairingConfigured,
       build: process.env.RENDER_GIT_COMMIT || process.env.BUILD_COMMIT || null,
     }),
   });
+});
+
+app.get('/v1/dashboard', async (_req, res) => {
+  res.set('cache-control', 'no-store');
+  try {
+    const dashboard = await queryCostDashboard();
+    res.json({ ok: true, dashboard });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : 'dashboard_unavailable';
+    const status = code === 'mongo_not_configured' ? 503 : 502;
+    res.status(status).json({
+      ok: false,
+      error: code === 'mongo_not_configured' ? code : 'dashboard_unavailable',
+    });
+  }
 });
 
 app.post('/v1/route', async (req, res) => {
@@ -266,6 +283,6 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(
     `Mission AI readiness: providers=${JSON.stringify(providers)} codeApi=${Boolean(
       CODE_API_URL && CODE_BRIDGE_ADMIN_TOKEN,
-    )}`,
+    )} costDashboard=${Boolean(process.env.MONGO_URI)}`,
   );
 });
