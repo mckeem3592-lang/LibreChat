@@ -9,6 +9,7 @@ import { buildReadiness } from './readiness.js';
 import { queryCostDashboard } from './dashboard.js';
 import { createMissionMcpNodeHandler } from './mcp.js';
 import { fallbackPlan } from './fallbacks.js';
+import { delegateRequest } from './delegate.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const DEVICE_TOKEN = process.env.MISSION_AI_DEVICE_TOKEN || '';
@@ -131,6 +132,7 @@ const missionMcp = createMissionMcpNodeHandler({
   getDashboard: queryCostDashboard,
   route: handleRoute,
   fallback: fallbackPlan,
+  delegate: delegateRequest,
 });
 
 app.get('/health', (_req, res) => {
@@ -228,6 +230,19 @@ app.get('/v1/fallback/:role', async (req, res) => {
       ok: false,
       error: error instanceof Error ? error.message : 'fallback_error',
     });
+  }
+});
+
+app.post('/v1/delegate', async (req, res) => {
+  try {
+    res.json(await delegateRequest(req.body || {}));
+  } catch (error) {
+    const code = error instanceof Error ? error.message : 'delegation_error';
+    const status =
+      code === 'delegation_disabled' ? 503 :
+      code === 'monthly_hard_limit' ? 402 :
+      code === 'delegation_prompt_required' ? 400 : 502;
+    res.status(status).json({ ok: false, error: code });
   }
 });
 
