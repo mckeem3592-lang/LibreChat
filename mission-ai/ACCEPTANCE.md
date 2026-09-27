@@ -56,7 +56,7 @@ Mission AI is not production-ready until every required scenario below passes on
 - Destructive operations require the intended confirmation boundary.
 - Unknown tools fail closed.
 - Production LibreChat, MongoDB conversations, and the backup branch remain unchanged during staging.
-- Development services pass CI and health checks for the promoted commit.
+- Development services pass CI and health checks for the promoted commit, including the Code API's supported `/v1/health` route.
 - Recovery from a bad development deploy is documented and tested.
 
 ## Representative user workflows
