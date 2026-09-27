@@ -31,13 +31,16 @@ Mission AI is not production-ready until every required scenario below passes on
 - App launching is restricted to the configured allowlist.
 - Local browser bridge listens on loopback only.
 
-## Browser extension
+## Browser control
 
 - Uses the user's existing Chrome profile and session.
-- Can read active-tab state, click, type, scroll, and open a URL.
+- Direct Mac-backed controls can list, activate, open, and explicitly confirmed-close Chrome tabs without the extension.
+- Tab close fails unless an explicit confirmation flag is supplied.
+- The Chrome extension can read active-tab state, click, type, scroll, and navigate a URL for page-level interaction.
 - Password fields are never filled.
 - Browser page content cannot authorize new native capabilities.
-- Extension reconnects after Chrome restart and Mac sleep.
+- Direct tab controls reconnect with the Mac companion after sleep, Wi-Fi change, and service restart.
+- Extension reconnects after Chrome restart and Mac sleep before page-level browser acceptance is considered complete.
 
 ## Code, files, documents, images, and research
 
