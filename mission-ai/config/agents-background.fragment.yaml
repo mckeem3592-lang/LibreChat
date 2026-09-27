@@ -1,0 +1,8 @@
+endpoints:
+  agents:
+    backgroundTasks:
+      completionWakeups: true
+      ordinaryToolCancellation: false
+    checkpointer:
+      type: mongo
+      ttl: 86400
