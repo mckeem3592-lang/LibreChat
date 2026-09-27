@@ -3,6 +3,7 @@ export function buildReadiness({
   connectedDevices = [],
   codeApiConfigured = false,
   pairingConfigured = false,
+  costDashboardConfigured = false,
   build = null,
 } = {}) {
   const providerMap = Object.fromEntries(
@@ -16,6 +17,7 @@ export function buildReadiness({
     anthropic: providerMap.anthropic === true,
     google: providerMap.google === true,
     codeApi: Boolean(codeApiConfigured),
+    costDashboard: Boolean(costDashboardConfigured),
     macDevice: connectedDevices.length > 0,
     pairing: Boolean(pairingConfigured),
   };
