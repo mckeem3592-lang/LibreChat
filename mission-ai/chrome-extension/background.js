@@ -5,13 +5,24 @@ let transportConnected = false;
 let lastConnectionError = 'pairing_required';
 let creatingOffscreen = null;
 
-async function ensureOffscreen() {
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function offscreenExists() {
+  if (typeof chrome.offscreen?.hasDocument === 'function') {
+    return await chrome.offscreen.hasDocument();
+  }
   const url = chrome.runtime.getURL('offscreen.html');
   const contexts = await chrome.runtime.getContexts({
     contextTypes: ['OFFSCREEN_DOCUMENT'],
     documentUrls: [url],
   });
-  if (contexts.length > 0) return;
+  return contexts.length > 0;
+}
+
+async function ensureOffscreen() {
+  if (await offscreenExists()) return;
 
   if (!creatingOffscreen) {
     creatingOffscreen = chrome.offscreen.createDocument({
@@ -25,6 +36,21 @@ async function ensureOffscreen() {
   await creatingOffscreen;
 }
 
+async function sendOffscreen(message) {
+  let lastError = 'offscreen_receiver_unavailable';
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      const response = await chrome.runtime.sendMessage(message);
+      if (response) return response;
+      lastError = 'offscreen_empty_response';
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : 'offscreen_message_failed';
+    }
+    await delay(100 * (attempt + 1));
+  }
+  throw new Error(lastError);
+}
+
 async function connectTransport(token) {
   const browserToken = String(token || '');
   if (!browserToken) {
@@ -35,7 +61,7 @@ async function connectTransport(token) {
 
   try {
     await ensureOffscreen();
-    const response = await chrome.runtime.sendMessage({
+    const response = await sendOffscreen({
       target: 'offscreen',
       type: 'mission-ai-offscreen-connect',
       token: browserToken,
@@ -50,7 +76,9 @@ async function connectTransport(token) {
     return { ok: false, error: lastConnectionError };
   } catch (error) {
     transportConnected = false;
-    lastConnectionError = error instanceof Error ? error.message : 'offscreen_connection_failed';
+    lastConnectionError = error instanceof Error
+      ? `offscreen_transport: ${error.message}`
+      : 'offscreen_transport: offscreen_connection_failed';
     return { ok: false, error: lastConnectionError };
   }
 }
