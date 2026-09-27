@@ -105,3 +105,15 @@ endpoints:
     checkpointer:
       type: mongo
       ttl: 86400
+
+webSearch:
+  searchProvider: keenable
+  scraperProvider: keenable
+  rerankerType: none
+  keenableSearchOptions:
+    maxResults: 8
+    attributionTitle: Mission AI
+    timeout: 15000
+  keenableScraperOptions:
+    attributionTitle: Mission AI
+    timeout: 15000
