@@ -10,7 +10,7 @@ test('compares measured Mission AI spend with the $200 monthly baseline', () => 
   assert.equal(result.currentSavingsUsd, 120);
   assert.equal(result.projectedSavingsUsd, 110);
   assert.equal(result.currentSavingsPercent, 60);
-  assert.equal(result.projectedSavingsPercent, 55);
+  assert.ok(Math.abs(result.projectedSavingsPercent - 55) < 1e-9);
   assert.equal(result.annualizedCurrentSavingsUsd, 1440);
 });
 
