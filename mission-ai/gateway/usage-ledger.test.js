@@ -74,3 +74,29 @@ test('ledger reports privacy-safe provider model task and project breakdowns', a
   assert.deepEqual(breakdown.byProject, [{ project: 'mission-ai', spendUsd: 0.75 }]);
   assert.equal(JSON.stringify(breakdown).includes('prompt'), false);
 });
+
+test('stale reservations are conservatively settled at the reserved amount', async () => {
+  const ledger = createMemoryUsageLedger();
+  const reservedAt = new Date('2026-09-27T18:00:00Z');
+  const reservation = await ledger.reserve({
+    reserveUsd: 3,
+    directCapUsd: 10,
+    now: reservedAt,
+    metadata: { provider: 'openai', model: 'gpt-6-sol', task: 'chat' },
+  });
+
+  const result = await ledger.reconcileStaleReservations({
+    now: new Date('2026-09-27T18:16:00Z'),
+    maxAgeMs: 15 * 60 * 1000,
+  });
+  assert.equal(result.settled, 1);
+
+  const summary = await ledger.summary({ now: reservedAt });
+  assert.equal(summary.reservedUsd, 0);
+  assert.equal(summary.settledUsd, 3);
+
+  await assert.rejects(
+    () => ledger.settle({ reservationId: reservation.reservationId, actualUsd: 1 }),
+    /reservation_not_found/,
+  );
+});
