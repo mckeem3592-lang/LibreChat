@@ -5,31 +5,32 @@
   "models": {
     "gpt-6-luna": {
       "provider": "openai",
-      "input": 0.10,
+      "input": 0.1,
       "cachedInput": 0.01,
       "cacheWrite": 0.125,
-      "output": 0.50
+      "output": 0.5
     },
     "gpt-6-sol": {
       "provider": "openai",
-      "input": 2.00,
-      "cachedInput": 0.20,
-      "cacheWrite": 2.50,
-      "output": 10.00
+      "input": 2,
+      "cachedInput": 0.2,
+      "cacheWrite": 2.5,
+      "output": 10
     },
     "gpt-6-astra": {
       "provider": "openai",
-      "input": 10.00,
-      "cachedInput": 1.00,
-      "cacheWrite": 12.50,
-      "output": 50.00
+      "input": 10,
+      "cachedInput": 1,
+      "cacheWrite": 12.5,
+      "output": 50
     },
     "claude-sonnet-5": {
       "provider": "anthropic",
-      "input": 2.00,
-      "cachedInput": 0.20,
-      "cacheWrite": 2.50,
-      "output": 10.00
+      "input": 2,
+      "cachedInput": 0.2,
+      "cacheWrite": 2.5,
+      "output": 10,
+      "cacheWrite1h": 4
     },
     "gemini-3.8-flash": {
       "provider": "google",
@@ -40,11 +41,11 @@
     },
     "gemini-3.1-flash-image": {
       "provider": "google",
-      "input": 0.50,
+      "input": 0.5,
       "cachedInput": 0,
       "cacheWrite": 0,
-      "output": 3.00,
-      "imageOutput": 60.00
+      "output": 3,
+      "imageOutput": 60
     }
   }
 }
