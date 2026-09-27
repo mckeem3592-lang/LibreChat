@@ -8,6 +8,7 @@ import { handleRoute } from './route-handler.js';
 import { buildReadiness } from './readiness.js';
 import { queryCostDashboard } from './dashboard.js';
 import { createMissionMcpNodeHandler } from './mcp.js';
+import { fallbackPlan } from './fallbacks.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const DEVICE_TOKEN = process.env.MISSION_AI_DEVICE_TOKEN || '';
@@ -129,6 +130,7 @@ const missionMcp = createMissionMcpNodeHandler({
   getReadiness: currentReadiness,
   getDashboard: queryCostDashboard,
   route: handleRoute,
+  fallback: fallbackPlan,
 });
 
 app.get('/health', (_req, res) => {
@@ -216,6 +218,17 @@ app.get('/v1/dashboard', async (_req, res) => {
 app.post('/v1/route', async (req, res) => {
   const result = await handleRoute(req.body || {});
   res.status(result.status).json(result.body);
+});
+
+app.get('/v1/fallback/:role', async (req, res) => {
+  try {
+    res.json({ ok: true, plan: await fallbackPlan(String(req.params.role || '')) });
+  } catch (error) {
+    res.status(400).json({
+      ok: false,
+      error: error instanceof Error ? error.message : 'fallback_error',
+    });
+  }
 });
 
 app.post('/v1/browser/state', toolHandler('browser.get_state'));
