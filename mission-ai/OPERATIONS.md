@@ -27,6 +27,12 @@ For each development release, verify:
 6. The Code API reports its worker health check passed.
 7. No production service deploy was triggered by the development commit.
 
+## Cost telemetry database access
+
+The gateway cost dashboard should use `MISSION_AI_MONGO_URI` with a dedicated MongoDB Atlas user that has read-only access to the LibreChat database. Do not reuse the primary LibreChat application credential unless a temporary development exception is explicitly approved.
+
+The dashboard reads only the `transactions` collection and returns aggregated usage/cost metadata. It never returns message content, API keys, or raw credentials.
+
 ## Free-plan behavior
 
 The current development web services use Render Free instances. They may stop while idle and cold-start on the next request. This is acceptable for development validation but is not the final availability target. A deliberate hosting-plan decision is required before production acceptance of always-on local pairing or long-running cloud work.
