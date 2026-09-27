@@ -117,12 +117,23 @@ function toolHandler(tool) {
   };
 }
 
+function mongoConfiguration() {
+  const nativeUri = process.env.MISSION_AI_MONGO_URI || process.env.MONGO_URI || '';
+  const ledgerUri = process.env.MISSION_AI_LEDGER_MONGO_URI || process.env.MISSION_AI_MONGO_URI || '';
+  return {
+    nativeConfigured: Boolean(nativeUri),
+    ledgerConfigured: Boolean(ledgerUri),
+  };
+}
+
 function currentReadiness() {
   const expiresAt = Date.parse(process.env.MISSION_AI_PAIR_EXPIRES_AT || '');
   const pairingConfigured =
     Boolean(process.env.MISSION_AI_PAIR_CODE) &&
     Number.isFinite(expiresAt) &&
     Date.now() <= expiresAt;
+
+  const mongo = mongoConfiguration();
 
   return buildReadiness({
     providers: providerStatus(),
@@ -134,14 +145,11 @@ function currentReadiness() {
       ]),
     ),
     codeApiConfigured: Boolean(CODE_API_URL && CODE_BRIDGE_ADMIN_TOKEN),
-    costDashboardConfigured: Boolean(
-      (process.env.MISSION_AI_MONGO_URI || process.env.MONGO_URI) &&
-      process.env.MISSION_AI_LEDGER_MONGO_URI,
-    ),
+    costDashboardConfigured: mongo.nativeConfigured && mongo.ledgerConfigured,
     delegationEnabled:
       String(process.env.MISSION_AI_DELEGATION_ENABLED || '').toLowerCase() === 'true' &&
-      Boolean(process.env.MISSION_AI_MONGO_URI || process.env.MONGO_URI) &&
-      Boolean(process.env.MISSION_AI_LEDGER_MONGO_URI) &&
+      mongo.nativeConfigured &&
+      mongo.ledgerConfigured &&
       providerStatus().some(({ hasApiKey }) => Boolean(hasApiKey)),
     pairingConfigured,
     build: process.env.RENDER_GIT_COMMIT || process.env.BUILD_COMMIT || null,
@@ -400,9 +408,9 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(
     `Mission AI readiness: providers=${JSON.stringify(providers)} codeApi=${Boolean(
       CODE_API_URL && CODE_BRIDGE_ADMIN_TOKEN,
-    )} costDashboard=${Boolean(
-      (process.env.MISSION_AI_MONGO_URI || process.env.MONGO_URI) &&
-      process.env.MISSION_AI_LEDGER_MONGO_URI,
-    )}`,
+    )} costDashboard=${(() => {
+      const mongo = mongoConfiguration();
+      return mongo.nativeConfigured && mongo.ledgerConfigured;
+    })()}`,
   );
 });
