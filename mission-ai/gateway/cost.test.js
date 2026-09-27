@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   calculateUsageCost,
   maximumTextRequestCost,
+  maximumImageRequestCost,
   normalizedBillableUsage,
 } from './cost.js';
 
@@ -82,4 +83,26 @@ test('preflight uses UTF-8 bytes as a conservative input-token upper bound', () 
     pricing,
   });
   assert.equal(cost, 0.010008);
+});
+
+test('image preflight reserves documented output-token ceiling', () => {
+  const imagePricing = {
+    models: {
+      'gemini-3.1-flash-image': {
+        provider: 'google',
+        input: 0.5,
+        output: 3,
+        imageOutput: 60,
+      },
+    },
+  };
+  const cost = maximumImageRequestCost({
+    provider: 'google',
+    model: 'gemini-3.1-flash-image',
+    prompt: 'moon',
+    imageSize: '2K',
+    pricing: imagePricing,
+    maxImages: 4,
+  });
+  assert.ok(cost >= (1680 * 4 / 1_000_000) * 60);
 });
