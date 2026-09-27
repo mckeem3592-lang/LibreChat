@@ -5,6 +5,7 @@ import { monthStartFor } from '../../plugin/mission-ai-budget/scripts/budget-tim
 const DEFAULT_DB = 'MissionAI';
 const STATE_COLLECTION = 'budget_state';
 const EVENT_COLLECTION = 'delegated_usage';
+const DEFAULT_RESERVATION_TTL_MS = 15 * 60 * 1000;
 
 function monthKey(date, timeZone) {
   return monthStartFor(date, timeZone).toISOString();
@@ -86,6 +87,8 @@ export function createMemoryUsageLedger() {
         reservedUsd: amount,
         status: 'reserved',
         metadata: { ...metadata },
+        createdAt: new Date(now),
+        updatedAt: new Date(now),
       });
       return { reservationId, monthStart: key, reservedUsd: amount };
     },
@@ -110,6 +113,30 @@ export function createMemoryUsageLedger() {
       event.status = 'released';
       event.reason = String(reason);
       return true;
+    },
+    async reconcileStaleReservations({
+      now = new Date(),
+      maxAgeMs = DEFAULT_RESERVATION_TTL_MS,
+    } = {}) {
+      const cutoff = new Date(now).getTime() - Number(maxAgeMs);
+      let settled = 0;
+      for (const event of events.values()) {
+        if (event.status !== 'reserved') continue;
+        if (new Date(event.updatedAt || event.createdAt || 0).getTime() > cutoff) continue;
+        const current = getState(event.monthStart);
+        current.reservedUsd = Math.max(0, current.reservedUsd - event.reservedUsd);
+        current.settledUsd += event.reservedUsd;
+        event.status = 'settled';
+        event.actualUsd = event.reservedUsd;
+        event.usage = {
+          ...(event.usage || {}),
+          estimated: true,
+          reason: 'stale_reservation',
+        };
+        event.updatedAt = new Date(now);
+        settled += 1;
+      }
+      return { settled };
     },
   };
 }
@@ -313,6 +340,52 @@ export function createMongoUsageLedger({
         },
       );
       return true;
+    },
+    async reconcileStaleReservations({
+      now = new Date(),
+      maxAgeMs = DEFAULT_RESERVATION_TTL_MS,
+      limit = 100,
+    } = {}) {
+      const currentTime = new Date(now);
+      const cutoff = new Date(currentTime.getTime() - Number(maxAgeMs));
+      const database = await db();
+      const stateCollection = database.collection(STATE_COLLECTION);
+      const eventCollection = database.collection(EVENT_COLLECTION);
+      const stale = await eventCollection
+        .find({ status: 'reserved', updatedAt: { $lte: cutoff } })
+        .sort({ updatedAt: 1 })
+        .limit(Math.max(1, Math.min(Number(limit) || 100, 1000)))
+        .toArray();
+
+      let settled = 0;
+      for (const event of stale) {
+        const amount = Number(event.reservedUsd || 0);
+        const changed = await eventCollection.updateOne(
+          { _id: event._id, status: 'reserved' },
+          {
+            $set: {
+              status: 'settled',
+              actualUsd: amount,
+              usage: {
+                ...(event.usage || {}),
+                estimated: true,
+                reason: 'stale_reservation',
+              },
+              updatedAt: currentTime,
+            },
+          },
+        );
+        if (changed.modifiedCount !== 1) continue;
+        await stateCollection.updateOne(
+          { _id: event.monthStart },
+          {
+            $inc: { reservedUsd: -amount, settledUsd: amount },
+            $set: { updatedAt: currentTime },
+          },
+        );
+        settled += 1;
+      }
+      return { settled };
     },
   };
 }
