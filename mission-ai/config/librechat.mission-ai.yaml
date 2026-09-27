@@ -11,6 +11,17 @@ interface:
 transactions:
   enabled: true
 
+
+mcpServers:
+  mission-ai:
+    title: Mission AI
+    type: streamable-http
+    url: '${MISSION_AI_GATEWAY_URL}/mcp'
+    headers:
+      Authorization: 'Bearer ${MISSION_AI_TOOL_TOKEN}'
+    timeout: 120000
+    chatMenu: true
+
 # LibreChat uses micro-USD-equivalent token credits:
 # 1,000 credits = $0.001, therefore 175,000,000 credits = $175.
 # The Mission AI budget plugin reconciles this remaining balance to current-month
@@ -69,9 +80,23 @@ endpoints:
       allow:
         - 'web_search'
         - 'file_search'
+        - 'mcp:mission-ai:mission_readiness'
+        - 'mcp:mission-ai:mission_cost_dashboard'
+        - 'mcp:mission-ai:mission_route'
+        - 'mcp:mission-ai:browser_get_state'
+        - 'mcp:mission-ai:mac_active_app'
+        - 'mcp:mission-ai:mac_screenshot'
       deny:
         - 'mcp:*:delete_*'
       ask:
+        - 'mcp:mission-ai:browser_click'
+        - 'mcp:mission-ai:browser_type'
+        - 'mcp:mission-ai:browser_scroll'
+        - 'mcp:mission-ai:browser_open_url'
+        - 'mcp:mission-ai:mac_open_app'
+        - 'mcp:mission-ai:mac_click'
+        - 'mcp:mission-ai:mac_type'
+        - 'mcp:mission-ai:mac_key'
         - 'mcp:*:*'
       reason: 'Review {tool} before it runs.'
     checkpointer:
