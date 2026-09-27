@@ -10,6 +10,56 @@ if ! command -v git >/dev/null 2>&1; then
   exit 1
 fi
 
+ensure_brew() {
+  if command -v brew >/dev/null 2>&1; then
+    return
+  fi
+
+  echo "Homebrew is not installed. Starting the official Homebrew installer..."
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [[ -x /usr/local/bin/brew ]]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  fi
+
+  if ! command -v brew >/dev/null 2>&1; then
+    echo "Homebrew installation did not become available in this shell."
+    exit 1
+  fi
+}
+
+ensure_node() {
+  local node_major=0
+  if command -v node >/dev/null 2>&1; then
+    node_major="$(node -p "Number(process.versions.node.split('.')[0])" 2>/dev/null || echo 0)"
+  fi
+
+  if (( node_major >= 20 )); then
+    return
+  fi
+
+  ensure_brew
+  echo "Installing Node.js 20+ for Mission AI..."
+  brew install node
+  hash -r
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js installation completed but node is not on PATH yet."
+    echo "Open a new Terminal window and rerun this Mission AI bootstrap."
+    exit 1
+  fi
+
+  node_major="$(node -p "Number(process.versions.node.split('.')[0])" 2>/dev/null || echo 0)"
+  if (( node_major < 20 )); then
+    echo "Mission AI requires Node.js 20+. Current: $(node --version)"
+    exit 1
+  fi
+}
+
+ensure_node
+
 mkdir -p "$(dirname "$SOURCE_DIR")"
 if [[ -d "$SOURCE_DIR/.git" ]]; then
   git -C "$SOURCE_DIR" fetch --quiet origin "$BRANCH"
