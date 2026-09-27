@@ -29,7 +29,11 @@ document.getElementById('pair').addEventListener('click', async () => {
       { type: 'mission-ai-set-token', token: body.browserToken },
       (result) => {
         if (chrome.runtime.lastError || !result?.ok) {
-          status.textContent = 'Pairing failed: background worker rejected token';
+          const reason =
+            result?.error ||
+            chrome.runtime.lastError?.message ||
+            'background_worker_rejected_token';
+          status.textContent = `Pairing failed: ${reason}`;
           return;
         }
         setTimeout(refresh, 500);
