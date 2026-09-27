@@ -7,6 +7,22 @@ interface:
   currency:
     code: USD
     rate: 1
+  schedules:
+    use: true
+    create: true
+    maxPerUser: 10
+    minIntervalMinutes: 60
+    autoDisableAfterFailures: 5
+    admissionConcurrency: 10
+    fireConcurrency: 3
+    mcpPreflightConcurrency: 3
+    mcpPreflightTimeoutMs: 120000
+  defaultPinnedTools:
+    - 'web_search'
+    - 'file_search'
+    - 'artifacts'
+    - 'execute_code'
+    - 'mcp'
 
 transactions:
   enabled: true
@@ -102,6 +118,9 @@ endpoints:
         - 'mcp:mission-ai:mission_delegate'
         - 'mcp:mission-ai:mission_generate_image'
       reason: 'Review {tool} before it runs.'
+    backgroundTasks:
+      completionWakeups: true
+      ordinaryToolCancellation: false
     checkpointer:
       type: mongo
       ttl: 86400
