@@ -96,3 +96,36 @@ export function maximumTextRequestCost({
     (outputTokens / 1_000_000) * Number(modelPricing.output || 0)
   );
 }
+
+const IMAGE_OUTPUT_TOKENS = Object.freeze({
+  '512': 747,
+  '1K': 1120,
+  '2K': 1680,
+  '4K': 2520,
+});
+
+export function maximumImageRequestCost({
+  provider,
+  model,
+  prompt = '',
+  imageSize = '1K',
+  pricing,
+  maxImages = 4,
+  referenceInputTokens = 0,
+}) {
+  const modelPricing = pricing?.models?.[model];
+  if (!modelPricing || modelPricing.provider !== provider) {
+    throw new Error('pricing_not_configured');
+  }
+  const outputTokens = IMAGE_OUTPUT_TOKENS[imageSize];
+  if (!outputTokens) throw new Error('invalid_image_size');
+  const imageRate = Number(modelPricing.imageOutput || 0);
+  if (!Number.isFinite(imageRate) || imageRate <= 0) throw new Error('image_pricing_not_configured');
+
+  const promptBytes = Buffer.byteLength(String(prompt), 'utf8');
+  const inputUpperBound = promptBytes + Math.max(0, Number(referenceInputTokens || 0));
+  return (
+    (inputUpperBound / 1_000_000) * Number(modelPricing.input || 0) +
+    ((outputTokens * Math.max(1, Number(maxImages) || 1)) / 1_000_000) * imageRate
+  );
+}
