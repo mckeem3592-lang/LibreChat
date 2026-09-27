@@ -56,6 +56,9 @@ export async function delegateRequest({
 
   const dashboard = await dashboardReader({ now });
   const ledger = usageLedger || defaultUsageLedger();
+  if (typeof ledger.reconcileStaleReservations === 'function') {
+    await ledger.reconcileStaleReservations({ now });
+  }
   const ledgerSummary = await ledger.summary({ now, timeZone: dashboard.timeZone });
   const settledSpendUsd = Number(dashboard.spendUsd || 0) + Number(ledgerSummary.settledUsd || 0);
 
