@@ -12,6 +12,7 @@ IDENTITY_FILE="$IDENTITY_DIR/$WORKER_ID.json"
 PLIST="$HOME/Library/LaunchAgents/com.missionai.code-worker.plist"
 LOG_DIR="$HOME/Library/Logs/MissionAI"
 CLI="$RELEASE_DIR/packages/code/dist/cli.js"
+PAIR_SERVICE="mission-ai-code-pairing-code"
 
 need() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -58,6 +59,9 @@ ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
 
 if [[ ! -f "$IDENTITY_FILE" ]]; then
   PAIR_CODE="${MISSION_AI_CODE_PAIRING_CODE:-}"
+  if [[ -z "$PAIR_CODE" ]]; then
+    PAIR_CODE="$(security find-generic-password -a "$USER" -s "$PAIR_SERVICE" -w 2>/dev/null || true)"
+  fi
   if [[ -z "$PAIR_CODE" ]]; then
     read -r -s -p "Mission AI Code pairing code: " PAIR_CODE
     echo
