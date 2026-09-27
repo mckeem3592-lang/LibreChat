@@ -30,6 +30,7 @@ export function createMissionMcpNodeHandler({
   route,
   fallback,
   delegate,
+  getCostComparison,
 }) {
   const handler = createMcpHandler(() => {
     const server = new McpServer({
@@ -55,6 +56,21 @@ export function createMissionMcpNodeHandler({
       async () => {
         try {
           return textResult({ ok: true, dashboard: await getDashboard() });
+        } catch (error) {
+          return errorResult(error);
+        }
+      },
+    );
+
+    server.registerTool(
+      'mission_cost_comparison',
+      {
+        description: 'Compare measured Mission AI monthly spend with the configured $200 ChatGPT Pro baseline.',
+        inputSchema: z.object({}),
+      },
+      async () => {
+        try {
+          return textResult({ ok: true, comparison: await getCostComparison() });
         } catch (error) {
           return errorResult(error);
         }
