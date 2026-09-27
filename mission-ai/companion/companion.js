@@ -124,14 +124,19 @@ async function keyMac(args) {
 
 async function chromeListTabs() {
   const script = [
-    '-e', 'set AppleScript\'s text item delimiters to "\\t"',
     '-e', 'tell application "Google Chrome"',
     '-e', 'set output to ""',
     '-e', 'repeat with w from 1 to count of windows',
-    '-e', 'set tabCount to count of tabs of window w',
+    '-e', 'set win to window w',
+    '-e', 'set windowId to id of win as text',
+    '-e', 'set activeT to active tab index of win',
+    '-e', 'set tabCount to count of tabs of win',
     '-e', 'repeat with t from 1 to tabCount',
-    '-e', 'set theTab to tab t of window w',
-    '-e', 'set output to output & w & "\\t" & t & "\\t" & (title of theTab) & "\\t" & (URL of theTab) & linefeed',
+    '-e', 'set theTab to tab t of win',
+    '-e', 'set tabId to id of theTab as text',
+    '-e', 'set isActive to "0"',
+    '-e', 'if t is activeT then set isActive to "1"',
+    '-e', 'set output to output & windowId & "\\t" & tabId & "\\t" & w & "\\t" & t & "\\t" & isActive & "\\t" & (title of theTab) & "\\t" & (URL of theTab) & linefeed',
     '-e', 'end repeat',
     '-e', 'end repeat',
     '-e', 'return output',
@@ -142,45 +147,57 @@ async function chromeListTabs() {
     .split(/\r?\n/)
     .filter(Boolean)
     .map((line) => {
-      const [windowIndex, tabIndex, title, ...urlParts] = line.split('\t');
+      const [windowId, tabId, windowIndex, tabIndex, active, title, ...urlParts] = line.split('\t');
       return {
+        windowId: String(windowId || ''),
+        tabId: String(tabId || ''),
         windowIndex: Number(windowIndex),
         tabIndex: Number(tabIndex),
+        active: active === '1',
         title: title || '',
         url: urlParts.join('\t') || '',
       };
     })
-    .filter((tab) => Number.isInteger(tab.windowIndex) && Number.isInteger(tab.tabIndex));
+    .filter(
+      (tab) =>
+        tab.windowId &&
+        tab.tabId &&
+        Number.isInteger(tab.windowIndex) &&
+        Number.isInteger(tab.tabIndex),
+    );
   return { tabs };
 }
 
 async function chromeActivateTab(args) {
-  const windowIndex = Number(args?.windowIndex);
-  const tabIndex = Number(args?.tabIndex);
-  if (
-    !Number.isInteger(windowIndex) || windowIndex < 1 ||
-    !Number.isInteger(tabIndex) || tabIndex < 1
-  ) {
-    throw new Error('invalid_tab_selection');
-  }
+  const windowId = String(args?.windowId || '');
+  const tabId = String(args?.tabId || '');
+  if (!windowId || !tabId) throw new Error('invalid_tab_selection');
 
   await execFileAsync('osascript', [
     '-e', 'on run argv',
-    '-e', 'set w to item 1 of argv as integer',
-    '-e', 'set t to item 2 of argv as integer',
+    '-e', 'set targetWindowId to item 1 of argv',
+    '-e', 'set targetTabId to item 2 of argv',
     '-e', 'tell application "Google Chrome"',
-    '-e', 'if w > (count of windows) then error "window_not_found"',
-    '-e', 'if t > (count of tabs of window w) then error "tab_not_found"',
-    '-e', 'set active tab index of window w to t',
-    '-e', 'set index of window w to 1',
+    '-e', 'set targetWindow to missing value',
+    '-e', 'repeat with win in windows',
+    '-e', 'if (id of win as text) is targetWindowId then set targetWindow to win',
+    '-e', 'end repeat',
+    '-e', 'if targetWindow is missing value then error "window_not_found"',
+    '-e', 'set foundIndex to 0',
+    '-e', 'repeat with t from 1 to count of tabs of targetWindow',
+    '-e', 'if (id of tab t of targetWindow as text) is targetTabId then set foundIndex to t',
+    '-e', 'end repeat',
+    '-e', 'if foundIndex is 0 then error "tab_not_found"',
+    '-e', 'set active tab index of targetWindow to foundIndex',
+    '-e', 'set index of targetWindow to 1',
     '-e', 'activate',
     '-e', 'end tell',
     '-e', 'end run',
-    String(windowIndex),
-    String(tabIndex),
+    windowId,
+    tabId,
   ]);
 
-  return { windowIndex, tabIndex };
+  return { windowId, tabId };
 }
 
 async function chromeCloseTabs(args) {
@@ -188,36 +205,44 @@ async function chromeCloseTabs(args) {
   const requested = Array.isArray(args?.tabs) ? args.tabs : [];
   if (!requested.length || requested.length > 100) throw new Error('invalid_tab_selection');
 
-  const groups = new Map();
-  for (const item of requested) {
-    const windowIndex = Number(item?.windowIndex);
-    const tabIndex = Number(item?.tabIndex);
-    if (!Number.isInteger(windowIndex) || windowIndex < 1 || !Number.isInteger(tabIndex) || tabIndex < 1) {
-      throw new Error('invalid_tab_selection');
-    }
-    if (!groups.has(windowIndex)) groups.set(windowIndex, []);
-    groups.get(windowIndex).push(tabIndex);
-  }
-
+  const seen = new Set();
   let closed = 0;
-  for (const [windowIndex, tabIndexes] of groups.entries()) {
-    const sorted = [...new Set(tabIndexes)].sort((a, b) => b - a);
-    for (const tabIndex of sorted) {
-      await execFileAsync('osascript', [
-        '-e', 'on run argv',
-        '-e', 'set w to item 1 of argv as integer',
-        '-e', 'set t to item 2 of argv as integer',
-        '-e', 'tell application "Google Chrome"',
-        '-e', 'if w ≤ (count of windows) then',
-        '-e', 'if t ≤ (count of tabs of window w) then close tab t of window w',
-        '-e', 'end if',
-        '-e', 'end tell',
-        '-e', 'end run',
-        String(windowIndex),
-        String(tabIndex),
-      ]);
-      closed += 1;
-    }
+
+  for (const item of requested) {
+    const windowId = String(item?.windowId || '');
+    const tabId = String(item?.tabId || '');
+    const expectedUrl = String(item?.expectedUrl || '');
+    if (!windowId || !tabId || !expectedUrl) throw new Error('invalid_tab_selection');
+
+    const key = `${windowId}:${tabId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    await execFileAsync('osascript', [
+      '-e', 'on run argv',
+      '-e', 'set targetWindowId to item 1 of argv',
+      '-e', 'set targetTabId to item 2 of argv',
+      '-e', 'set expectedUrl to item 3 of argv',
+      '-e', 'tell application "Google Chrome"',
+      '-e', 'set targetWindow to missing value',
+      '-e', 'repeat with win in windows',
+      '-e', 'if (id of win as text) is targetWindowId then set targetWindow to win',
+      '-e', 'end repeat',
+      '-e', 'if targetWindow is missing value then error "window_not_found"',
+      '-e', 'set targetTab to missing value',
+      '-e', 'repeat with candidateTab in tabs of targetWindow',
+      '-e', 'if (id of candidateTab as text) is targetTabId then set targetTab to candidateTab',
+      '-e', 'end repeat',
+      '-e', 'if targetTab is missing value then error "tab_not_found"',
+      '-e', 'if (URL of targetTab as text) is not expectedUrl then error "tab_stale"',
+      '-e', 'close targetTab',
+      '-e', 'end tell',
+      '-e', 'end run',
+      windowId,
+      tabId,
+      expectedUrl,
+    ]);
+    closed += 1;
   }
   return { closed };
 }
