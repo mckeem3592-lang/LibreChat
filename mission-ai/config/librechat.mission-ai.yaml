@@ -82,6 +82,7 @@ endpoints:
         - 'file_search'
         - 'mcp:mission-ai:mission_readiness'
         - 'mcp:mission-ai:mission_cost_dashboard'
+        - 'mcp:mission-ai:mission_cost_comparison'
         - 'mcp:mission-ai:mission_route'
         - 'mcp:mission-ai:mission_fallback_plan'
         - 'mcp:mission-ai:browser_get_state'
