@@ -7,7 +7,9 @@ async function refresh() {
   chrome.runtime.sendMessage({ type: 'mission-ai-status' }, (response) => {
     status.textContent = response?.connected
       ? 'Connected to Mac companion'
-      : 'Companion not connected';
+      : response?.error
+        ? `Companion not connected: ${response.error}`
+        : 'Companion not connected';
   });
 }
 
