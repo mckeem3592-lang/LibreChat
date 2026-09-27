@@ -29,6 +29,7 @@ export function createMissionMcpNodeHandler({
   getDashboard,
   route,
   fallback,
+  delegate,
 }) {
   const handler = createMcpHandler(() => {
     const server = new McpServer({
@@ -90,6 +91,27 @@ export function createMissionMcpNodeHandler({
       async ({ role }) => {
         try {
           return textResult({ ok: true, plan: await fallback(role) });
+        } catch (error) {
+          return errorResult(error);
+        }
+      },
+    );
+
+    server.registerTool(
+      'mission_delegate',
+      {
+        description: 'Run a task through Mission AI provider routing with bounded provider fallback. This may incur provider API charges.',
+        inputSchema: z.object({
+          task: z.string(),
+          monthSpendUsd: z.number().nonnegative(),
+          prompt: z.string().min(1).max(200000),
+          system: z.string().max(50000).optional(),
+          maxOutputTokens: z.number().int().min(1).max(32768).optional(),
+        }),
+      },
+      async (input) => {
+        try {
+          return textResult(await delegate(input));
         } catch (error) {
           return errorResult(error);
         }
