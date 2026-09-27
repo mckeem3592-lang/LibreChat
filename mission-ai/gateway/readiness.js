@@ -30,12 +30,17 @@ export function buildReadiness({
     macDevice: connectedDevices.length > 0,
     browserDirect: capabilitySet.has('browser.direct_tabs'),
     browserExtension: capabilitySet.has('browser.page_extension'),
-    pairing: Boolean(pairingConfigured),
+    pairing: Boolean(pairingConfigured) || connectedDevices.length > 0,
   };
 
+  const missing = Object.entries(checks)
+    .filter(([, ready]) => !ready)
+    .map(([name]) => name);
+
   return {
-    ok: Object.values(checks).every(Boolean),
+    ok: missing.length === 0,
     checks,
+    missing,
     connectedDevices: [...connectedDevices],
     deviceCapabilities: Object.fromEntries(
       connectedDevices.map((deviceId) => [
