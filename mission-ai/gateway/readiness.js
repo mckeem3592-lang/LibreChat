@@ -1,6 +1,7 @@
 export function buildReadiness({
   providers = [],
   connectedDevices = [],
+  deviceCapabilities = {},
   codeApiConfigured = false,
   pairingConfigured = false,
   costDashboardConfigured = false,
@@ -13,6 +14,12 @@ export function buildReadiness({
       .map((item) => [item.name, Boolean(item.hasApiKey)]),
   );
 
+  const capabilitySet = new Set(
+    connectedDevices.flatMap((deviceId) =>
+      Array.isArray(deviceCapabilities?.[deviceId]) ? deviceCapabilities[deviceId] : [],
+    ),
+  );
+
   const checks = {
     openai: providerMap.openai === true,
     anthropic: providerMap.anthropic === true,
@@ -21,6 +28,8 @@ export function buildReadiness({
     costDashboard: Boolean(costDashboardConfigured),
     delegation: Boolean(delegationEnabled),
     macDevice: connectedDevices.length > 0,
+    browserDirect: capabilitySet.has('browser.direct_tabs'),
+    browserExtension: capabilitySet.has('browser.page_extension'),
     pairing: Boolean(pairingConfigured),
   };
 
@@ -28,6 +37,12 @@ export function buildReadiness({
     ok: Object.values(checks).every(Boolean),
     checks,
     connectedDevices: [...connectedDevices],
+    deviceCapabilities: Object.fromEntries(
+      connectedDevices.map((deviceId) => [
+        deviceId,
+        Array.isArray(deviceCapabilities?.[deviceId]) ? [...deviceCapabilities[deviceId]] : [],
+      ]),
+    ),
     build,
   };
 }
