@@ -97,6 +97,10 @@ cat > "$PLIST" <<PLIST
     <string>2</string>
     <string>--allow-workspace-writes</string>
     <string>--allow-workspace-commands</string>
+    <string>--command-sandbox</string>
+    <string>native-srt</string>
+    <string>--command-policy-preset</string>
+    <string>restricted</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
