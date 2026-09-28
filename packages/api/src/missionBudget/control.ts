@@ -29,16 +29,16 @@ function object(value: unknown): Json {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error();
   return value as Json;
 }
-export function controlSearchInput(value: unknown) {
+export function controlSearchInput(value: unknown): { query: string; maxResults: number } {
   const input = object(value);
   if (Object.keys(input).some((key) => !['query', 'maxResults'].includes(key)) ||
       typeof input.query !== 'string' || !input.query.trim() || input.query.length > 2000 ||
       (input.maxResults != null && (!Number.isInteger(input.maxResults) ||
         Number(input.maxResults) < 1 || Number(input.maxResults) > 5))) throw new Error();
-  return { query: input.query.trim(), maxResults: input.maxResults ?? 5 };
+  return { query: input.query.trim(), maxResults: Number(input.maxResults ?? 5) };
 }
 /** Owner-only, two-route proxy. The browser never receives a gateway credential. */
-export function createMissionControlProxy(deps: ProxyDependencies) {
+export function createMissionControlProxy(deps: ProxyDependencies): (req: Request, res: Response) => Promise<unknown> {
   return async (req: Request, res: Response): Promise<unknown> => {
     res.setHeader('Cache-Control', 'no-store');
     if (!deps.enabled) return error(res, 404, 'control_disabled');
@@ -85,8 +85,14 @@ interface ControlDependencies {
   flags: () => { paidText: boolean; delegation: boolean; images: boolean; freeSearch: boolean };
   search: (body: unknown) => Promise<unknown>;
 }
+interface ControlHttp {
+  authorize(req: Request, res: Response, next: () => void): unknown;
+  status(req: Request, res: Response): Promise<unknown>;
+  search(req: Request, res: Response): Promise<unknown>;
+  unsupported(req: Request, res: Response): unknown;
+}
 /** Read accounting and run basic free search; no paid or local-control operations. */
-export function createMissionControlHttp(deps: ControlDependencies) {
+export function createMissionControlHttp(deps: ControlDependencies): ControlHttp {
   return {
     authorize(req: Request, res: Response, next: () => void) {
       const auth = req.get('authorization') ?? '';
