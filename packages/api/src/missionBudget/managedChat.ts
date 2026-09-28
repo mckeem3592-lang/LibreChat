@@ -260,7 +260,10 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
       if (method === 'GET' && (READ_PATHS.has(path) || READ_PATTERNS.some((rule) => rule.test(path)))) {
         return next();
       }
-      if (method === 'POST' && POST_PATHS.has(path) && query === '') return next();
+      // The stock client retries an initial refresh failure with this exact URL.
+      // Match raw text so aliases, duplicate parameters and extra options stay denied.
+      const refreshRetry = path === '/api/auth/refresh' && query === 'retry=true';
+      if (method === 'POST' && POST_PATHS.has(path) && (query === '' || refreshRetry)) return next();
       throw new Error();
     } catch {
       return deny(res);

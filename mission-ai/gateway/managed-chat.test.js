@@ -179,6 +179,43 @@ test('login, MFA, safe configuration/history and stream lifecycle retain existin
   for (const [method, path] of routes) assert.equal(invoke(admission, { method, path }).next, 1, path);
 });
 
+test('session recovery permits only the exact stock refresh retry URL', () => {
+  for (const path of ['/api/auth/refresh', '/api/auth/refresh?retry=true']) {
+    const result = invoke(admission, { method: 'POST', path, body: {} });
+    assert.equal(result.next, 1, path);
+    assert.deepEqual(result.req.body, {}, 'the existing authenticated refresh handler owns the request');
+  }
+  for (const query of ['retry=false', 'retry=TRUE', 'retry=1', 'retry=', 'retry', 'Retry=true',
+    'retry=true&extra=1', 'extra=1&retry=true', 'retry=true&retry=true', 'retry=true&retry=false',
+    'retry=true&', 'retry=true;', 'retry=true#fragment', 'retry=true?', '?retry=true',
+    '%72etry=true', 'retry=%74rue', 'retry%3Dtrue', 'retry[]=true', 'retry=+true', 'retry=true%20']) {
+    const path = `/api/auth/refresh?${query}`;
+    const result = invoke(admission, { method: 'POST', path, body: {} });
+    assert.equal(result.status, 403, path);
+    assert.equal(result.next, 0, path);
+  }
+  for (const path of ['/api/auth/refresh/?retry=true', '/api/auth/Refresh?retry=true',
+    '/api/auth/%72efresh?retry=true', '/api//auth/refresh?retry=true']) {
+    assert.equal(invoke(admission, { method: 'POST', path, body: {} }).status, 403, path);
+  }
+  for (const method of ['GET', 'HEAD', 'OPTIONS', 'PUT', 'PATCH', 'DELETE']) {
+    assert.equal(invoke(admission, { method, path: '/api/auth/refresh?retry=true', body: {} }).status, 403, method);
+  }
+});
+
+test('refresh retry does not authorize query parameters on other POST routes', () => {
+  for (const path of ['/api/auth/login', '/api/auth/logout', '/api/auth/2fa/verify-temp',
+    '/api/auth/2fa/enable', '/api/auth/2fa/verify', '/api/auth/2fa/confirm',
+    '/api/auth/2fa/disable', '/api/auth/2fa/backup/regenerate', '/api/user/terms/accept',
+    '/api/agents/chat/abort', '/api/agents/chat/MissionAI', '/api/auth/register']) {
+    for (const query of ['retry=true', 'extra=1']) {
+      const result = invoke(admission, { method: 'POST', path: `${path}?${query}` });
+      assert.equal(result.status, 403, `${path}?${query}`);
+      assert.equal(result.next, 0);
+    }
+  }
+});
+
 test('key access permits only the existing single-name expiry read', () => {
   assert.equal(invoke(admission, { method: 'GET', path: '/api/keys?name=MissionAI' }).next, 1);
   for (const path of ['/api/keys', '/api/keys?name=openAI', '/api/keys?name=MissionAI&name=MissionAI', '/api/keys?name=MissionAI&value=secret']) {
