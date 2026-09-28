@@ -43,11 +43,13 @@ jobs:
           bash -n mission-ai/code-api/build.sh
           bash -n mission-ai/code-api/start.sh
       - name: Test locked dependency installation safeguards
-        run: node --test mission-ai/code-api/build.test.mjs
+        run: node --test mission-ai/code-api/build.test.mjs mission-ai/code-api/dependency-patches.test.mjs
       - name: Build Code API from reviewed dependency lock
         run: bash mission-ai/code-api/build.sh
       - name: Smoke-test installed Code API dependencies
-        run: node --test mission-ai/code-api/runtime.test.mjs
+        run: node --test mission-ai/code-api/runtime.test.mjs mission-ai/code-api/notification.test.mjs
+      - name: Reject any known dependency vulnerability
+        run: npm audit --prefix .mission-ai-code-api/service --package-lock-only --include=dev --ignore-scripts --audit-level=low
 
   validate:
     runs-on: ubuntu-latest

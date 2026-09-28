@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { normalizeReconciliations } from './generated/reconciliation.js';
 import mongoose from 'mongoose';
 import { isDeepStrictEqual } from 'node:util';
 import { monthStartFor } from '../../plugin/mission-ai-budget/scripts/budget-time.mjs';
@@ -11,6 +12,7 @@ const CONTROL_COLLECTION = 'budget_control';
 const DEFAULT_RESERVATION_TTL_MS = 15 * 60 * 1000;
 const SOURCE_TOTAL_KEYS = new Map([
   ['native', 'nativeUsd'], ['delegated', 'delegatedUsd'], ['native-history', 'historyUsd'],
+  ['provider-reconciliation', 'reconciliationUsd'],
 ]);
 
 function monthKey(date, timeZone) {
@@ -40,6 +42,7 @@ function existingReservation(event, key, amount, metadata) {
 }
 
 function settlementReceipt(event) {
+  if (storedSource(event) === 'provider-reconciliation') throw new Error('invalid_reservation_source');
   if (event.underestimated) throw new Error('reservation_underestimated');
   return { ...reservationReceipt(event), actualUsd: event.actualUsd, status: 'settled' };
 }
@@ -68,7 +71,7 @@ function storedSource(event) {
     throw new Error('ledger_integrity_invalid');
   }
   const selected = source ?? metadataSource ?? 'delegated';
-  if (selected === 'native-history' && event.status !== 'settled') {
+  if (['native-history', 'provider-reconciliation'].includes(selected) && event.status !== 'settled') {
     throw new Error('ledger_integrity_invalid');
   }
   return selected;
@@ -102,7 +105,7 @@ function sharedConfig(control) {
   };
 }
 
-function normalizeActivation({ policy, timeZone, cutoverAt, history } = {}) {
+function normalizeActivation({ policy, timeZone, cutoverAt, history, reconciliations } = {}) {
   if (!policy || ['targetUsd', 'economyUsd', 'hardUsd'].some((key) => typeof policy[key] !== 'number')) {
     throw new Error('invalid_budget_policy');
   }
@@ -137,8 +140,15 @@ function normalizeActivation({ policy, timeZone, cutoverAt, history } = {}) {
     return { id: item.id, at, usd: item.usd, provider: item.provider || 'unknown', model: item.model || 'unknown' };
   }).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   const config = { mode: 'shared', policy: normalizedPolicy, timeZone, cutoverAt: cutoff };
-  const manifestHash = crypto.createHash('sha256').update(JSON.stringify({ ...config, history: entries })).digest('hex');
-  return { ...config, manifestHash, history: entries };
+  const hash = (value) => crypto.createHash('sha256').update(value).digest('hex');
+  if (reconciliations === undefined) {
+    const manifestHash = hash(JSON.stringify({ ...config, history: entries }));
+    return { ...config, manifestHash, history: entries };
+  }
+  const corrections = normalizeReconciliations(reconciliations, entries,
+    { monthStart: monthKey(new Date(cutoff), timeZone), cutoverAt: cutoff }, hash);
+  const manifestHash = hash(JSON.stringify({ version: 2, ...config, history: entries, reconciliations: corrections }));
+  return { ...config, manifestVersion: 2, manifestHash, history: entries, reconciliations: corrections };
 }
 
 function historyEvent(item, timeZone) {
@@ -152,6 +162,23 @@ function historyEvent(item, timeZone) {
   };
 }
 
+function reconciliationEvent(item, timeZone, cutoff) {
+  return {
+    reservationId: `provider-reconciliation:${item.id}`,
+    monthStart: monthKey(new Date(item.periodStart), timeZone), reservedUsd: 0,
+    actualUsd: item.adjustmentNanoUsd / 1e9, status: 'settled', source: 'provider-reconciliation',
+    reconciliation: item,
+    metadata: { source: 'provider-reconciliation', provider: item.provider,
+      task: 'provider-reconciliation', project: 'historical-reconciliation' },
+    usage: { imported: true, basis: item.basis }, createdAt: new Date(cutoff), updatedAt: new Date(cutoff),
+  };
+}
+
+function activationEvents(activation) {
+  return [...activation.history.map((item) => historyEvent(item, activation.timeZone)),
+    ...(activation.reconciliations || []).map((item) => reconciliationEvent(item, activation.timeZone, activation.cutoverAt))];
+}
+
 function reservationCap(directCapUsd, control, timeZone, source) {
   const config = sharedConfig(control);
   if (config && config.timeZone !== timeZone) throw new Error('shared_budget_timezone_mismatch');
@@ -163,7 +190,7 @@ function reservationCap(directCapUsd, control, timeZone, source) {
 }
 
 function sourceTotals(events) {
-  const totals = { nativeUsd: 0, delegatedUsd: 0, historyUsd: 0 };
+  const totals = { nativeUsd: 0, delegatedUsd: 0, historyUsd: 0, reconciliationUsd: 0 };
   for (const event of events) {
     if (event.status !== 'settled') continue;
     const key = SOURCE_TOTAL_KEYS.get(storedSource(event));
@@ -192,13 +219,13 @@ export function createMemoryUsageLedger() {
       }
       if ([...state.values()].some((row) => row.accountingBlocked)) throw new Error('ledger_accounting_blocked');
       if ([...events.values()].some((event) => event.status === 'reserved')) throw new Error('shared_budget_not_drained');
-      const imports = activation.history.map((item) => historyEvent(item, activation.timeZone));
+      const imports = activationEvents(activation);
       if (imports.some((event) => events.has(event.reservationId))) throw new Error('shared_budget_history_conflict');
       for (const event of imports) {
         events.set(event.reservationId, event);
         getState(event.monthStart).settledUsd += event.actualUsd;
       }
-      control = { ...activation, history: undefined };
+      control = { ...activation, history: undefined, reconciliations: undefined };
       return sharedConfig(control);
     },
     async summary({ now = new Date(), timeZone = 'America/Denver' } = {}) {
@@ -532,8 +559,7 @@ export function createMongoUsageLedger({
           throw new Error('shared_budget_not_drained');
         }
         await validateIntegrity(database, session);
-        for (const item of activation.history) {
-          const event = historyEvent(item, activation.timeZone);
+        for (const event of activationEvents(activation)) {
           if (await events.findOne({ reservationId: event.reservationId }, { session, projection: { _id: 1 } })) {
             throw new Error('shared_budget_history_conflict');
           }
@@ -544,9 +570,10 @@ export function createMongoUsageLedger({
           }, $setOnInsert: { createdAt: new Date(activation.cutoverAt) } }, { session, upsert: true });
           await events.insertOne(event, { session });
         }
-        const { history, ...stored } = activation;
+        const { history, reconciliations, ...stored } = activation;
         await database.collection(CONTROL_COLLECTION).updateOne({ _id: 'global' }, {
-          $set: { ...stored, historyCount: history.length },
+          $set: { ...stored, historyCount: history.length,
+            ...(reconciliations ? { reconciliationCount: reconciliations.length } : {}) },
         }, { session });
         return sharedConfig(activation);
       });

@@ -1,0 +1,65 @@
+{
+  "minioVersion": "8.0.7",
+  "streamJsonVersion": "3.7.0",
+  "files": [
+    {
+      "path": "dist/main/notification.js",
+      "originalSha256": "c9969ce05fff5a97f2f7d526f0bab53324cc329652fb09181fd705e169d09ac4",
+      "patchedSha256": "8a5918780f7115e92c40fe7aa55c1a12c615740f181f90ddb02a631a3232e233",
+      "replacements": [
+        [
+          "require(\"stream-json/jsonl/Parser.js\")",
+          "require(\"stream-json/jsonl/parser.js\").default"
+        ],
+        [
+          "_Parser.make()",
+          "_Parser.asStream()"
+        ]
+      ]
+    },
+    {
+      "path": "dist/esm/notification.mjs",
+      "originalSha256": "feb62bd0d140edced9b06b5b3971395e1316998813e1d50eaf9b37d255d6221b",
+      "patchedSha256": "2d1cab3c0b426644f3baa2b2294620e517f1976014ba67e0b745ecd66f290945",
+      "replacements": [
+        [
+          "'stream-json/jsonl/Parser.js'",
+          "'stream-json/jsonl/parser.js'"
+        ],
+        [
+          "jsonLineParser.make()",
+          "jsonLineParser.asStream()"
+        ]
+      ]
+    },
+    {
+      "path": "src/notification.ts",
+      "originalSha256": "ea466158f6a87f2e09aabfc9258af1c30814f185bf8b2a6d268d38fd50b4c687",
+      "patchedSha256": "57ef11f5cea413219624c90d1cdc094ffc132da70635fd0c558aaf4bf605fef0",
+      "replacements": [
+        [
+          "'stream-json/jsonl/Parser.js'",
+          "'stream-json/jsonl/parser.js'"
+        ],
+        [
+          "jsonLineParser.make()",
+          "jsonLineParser.asStream()"
+        ]
+      ]
+    }
+  ],
+  "schemaVersion": 1,
+  "upstreamCommit": "67d75d859aee891923c40cde1db073489d74a424",
+  "minimumNodeVersion": "24.16.0",
+  "upstreamManifest": {
+    "originalSha256": "2ab9f31664abc06b16f6edfd60c282b3eeacc8b3b705f966cb144e65eca28c82",
+    "patchedSha256": "fbee4c8898091d7e084a0806f4341441b76888e8e11b0c62b38d98a17f9e3b00",
+    "overrides": {
+      "minio": {
+        "stream-json": "3.7.0"
+      }
+    }
+  },
+  "minioPackageSha256": "06e434631e49ceb17eb8ad566cf59487733302648d17ccacf1c15d433aa94270",
+  "streamChainVersion": "4.2.6"
+}

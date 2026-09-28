@@ -196,7 +196,7 @@ export const tokenValues: Record<string, { prompt: number; completion: number }>
     'claude-sonnet-4': { prompt: 3, completion: 15 },
     'claude-sonnet-4-5': { prompt: 3, completion: 15 },
     'claude-sonnet-4-6': { prompt: 3, completion: 15 },
-    // Sonnet 5 introductory pricing through 2026-08-31; revert to { prompt: 3, completion: 15 } after.
+    // Sonnet 5 standard rates, verified 2026-09-28: https://platform.claude.com/docs/en/about-claude/pricing
     'claude-sonnet-5': { prompt: 2, completion: 10 },
     'command-r': { prompt: 0.5, completion: 1.5 },
     'command-r-plus': { prompt: 3, completion: 15 },
@@ -367,7 +367,7 @@ export const cacheTokenValues: Record<string, { write: number; read: number }> =
   'claude-sonnet-4': { write: 3.75, read: 0.3 },
   'claude-sonnet-4-5': { write: 3.75, read: 0.3 },
   'claude-sonnet-4-6': { write: 3.75, read: 0.3 },
-  // Sonnet 5 introductory pricing through 2026-08-31; revert to { write: 3.75, read: 0.3 } after.
+  // Sonnet 5 five-minute writes; one-hour writes cost $4/MTok and need separate usage accounting.
   'claude-sonnet-5': { write: 2.5, read: 0.2 },
   'claude-opus-4': { write: 18.75, read: 1.5 },
   'claude-opus-4-5': { write: 6.25, read: 0.5 },

@@ -20,13 +20,18 @@ export function requestBudget(dashboard, ledgerSummary) {
     ? amount(ledgerSummary.nativeUsd) + amount(ledgerSummary.historyUsd)
     : amount(dashboard.spendUsd);
   const delegatedUsd = shared ? amount(ledgerSummary.delegatedUsd) : amount(ledgerSummary.settledUsd);
+  const reconciliationUsd = shared ? amount(ledgerSummary.reconciliationUsd) : 0;
   const reservedUsd = amount(ledgerSummary.reservedUsd);
-  const projectedUsd = amount(nativeUsd + delegatedUsd + reservedUsd);
+  if (shared && Math.abs(amount(ledgerSummary.settledUsd) - nativeUsd - delegatedUsd - reconciliationUsd) > 1e-9) {
+    throw new Error('invalid_budget_snapshot');
+  }
+  const projectedUsd = amount(nativeUsd + delegatedUsd + reconciliationUsd + reservedUsd);
   if (projectedUsd >= policy.hardUsd) throw new Error('monthly_hard_limit');
   return {
     policy,
     nativeUsd,
     delegatedUsd,
+    ...(shared ? { reconciliationUsd } : {}),
     projectedUsd,
     directCapUsd: shared ? policy.hardUsd : Math.max(0, policy.hardUsd - nativeUsd),
   };

@@ -41,15 +41,22 @@ async function fixture(t, scenario = '') {
   const wrapper = path.join(root, 'mission-ai/code-api');
   const bin = path.join(root, 'bin');
   await mkdir(wrapper, { recursive: true });
+  await mkdir(path.join(wrapper, 'patches'));
   await mkdir(bin);
-  for (const name of ['build.sh', 'package-lock.json', 'dependency-lock.sha256']) {
+  for (const name of ['build.sh', 'package-lock.json', 'dependency-lock.sha256',
+    'apply-dependency-patches.mjs', 'patches/dependency-patches.json']) {
     await writeFile(path.join(wrapper, name), await readFile(new URL(name, source)));
   }
-  const stub = `#!/usr/bin/env node
+  const stub = `#!${process.execPath}
 const fs=require('node:fs'); const path=require('node:path'); const assert=require('node:assert/strict');
 const tool=path.basename(process.argv[1]), args=process.argv.slice(2), root=process.env.TEST_BUILD_ROOT;
 fs.appendFileSync(path.join(root,'calls.jsonl'),JSON.stringify({tool,args})+'\\n');
-if(tool==='git') {
+if(tool==='node') {
+  assert.equal(path.basename(args[0]),'apply-dependency-patches.mjs');
+  assert.ok(['check-runtime','prepare-manifest','patch-minio'].includes(args[1]));
+  if(process.env.TEST_BUILD_SCENARIO==='manifest-failure' && args[1]==='prepare-manifest') process.exit(43);
+  if(process.env.TEST_BUILD_SCENARIO==='patch-failure' && args[1]==='patch-minio') process.exit(44);
+} else if(tool==='git') {
   if(args[0]==='clone') {
     assert.deepEqual(args.slice(0,3),['clone','--quiet','https://github.com/LibreChat-AI/code-interpreter.git']);
     const service=path.join(args[3],'service'); fs.mkdirSync(path.join(service,'src'),{recursive:true});
@@ -65,12 +72,13 @@ if(tool==='git') {
     if(process.env.TEST_BUILD_SCENARIO==='mutate-lock') fs.appendFileSync(path.join(service,'package-lock.json'),' ');
   } else {
     assert.deepEqual(args.slice(0,2),['run','build']);
+    if(process.env.TEST_BUILD_SCENARIO==='build-mutates-lock') fs.appendFileSync(path.join(service,'package-lock.json'),' ');
     fs.mkdirSync(path.join(service,'.build-service/src'),{recursive:true});
     fs.writeFileSync(path.join(service,'.build-service/src/service-api.js'),'// fixture\\n');
   }
 }
 `;
-  for (const name of ['git', 'npm']) await writeFile(path.join(bin, name), stub, { mode: 0o755 });
+  for (const name of ['git', 'npm', 'node']) await writeFile(path.join(bin, name), stub, { mode: 0o755 });
   return { root, wrapper,
     run: () => spawnSync('bash', [path.join(wrapper, 'build.sh')], { cwd: root, encoding: 'utf8',
       env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`,
@@ -89,13 +97,17 @@ test('wrapper installs retained lock bytes, suppresses hooks, builds exact sourc
   assert.match(result.stdout, /Pinned Code API build: 67d75d859aee891923c40cde1db073489d74a424/);
   assert.ok(result.stdout.includes(fingerprint));
   const commands = await f.calls();
-  assert.deepEqual(commands.map(({ tool, args }) => `${tool} ${args[0]}`), ['git clone', 'git -C', 'npm ci', 'npm run']);
+  assert.deepEqual(commands.map(({ tool, args }) => `${tool} ${tool === 'node' ? args[1] : args[0]}`), [
+    'node check-runtime', 'git clone', 'git -C', 'node prepare-manifest',
+    'npm ci', 'node patch-minio', 'npm run',
+  ]);
   assert.ok(commands.every(({ args }) => !args.includes('install') && !args.includes('--package-lock-only')));
   assert.equal(await readFile(path.join(f.root, '.mission-ai-code-api/service/.build-service/src/matplotlib-async.py'), 'utf8'), '# fixture\n');
   assert.equal(sha(await readFile(path.join(f.root, '.mission-ai-code-api/service/package-lock.json'))), fingerprint);
 });
 
-for (const scenario of ['missing-lock', 'missing-fingerprint', 'empty-fingerprint', 'invalid-fingerprint', 'changed-lock']) {
+for (const scenario of ['missing-lock', 'missing-fingerprint', 'empty-fingerprint', 'invalid-fingerprint',
+  'changed-lock', 'missing-patch-script', 'missing-patch-manifest']) {
   test(`wrapper rejects ${scenario} before fetching or installing anything`, async (t) => {
     const f = await fixture(t);
     const hash = path.join(f.wrapper, 'dependency-lock.sha256');
@@ -105,18 +117,32 @@ for (const scenario of ['missing-lock', 'missing-fingerprint', 'empty-fingerprin
     if (scenario === 'empty-fingerprint') await writeFile(hash, '');
     if (scenario === 'invalid-fingerprint') await writeFile(hash, 'unreviewed');
     if (scenario === 'changed-lock') await writeFile(lock, '{}\n');
+    if (scenario === 'missing-patch-script') await rm(path.join(f.wrapper, 'apply-dependency-patches.mjs'));
+    if (scenario === 'missing-patch-manifest') await rm(path.join(f.wrapper, 'patches/dependency-patches.json'));
     const result = f.run();
     assert.notEqual(result.status, 0);
     assert.deepEqual(await f.calls(), []);
   });
 }
 
-for (const scenario of ['install-failure', 'mutate-lock']) {
+for (const scenario of ['install-failure', 'mutate-lock', 'patch-failure']) {
   test(`wrapper blocks compilation after ${scenario}`, async (t) => {
     const f = await fixture(t, scenario);
     assert.notEqual(f.run().status, 0);
     const commands = await f.calls();
     assert.equal(commands.filter(({ tool }) => tool === 'npm').length, 1);
     assert.ok(!commands.some(({ tool, args }) => tool === 'npm' && args[0] === 'run'));
-  });
+});
 }
+
+test('wrapper rejects unexpected source manifest before dependency installation', async (t) => {
+  const f = await fixture(t, 'manifest-failure');
+  assert.notEqual(f.run().status, 0);
+  assert.ok(!(await f.calls()).some(({ tool }) => tool === 'npm'));
+});
+
+test('wrapper rejects a dependency lock changed during the explicit build', async (t) => {
+  const f = await fixture(t, 'build-mutates-lock');
+  assert.notEqual(f.run().status, 0);
+  assert.ok((await f.calls()).some(({ tool, args }) => tool === 'npm' && args[0] === 'run'));
+});

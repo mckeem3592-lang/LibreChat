@@ -80,7 +80,155 @@ test('provisional plan and all-month ledger comparison use only read methods and
   for (const privateValue of [SECRET, 'private-transaction-id', 'private-reservation-id', 'mongodb', 'gpt-6-luna']) {
     assert.equal(output.includes(privateValue), false);
   }
-  assert.ok(output.length < 3000);
+  assert.ok(output.length < 5000);
+});
+
+test('fixed provider usage reports exact signed token magnitudes with row completeness and no extra reads', async () => {
+  const f = fixture();
+  f.options.catalogLoader = async () => ({ providers: {
+    openai: { economy: 'private-openai-model' }, anthropic: { economy: 'private-anthropic-model' },
+    google: { economy: 'private-google-model' },
+  } });
+  f.data.transactions = ['openai', 'anthropic', 'google', 'unlisted'].flatMap((provider, i) => [
+    { _id: `private-prompt-${i}`, createdAt: NOW, tokenType: 'prompt', tokenValue: -10_000,
+      model: `private-${provider}-model`, rawAmount: -(i + 15), inputTokens: i + 10,
+      writeTokens: -3, readTokens: 2, cacheDuration: SECRET },
+    { _id: `private-output-${i}`, createdAt: NOW, tokenType: 'completion', tokenValue: -20_000,
+      model: `private-${provider}-model`, rawAmount: -(i + 4), inputTokens: SECRET },
+  ]);
+  const before = structuredClone(f.data);
+  const report = await runAccountingPreflight(f.options);
+  assert.equal(report.status, 'provisional');
+  assert.deepEqual(report.native.byProviderUsage, ['openai', 'anthropic', 'google', 'unknown'].map((provider, i) => ({
+    provider, transactionCount: 2, promptRows: 1, completionRows: 1,
+    completeRows: 2, incompleteRows: 0, missingFieldRows: 0, invalidFieldRows: 0,
+    promptTotalMismatchRows: 0, unsafeTotal: false, usageComplete: true,
+    inputTokens: i + 10, writeTokens: 3, readTokens: 2, outputTokens: i + 4,
+  })));
+  assert.equal(f.calls.length, 3);
+  assert.deepEqual(f.calls.find((call) => call.name === 'transactions').projection,
+    { _id: 1, createdAt: 1, tokenType: 1, tokenValue: 1, model: 1,
+      rawAmount: 1, inputTokens: 1, writeTokens: 1, readTokens: 1 });
+  assert.deepEqual(f.calls.find((call) => call.name === 'transactions').filter,
+    { createdAt: { $gte: new Date(MONTH) }, tokenType: { $in: ['prompt', 'completion'] } });
+  assert.deepEqual(f.data, before);
+  for (const privateValue of [SECRET, 'private-', 'cacheDuration']) {
+    assert.equal(JSON.stringify(report).includes(privateValue), false);
+  }
+});
+
+for (const [label, edit, expected] of [
+  ['missing category', row => { delete row.writeTokens; }, { missingFieldRows: 1 }],
+  ['missing raw total', row => { row.rawAmount = null; }, { missingFieldRows: 1 }],
+  ['numeric string', row => { row.inputTokens = '10'; }, { invalidFieldRows: 1 }],
+  ['arbitrary data', row => { row.readTokens = { private: SECRET }; }, { invalidFieldRows: 1 }],
+  ['fraction', row => { row.inputTokens = 1.5; }, { invalidFieldRows: 1 }],
+  ['NaN', row => { row.inputTokens = NaN; }, { invalidFieldRows: 1 }],
+  ['infinity', row => { row.inputTokens = Infinity; }, { invalidFieldRows: 1 }],
+  ['unsafe integer', row => { row.inputTokens = Number.MAX_SAFE_INTEGER + 1; }, { invalidFieldRows: 1 }],
+  ['positive raw total', row => { row.rawAmount = 15; }, { invalidFieldRows: 1 }],
+  ['zero charged raw total', row => { Object.assign(row, { rawAmount: 0, inputTokens: 0, writeTokens: 0, readTokens: 0 }); },
+    { invalidFieldRows: 1 }],
+  ['inconsistent total', row => { row.rawAmount = -16; }, { promptTotalMismatchRows: 1 }],
+]) test(`native usage marks ${label} incomplete without invalidating money or guessing missing tokens`, async () => {
+  const f = fixture();
+  Object.assign(f.data.transactions[0], { rawAmount: -15, inputTokens: 10, writeTokens: 3, readTokens: 2 });
+  f.data.transactions[1].rawAmount = -4;
+  edit(f.data.transactions[0]);
+  const report = await runAccountingPreflight(f.options);
+  assert.equal(report.status, 'provisional');
+  assert.equal(report.native.status, 'observed');
+  assert.equal(report.native.nativeUsd, 0.065);
+  assert.equal(report.native.providerTotalsMatch, true);
+  const usage = report.native.byProviderUsage[0];
+  assert.equal(usage.usageComplete, false);
+  assert.equal(usage.completeRows, 1);
+  assert.equal(usage.incompleteRows, 1);
+  assert.equal(usage.inputTokens, null);
+  assert.equal(usage.writeTokens, null);
+  assert.equal(usage.readTokens, null);
+  assert.equal(usage.outputTokens, 4);
+  for (const [key, value] of Object.entries(expected)) assert.equal(usage[key], value);
+  assert.equal(JSON.stringify(report).includes(SECRET), false);
+});
+
+test('incomplete completion usage does not erase independently complete prompt totals', async () => {
+  const f = fixture();
+  Object.assign(f.data.transactions[0], { rawAmount: -15, inputTokens: 10, writeTokens: 3, readTokens: 2 });
+  const usage = (await runAccountingPreflight(f.options)).native.byProviderUsage[0];
+  assert.equal(usage.usageComplete, false);
+  assert.equal(usage.missingFieldRows, 1);
+  assert.equal(usage.completeRows, 1);
+  assert.equal(usage.inputTokens, 10);
+  assert.equal(usage.writeTokens, 3);
+  assert.equal(usage.readTokens, 2);
+  assert.equal(usage.outputTokens, null);
+});
+
+test('a charged completion with zero raw tokens is incomplete despite its present numeric field', async () => {
+  const f = fixture();
+  f.data.transactions = [{ ...f.data.transactions[1], rawAmount: -0 }];
+  const report = await runAccountingPreflight(f.options);
+  assert.equal(report.status, 'provisional');
+  assert.equal(report.native.nativeUsd, 0.005);
+  const usage = report.native.byProviderUsage[0];
+  assert.equal(usage.usageComplete, false);
+  assert.equal(usage.invalidFieldRows, 1);
+  assert.equal(usage.missingFieldRows, 0);
+  assert.equal(usage.outputTokens, null);
+});
+
+test('prompt row sum overflow is incomplete and never rounded into an apparent match', async () => {
+  const f = fixture();
+  Object.assign(f.data.transactions[0], { rawAmount: -Number.MAX_SAFE_INTEGER,
+    inputTokens: Number.MAX_SAFE_INTEGER, writeTokens: 1, readTokens: 0 });
+  f.data.transactions[1].rawAmount = -4;
+  const report = await runAccountingPreflight(f.options);
+  assert.equal(report.status, 'provisional');
+  const usage = report.native.byProviderUsage[0];
+  assert.equal(usage.usageComplete, false);
+  assert.equal(usage.unsafeTotal, true);
+  assert.equal(usage.incompleteRows, 1);
+  assert.equal(usage.promptTotalMismatchRows, 0);
+  assert.equal(usage.inputTokens, null);
+  assert.equal(usage.outputTokens, 4);
+});
+
+for (const tokenType of ['prompt', 'completion']) test(`${tokenType} aggregate overflow is null despite individually complete rows`, async () => {
+  const f = fixture();
+  f.data.transactions = [Number.MAX_SAFE_INTEGER, 1].map((count, i) => ({
+    _id: `private-overflow-${i}`, createdAt: NOW, tokenType, tokenValue: -10_000, model: 'gpt-6-luna',
+    rawAmount: -count, ...(tokenType === 'prompt' ? { inputTokens: count, writeTokens: 0, readTokens: 0 } : {}),
+  }));
+  const report = await runAccountingPreflight(f.options);
+  assert.equal(report.status, 'provisional');
+  const usage = report.native.byProviderUsage[0];
+  assert.equal(usage.transactionCount, 2);
+  assert.equal(usage.completeRows, 2);
+  assert.equal(usage.incompleteRows, 0);
+  assert.equal(usage.unsafeTotal, true);
+  assert.equal(usage.usageComplete, false);
+  assert.equal(usage[tokenType === 'prompt' ? 'inputTokens' : 'outputTokens'], null);
+});
+
+test('credits and zero-value rows cannot add usage or make a complete charged aggregate incomplete', async () => {
+  const f = fixture();
+  Object.assign(f.data.transactions[0], { rawAmount: -15, inputTokens: 10, writeTokens: 3, readTokens: 2 });
+  f.data.transactions[1].rawAmount = -4;
+  Object.assign(f.data.transactions[2], { rawAmount: SECRET, inputTokens: Number.MAX_SAFE_INTEGER,
+    writeTokens: SECRET, readTokens: SECRET, model: 'private-credit-model' });
+  f.data.transactions.push({ ...f.data.transactions[2], _id: 'private-zero-id', tokenValue: 0 });
+  const report = await runAccountingPreflight(f.options);
+  const usage = report.native.byProviderUsage[0];
+  assert.equal(usage.transactionCount, 2);
+  assert.equal(usage.usageComplete, true);
+  assert.equal(usage.inputTokens, 10);
+  assert.equal(usage.outputTokens, 4);
+  assert.equal(report.native.byProviderUsage[3].transactionCount, 0);
+  assert.equal(f.calls.length, 3);
+  for (const value of [SECRET, 'private-credit-model', 'private-zero-id']) {
+    assert.equal(JSON.stringify(report).includes(value), false);
+  }
 });
 
 test('provider row counts and spend reconcile across providers without new queries or model disclosure', async () => {
@@ -118,6 +266,9 @@ test('unrecognized and unsafe provider labels collapse to unknown without creati
   const result = await runAccountingPreflight(f.options);
   assert.equal(result.native.providerTotalsMatch, true);
   assert.deepEqual(result.native.byProvider[3], { provider: 'unknown', transactionCount: 4, spendUsd: 0.04 });
+  assert.equal(result.native.byProviderUsage[3].transactionCount, 4);
+  assert.equal(result.native.byProviderUsage[3].missingFieldRows, 4);
+  assert.equal(result.native.byProviderUsage[3].outputTokens, null);
   assert.ok(result.native.byProvider.slice(0, 3).every((row) => row.transactionCount === 0 && row.spendUsd === 0));
   for (const row of result.native.byProvider) assert.deepEqual(Object.keys(row), ['provider', 'transactionCount', 'spendUsd']);
   for (const value of [...labels, 'private-model-', 'private-id-']) assert.equal(JSON.stringify(result).includes(value), false);
@@ -131,6 +282,8 @@ test('empty charged history has zero provider totals and credits are excluded', 
   assert.equal(result.native.nativeUsd, 0);
   assert.equal(result.native.providerTotalsMatch, true);
   assert.ok(result.native.byProvider.every((row) => row.transactionCount === 0 && row.spendUsd === 0));
+  assert.ok(result.native.byProviderUsage.every((row) => row.transactionCount === 0 && row.usageComplete &&
+    row.inputTokens === 0 && row.writeTokens === 0 && row.readTokens === 0 && row.outputTokens === 0));
 });
 
 test('receipt includes only a validated source commit, never arbitrary environment text', async () => {
@@ -214,10 +367,52 @@ test('existing shared activation is reported and its partitions must match', asy
   const f = fixture();
   const factory = f.options.ledgerFactory;
   f.options.ledgerFactory = () => ({ ...factory(), sharedBudget: async () => ({ mode: 'shared', timeZone: 'America/Denver' }) });
-  Object.assign(f.summary, { sharedMode: true, nativeUsd: 0, historyUsd: 0, delegatedUsd: 0.01 });
+  Object.assign(f.summary, { sharedMode: true, nativeUsd: 0, historyUsd: 0, delegatedUsd: 0.01, reconciliationUsd: 0 });
   assert.equal((await runAccountingPreflight(f.options)).ledger.sharedActivation, 'active');
   f.summary.delegatedUsd = 0;
   assert.equal((await runAccountingPreflight(f.options)).ledger.reason, 'ledger_changed_during_observation');
+});
+
+test('settled provider reconciliation is a separate checked partition without reading its private evidence', async () => {
+  const f = fixture();
+  f.data.delegated_usage.push({ reservationId: 'private-reconciliation-id', monthStart: MONTH,
+    status: 'settled', reservedUsd: 0, actualUsd: 0.02, source: 'provider-reconciliation',
+    metadata: { source: 'provider-reconciliation' }, reconciliation: { privateEvidence: SECRET } });
+  f.data.budget_state[0].settledUsd = f.summary.settledUsd = 0.03;
+  const factory = f.options.ledgerFactory;
+  f.options.ledgerFactory = () => ({ ...factory(), sharedBudget: async () => ({ mode: 'shared', timeZone: 'America/Denver' }) });
+  Object.assign(f.summary, { sharedMode: true, nativeUsd: 0, historyUsd: 0, delegatedUsd: 0.01, reconciliationUsd: 0.02 });
+  const report = await runAccountingPreflight(f.options);
+  assert.equal(report.status, 'provisional');
+  assert.equal(report.ledger.stateEventsMatch, true);
+  assert.equal(report.ledger.readSummaryMatches, true);
+  assert.deepEqual(report.ledger.partitions, { nativeUsd: 0, delegatedUsd: 0.01, historyUsd: 0, reconciliationUsd: 0.02 });
+  assert.equal(report.ledger.settledUsd, 0.03);
+  assert.equal(f.calls.length, 3);
+  const projection = f.calls.find((call) => call.name === 'delegated_usage').projection;
+  assert.equal(Object.keys(projection).some((key) => key.startsWith('reconciliation')), false);
+  for (const value of [SECRET, 'private-reconciliation-id', 'privateEvidence']) {
+    assert.equal(JSON.stringify(report).includes(value), false);
+  }
+  f.summary.reconciliationUsd = 0;
+  assert.equal((await runAccountingPreflight(f.options)).ledger.reason, 'ledger_changed_during_observation');
+});
+
+for (const status of ['reserved', 'released']) test(`provider reconciliation cannot appear as ${status}`, async () => {
+  const f = fixture();
+  f.data.delegated_usage[0].source = 'provider-reconciliation';
+  f.data.delegated_usage[0].metadata.source = 'provider-reconciliation';
+  f.data.delegated_usage[0].status = status;
+  const report = await runAccountingPreflight(f.options);
+  assert.equal(report.ledger.reason, 'ledger_integrity_invalid');
+  assert.equal(report.native.status, 'observed');
+});
+
+test('provider reconciliation source conflicts remain invalid', async () => {
+  const f = fixture();
+  f.data.delegated_usage[0].source = 'provider-reconciliation';
+  const report = await runAccountingPreflight(f.options);
+  assert.equal(report.ledger.reason, 'ledger_integrity_invalid');
 });
 
 test('role inspection unavailable is explicit; excessive roles are not accepted', async () => {

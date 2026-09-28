@@ -65,6 +65,41 @@ node native-cutover.js apply --plan PRIVATE_PLAN_PATH --approve-digest APPROVED_
 
 The CLI requires the read-only `MISSION_AI_MONGO_URI` and dedicated `MISSION_AI_LEDGER_MONGO_URI`. The `--drained` flag is an operator attestation, not a mechanism that stops the original service or discovers in-flight provider requests. Do not pass it until draining is verified. Never generate a new plan/digest or adjust the cutoff automatically to bypass a stale-plan rejection. If the deployed CLI differs from this reviewed interface, stop and reconcile the code/procedure before applying it.
 
+### Positive provider-usage reconciliation
+
+An original transaction can understate a provider charge, for example when one-hour cache creation was priced as five-minute creation. Preserve that transaction. An optional version 2 cutover imports a separate positive `provider-reconciliation` event alongside the unchanged native history. It is not a native request, a provider dispatch, or a balance replacement. No general adjustment endpoint or post-activation amendment is provided.
+
+First match the provider export to the original database, account/project, model, exact period, token categories and pricing modifiers. Retain a private scope attestation containing that review and the reproducible token/rate calculation. The supported basis is `provider_usage_and_published_rates`: it does not assert an exact invoice amount, and category totals rounded to cents are not exact billing evidence. File hashes prove which evidence was reviewed, not that its claims are correct. Unresolved scope or missing usage remains a blocker to activation.
+
+Use a private JSON evidence bundle with exactly `version: 1`, `reconciliations`, and `evidenceFiles`. Each evidence-file entry has only `path` and lowercase `sha256`; relative paths resolve from the bundle's directory. Each nonempty file is limited to 5 MB. The file list must match exactly the unique hashes referenced by the corrections. Paths and raw file contents never enter the plan or safe CLI output.
+
+Each reconciliation has only these fields:
+
+- `provider`: `openai`, `anthropic`, or `google`.
+- `reason`: `provider_usage_reconciliation`; `basis`: `provider_usage_and_published_rates`.
+- `database`: the source database; `periodStart` and `periodEnd`: canonical UTC ISO timestamps, within the current Denver month and at or before cutoff. Coverage is start-inclusive/end-exclusive.
+- `coveredHistoryIds`: a nonempty list of existing `DATABASE/transactions/ID` history IDs for that provider and period. A source row may be covered only once across corrections.
+- `recordedNanoUsd`, `providerNanoUsd`, `adjustmentNanoUsd`: nonnegative safe integers, with a strictly positive adjustment. One USD is one billion nanodollars. The recorded amount must equal the covered native history; provider amount minus recorded amount must equal the adjustment. The token/rate calculation underlying the provider amount belongs in the retained evidence and requires operator review.
+- `evidence`: exactly `usageSha256`, `pricingSha256`, and `scopeSha256`, each a lowercase SHA-256 of a retained private file. The pricing file should preserve the official source URL and observation date with the rates used; the scope file records account/period matching and pricing assumptions without credentials.
+
+The importer derives a stable correction ID from provider, reason, database, period, covered IDs and scope evidence. The amount and all evidence hashes enter the approved plan and activation manifest. An optional saved `id` is accepted only if it matches this derivation. Unknown fields, unknown labels, repeated coverage, arithmetic mismatch, and nonpositive adjustments fail closed. This interface is for manually reviewed corrections; it does not parse provider CSVs or automatically discover unrecorded charges.
+
+While both paid flags remain explicitly `false`, prepare v2 with:
+
+```sh
+node native-cutover.js plan --cutover-at APPROVED_UTC_ISO_CUTOFF --out PRIVATE_PLAN_PATH --reconciliations PRIVATE_EVIDENCE_BUNDLE
+```
+
+The safe receipt reports recorded native USD, reconciliation USD, corrected native USD, counts and digest separately. Review the private plan plus its evidence before approving the exact digest. After production drain and explicit activation approval, use:
+
+```sh
+node native-cutover.js apply --plan PRIVATE_PLAN_PATH --approve-digest APPROVED_SHA256 --drained --reconciliations PRIVATE_EVIDENCE_BUNDLE
+```
+
+Apply re-reads source transactions and evidence bytes; changed evidence, correction content or source data invalidates approval. The existing Mongo transaction/fence activates history, correction events, counters and control together. Identical retries are idempotent; conflicting manifests fail. Shared summaries expose `reconciliationUsd` as a fourth partition and include it once in settled spend, reservations, policy decisions and dashboard totals. Provider breakdowns include its dollars with task `provider-reconciliation`, without claiming extra requests. Ordinary reservation/settlement/release operations cannot alter the correction.
+
+Without the optional bundle, version 1 plan bytes/digests and existing activation-manifest hashes remain unchanged. Legacy shared ledgers have zero reconciliation dollars. A version 2 activation is not compatible with rolling back to code that does not recognize its source; preserve paid gates off during rollout/rollback review. Never switch an activated ledger back to native snapshot accounting or hand-edit its state to remove the adjustment.
+
 ## Unsupported paths must stay denied
 
 | Feature | Examples of separate dispatch paths | Initial disposition |

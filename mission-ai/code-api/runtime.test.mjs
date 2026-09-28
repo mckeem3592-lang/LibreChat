@@ -6,19 +6,37 @@ import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import test from 'node:test';
+import { dependencyReview, requireSupportedNode } from './apply-dependency-patches.mjs';
 
 const service = path.resolve(process.env.MISSION_AI_CODE_API_TEST_SERVICE || '.mission-ai-code-api/service');
 const requireService = createRequire(path.join(service, 'package.json'));
 
 test('installed lock and upstream direct declarations match the reviewed source and retained graph', async () => {
+  requireSupportedNode();
   const manifestBytes = await readFile(path.join(service, 'package.json'));
   assert.equal(crypto.createHash('sha256').update(manifestBytes).digest('hex'),
-    '2ab9f31664abc06b16f6edfd60c282b3eeacc8b3b705f966cb144e65eca28c82');
+    dependencyReview.upstreamManifest.patchedSha256);
   const manifest = JSON.parse(manifestBytes);
   const lock = JSON.parse(await readFile(new URL('package-lock.json', import.meta.url)));
   for (const key of ['dependencies', 'devDependencies']) assert.deepEqual(lock.packages[''][key], manifest[key]);
+  assert.deepEqual(manifest.overrides, {
+    'decode-uri-component': '0.5.0', ...dependencyReview.upstreamManifest.overrides,
+  });
   assert.deepEqual(await readFile(path.join(service, 'package-lock.json')),
     await readFile(new URL('package-lock.json', import.meta.url)));
+});
+
+test('installed MinIO compatibility patch and parser versions match the reviewed fingerprints', async () => {
+  for (const file of dependencyReview.files) {
+    const bytes = await readFile(path.join(service, 'node_modules/minio', file.path));
+    assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'), file.patchedSha256);
+  }
+  for (const [name, expected] of [
+    ['minio', dependencyReview.minioVersion], ['stream-json', dependencyReview.streamJsonVersion],
+    ['stream-chain', dependencyReview.streamChainVersion],
+  ]) {
+    assert.equal(JSON.parse(await readFile(path.join(service, 'node_modules', name, 'package.json'))).version, expected);
+  }
 });
 
 test('installed message codec works without installation hooks, including explicit JavaScript fallback', () => {

@@ -1,8 +1,14 @@
+import { normalizeReconciliations, verifyReconciliationEvidence } from './reconciliation.js';
+import type { ProviderReconciliation } from './reconciliation.js';
+
 type Policy = { targetUsd: number; economyUsd: number; hardUsd: number };
 type Row = { id: string; createdAt: string; tokenType: string; tokenValue: number; model?: string };
 type History = { id: string; at: string; usd: number; provider: string; model: string };
 export interface CutoverPlan {
-  version: 1;
+  version: 1 | 2;
+  reconciliations?: ProviderReconciliation[];
+  reconciliationUsd?: number;
+  correctedNativeUsd?: number;
   database: string;
   cutoverAt: string;
   monthStart: string;
@@ -17,8 +23,9 @@ interface Dependencies {
   monthStart: (now: Date, timeZone: string) => Date;
   readRows: (database: string, monthStart: Date) => Promise<Row[]>;
   providerForModel: (model: string) => string;
-  activate: (input: { policy: Policy; timeZone: string; cutoverAt: string; history: History[] }) => Promise<unknown>;
+  activate: (input: { policy: Policy; timeZone: string; cutoverAt: string; history: History[]; reconciliations?: ProviderReconciliation[] }) => Promise<unknown>;
   now: () => Date;
+  verifyEvidence?: (hashes: string[]) => Promise<boolean>;
 }
 function fail(code: string): never { throw new Error(code); }
 function iso(value: unknown): string {
@@ -29,7 +36,7 @@ function iso(value: unknown): string {
 /** A preparation tool, never an HTTP activation endpoint. The operator must drain all paid traffic. */
 export function createNativeCutover(deps: Dependencies) {
   async function plan(input: {
-    database: string; cutoverAt: string; timeZone: string; policy: Policy;
+    database: string; cutoverAt: string; timeZone: string; policy: Policy; reconciliations?: ProviderReconciliation[];
   }): Promise<CutoverPlan> {
     if (!input.database || !/^[a-zA-Z0-9_-]{1,64}$/.test(input.database)) fail('invalid_native_database');
     const cutoff = iso(input.cutoverAt);
@@ -66,7 +73,15 @@ export function createNativeCutover(deps: Dependencies) {
       monthStart: start.toISOString(), timeZone: input.timeZone,
       policy: { targetUsd: policy.targetUsd, economyUsd: policy.economyUsd, hardUsd: policy.hardUsd },
       history, nativeUsd };
-    return { ...base, digest: deps.hash(JSON.stringify(base)) };
+    if (input.reconciliations === undefined) return { ...base, digest: deps.hash(JSON.stringify(base)) };
+    const reconciliations = normalizeReconciliations(input.reconciliations, history,
+      { database: input.database, monthStart: base.monthStart, cutoverAt: cutoff }, deps.hash);
+    await verifyReconciliationEvidence(reconciliations, deps.verifyEvidence);
+    const reconciliationUsd = reconciliations.reduce((sum, item) => sum + item.adjustmentNanoUsd / 1e9, 0);
+    const correctedNativeUsd = nativeUsd + reconciliationUsd;
+    if (!Number.isFinite(correctedNativeUsd)) fail('invalid_native_total');
+    const revised = { ...base, version: 2 as const, reconciliations, reconciliationUsd, correctedNativeUsd };
+    return { ...revised, digest: deps.hash(JSON.stringify(revised)) };
   }
   return {
     plan,
@@ -76,13 +91,16 @@ export function createNativeCutover(deps: Dependencies) {
         fail('cutover_requires_drained_disabled_services');
       }
       const saved = input.plan;
-      if (saved?.version !== 1 || !/^[a-f0-9]{64}$/.test(input.approvedDigest) ||
+      if (![1, 2].includes(saved?.version) ||
+          (saved.version === 1 && saved.reconciliations !== undefined) ||
+          (saved.version === 2 && saved.reconciliations === undefined) || !/^[a-f0-9]{64}$/.test(input.approvedDigest) ||
           input.approvedDigest !== saved.digest) fail('cutover_approval_mismatch');
       const fresh = await plan(saved);
       // Includes IDs, costs, models and timestamps: changed/missing/late rows invalidate approval.
       if (fresh.digest !== saved.digest || JSON.stringify(fresh) !== JSON.stringify(saved)) fail('cutover_plan_changed');
       return deps.activate({ policy: fresh.policy, timeZone: fresh.timeZone,
-        cutoverAt: fresh.cutoverAt, history: fresh.history });
+        cutoverAt: fresh.cutoverAt, history: fresh.history,
+        ...(fresh.version === 2 ? { reconciliations: fresh.reconciliations } : {}) });
     },
   };
 }

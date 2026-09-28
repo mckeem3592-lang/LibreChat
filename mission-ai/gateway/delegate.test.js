@@ -183,6 +183,47 @@ test('missing usage is charged conservatively before another paid attempt', asyn
   });
 });
 
+test('Anthropic cache writes without TTL details settle the full reservation as estimated', async () => {
+  await env({ ANTHROPIC_API_KEY: 'a', OPENAI_API_KEY: null, GEMINI_API_KEY: null }, async () => {
+    const ledger = createMemoryUsageLedger();
+    const settlements = [];
+    let reservedAmount;
+    let calls = 0;
+    await assert.rejects(() => delegateRequest({
+      task: 'coding', prompt: 'fix code', maxOutputTokens: 10, enabled: true,
+      dashboardReader: dashboard(),
+      usageLedger: {
+        ...ledger,
+        reserve: async (input) => {
+          reservedAmount = input.reserveUsd;
+          return ledger.reserve(input);
+        },
+        settle: async (input) => {
+          settlements.push(input);
+          return ledger.settle(input);
+        },
+        release: () => assert.fail('uncertain provider charges must not be released'),
+      },
+      fetchImpl: async () => {
+        calls++;
+        return response({
+          content: [{ type: 'text', text: 'already generated' }],
+          usage: { input_tokens: 12, output_tokens: 8, cache_creation_input_tokens: 4 },
+        });
+      },
+    }), /delegate_all_providers_failed/);
+    assert.equal(calls, 1);
+    assert.equal(settlements.length, 1);
+    assert.ok(reservedAmount > 0);
+    assert.equal(settlements[0].actualUsd, reservedAmount);
+    assert.equal(settlements[0].usage.estimated, true);
+    assert.equal(settlements[0].usage.error, 'provider_usage_invalid');
+    const summary = await ledger.summary();
+    assert.equal(summary.settledUsd, reservedAmount);
+    assert.equal(summary.reservedUsd, 0);
+  });
+});
+
 test('a failed settlement preserves the reservation and prevents fallback', async () => {
   await env({ OPENAI_API_KEY: 'o', ANTHROPIC_API_KEY: 'a' }, async () => {
     const ledger = createMemoryUsageLedger();

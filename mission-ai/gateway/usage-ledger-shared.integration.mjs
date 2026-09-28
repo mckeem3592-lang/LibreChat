@@ -41,6 +41,104 @@ async function fixture(t) {
 }
 const reserve = (ledger, extra = {}) => ledger.reserve({ ...options, reserveUsd: 1, ...extra });
 
+function reconciledActivation() {
+  const base = activation();
+  base.history[0].provider = 'anthropic';
+  return { ...base, policy: { targetUsd: 2, economyUsd: 3, hardUsd: 4 }, reconciliations: [{
+    provider: 'anthropic', reason: 'provider_usage_reconciliation', basis: 'provider_usage_and_published_rates',
+    database: 'test', periodStart: '2026-09-01T06:00:00.000Z', periodEnd: now.toISOString(),
+    coveredHistoryIds: [base.history[0].id], recordedNanoUsd: 2_000_000_000,
+    providerNanoUsd: 2_500_000_000, adjustmentNanoUsd: 500_000_000,
+    evidence: { usageSha256: 'a'.repeat(64), pricingSha256: 'b'.repeat(64), scopeSha256: 'c'.repeat(64) },
+  }] };
+}
+
+test('reconciliation activation is atomic, restart-idempotent and preserves a distinct immutable source', async (t) => {
+  const f = await fixture(t), input = reconciledActivation();
+  const hold = await reserve(f.ledger, { reserveUsd: 0.1, directCapUsd: 10 });
+  await f.ledger.settle({ reservationId: hold.reservationId, actualUsd: 0.1 });
+  const delegatedBefore = await f.db.collection('delegated_usage').findOne({ reservationId: hold.reservationId });
+  await Promise.all([f.ledger.activateSharedBudget(input), f.open().activateSharedBudget(input)]);
+  await f.open().activateSharedBudget(input);
+  const correction = await f.db.collection('delegated_usage').findOne({ source: 'provider-reconciliation' });
+  assert.equal(correction.actualUsd, 0.5);
+  assert.equal(correction.reservedUsd, 0);
+  assert.equal(correction.nativeTransactionId, undefined);
+  assert.equal(correction.reconciliation.basis, 'provider_usage_and_published_rates');
+  assert.equal(await f.db.collection('delegated_usage').countDocuments({ source: 'provider-reconciliation' }), 1);
+  assert.deepEqual(await f.db.collection('delegated_usage').findOne({ reservationId: hold.reservationId }), delegatedBefore);
+  const summary = await f.open().summary(options);
+  assert.equal(summary.historyUsd, 2);
+  assert.equal(summary.reconciliationUsd, 0.5);
+  assert.equal(summary.delegatedUsd, 0.1);
+  assert.equal(summary.settledUsd, 2.6);
+  await assert.rejects(() => f.ledger.reserve({ ...options, source: 'provider-reconciliation', reserveUsd: 0.1 }), /invalid_reservation_source/);
+  await assert.rejects(() => f.ledger.settle({ reservationId: correction.reservationId, actualUsd: 0.5 }), /invalid_reservation_source/);
+  assert.equal(await f.ledger.release({ reservationId: correction.reservationId }), false);
+  assert.deepEqual(await f.db.collection('delegated_usage').findOne({ _id: correction._id }), correction);
+  await assert.rejects(() => reserve(f.open(), { reserveUsd: 1.400001 }), /monthly_hard_limit/);
+  await reserve(f.open(), { reserveUsd: 1.4 });
+});
+
+test('failure inserting a correction rolls back history, counters and activation without disturbing old spend', async (t) => {
+  const f = await fixture(t);
+  const hold = await reserve(f.ledger, { directCapUsd: 10 });
+  await f.ledger.settle({ reservationId: hold.reservationId, actualUsd: 0.1 });
+  const before = await f.db.collection('budget_state').find({}).toArray();
+  await f.db.command({ collMod: 'delegated_usage', validator: { source: { $ne: 'provider-reconciliation' } } });
+  await assert.rejects(() => f.ledger.activateSharedBudget(reconciledActivation()), (error) => error.code === 121);
+  assert.equal(await f.ledger.sharedBudget(), null);
+  assert.deepEqual(await f.db.collection('budget_state').find({}).toArray(), before);
+  assert.equal(await f.db.collection('delegated_usage').countDocuments({ source: 'native-history' }), 0);
+  assert.equal(await f.db.collection('delegated_usage').countDocuments({ source: 'provider-reconciliation' }), 0);
+  await f.db.command({ collMod: 'delegated_usage', validator: {} });
+  await f.open().activateSharedBudget(reconciledActivation());
+  assert.equal((await f.ledger.summary(options)).settledUsd, 2.6);
+});
+
+test('differing correction manifests cannot both commit, and activation/reservation races retain the corrected cap', async (t) => {
+  const f = await fixture(t), changed = reconciledActivation();
+  changed.reconciliations[0].providerNanoUsd += 100_000_000;
+  changed.reconciliations[0].adjustmentNanoUsd += 100_000_000;
+  const conflicts = await Promise.allSettled([f.ledger.activateSharedBudget(reconciledActivation()),
+    f.open().activateSharedBudget(changed)]);
+  assert.equal(conflicts.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.equal(await f.db.collection('delegated_usage').countDocuments({ source: 'provider-reconciliation' }), 1);
+  const g = await fixture(t);
+  const race = await Promise.allSettled([g.ledger.activateSharedBudget(reconciledActivation()),
+    reserve(g.open(), { reserveUsd: 2, directCapUsd: 100 })]);
+  assert.equal(race.filter((result) => result.status === 'fulfilled').length, 1);
+  if (await g.ledger.sharedBudget()) {
+    const summary = await g.ledger.summary(options);
+    assert.equal(summary.settledUsd, 2.5);
+    assert.equal(summary.reservedUsd, 0);
+  } else {
+    assert.equal((await g.ledger.summary(options)).reservedUsd, 2);
+    assert.equal(await g.db.collection('delegated_usage').countDocuments({ source: 'provider-reconciliation' }), 0);
+  }
+});
+
+test('correction counters and settled-only source restrictions survive reopening and billing month changes', async (t) => {
+  const f = await fixture(t);
+  await f.ledger.activateSharedBudget(reconciledActivation());
+  const nextMonth = await f.open().summary({ now: new Date('2026-10-02T18:00:00Z'), timeZone });
+  assert.equal(nextMonth.reconciliationUsd, 0);
+  await f.db.collection('budget_state').updateOne({}, { $inc: { settledUsd: -0.5 } });
+  await assert.rejects(() => reserve(f.open()), /ledger_integrity_invalid/);
+  await f.db.collection('budget_state').updateOne({}, { $inc: { settledUsd: 0.5 } });
+  await f.db.collection('delegated_usage').updateOne({ source: 'provider-reconciliation' }, { $set: { status: 'released' } });
+  await assert.rejects(() => reserve(f.open()), /ledger_integrity_invalid/);
+});
+
+test('v1 ledger activation retains its pre-reconciliation manifest hash', async (t) => {
+  const f = await fixture(t);
+  await f.ledger.activateSharedBudget(activation());
+  const control = await f.db.collection('budget_control').findOne({ _id: 'global' });
+  assert.equal(control.manifestHash, '0922857a717dd911d872956299ad6f6a069cd772dda96ef7303da72598ee0834');
+  assert.equal(control.manifestVersion, undefined);
+  assert.equal(control.reconciliationCount, undefined);
+});
+
 test('shared cutover imports history once and preserves prior delegated settlements', async (t) => {
   const f = await fixture(t);
   const old = await reserve(f.ledger, { directCapUsd: 10 });
@@ -55,7 +153,7 @@ test('shared cutover imports history once and preserves prior delegated settleme
   assert.equal(await f.db.collection('delegated_usage').countDocuments({ source: 'native-history' }), 2);
   assert.deepEqual(await f.open().summary(options), {
     monthStart: '2026-09-01T06:00:00.000Z', settledUsd: 3.5, reservedUsd: 0,
-    sharedMode: true, nativeUsd: 0, delegatedUsd: 0.5, historyUsd: 3,
+    sharedMode: true, nativeUsd: 0, delegatedUsd: 0.5, historyUsd: 3, reconciliationUsd: 0,
   });
   await assert.rejects(() => f.ledger.activateSharedBudget({ ...input, history: input.history.slice(1) }), /shared_budget_conflict/);
 });

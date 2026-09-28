@@ -20,8 +20,14 @@ export function combineDashboard(nativeDashboard, delegatedSummary, delegatedBre
     ? Number(delegatedSummary.nativeUsd) + Number(delegatedSummary.historyUsd)
     : Number(nativeDashboard?.spendUsd || 0);
   const delegatedSpendUsd = Number(shared ? delegatedSummary.delegatedUsd : delegatedSummary?.settledUsd || 0);
+  const reconciliationUsd = shared ? delegatedSummary.reconciliationUsd : 0;
   const reservedUsd = Number(delegatedSummary?.reservedUsd || 0);
-  const totalSpendUsd = nativeSpendUsd + delegatedSpendUsd;
+  const totalSpendUsd = nativeSpendUsd + delegatedSpendUsd + reconciliationUsd;
+  if (shared && (['nativeUsd', 'historyUsd', 'delegatedUsd', 'reconciliationUsd', 'settledUsd', 'reservedUsd']
+    .some((key) => typeof delegatedSummary[key] !== 'number' || !Number.isFinite(delegatedSummary[key]) || delegatedSummary[key] < 0) ||
+      !Number.isFinite(totalSpendUsd) || Math.abs(totalSpendUsd - delegatedSummary.settledUsd) > 1e-9)) {
+    throw new Error('invalid_budget_snapshot');
+  }
   const projectedSpendUsd = totalSpendUsd + reservedUsd;
   const targetUsd = Number(nativeDashboard?.targetUsd ?? 100);
   const economyUsd = Number(nativeDashboard?.economyUsd ?? 125);
@@ -52,6 +58,7 @@ export function combineDashboard(nativeDashboard, delegatedSummary, delegatedBre
     reservedUsd,
     nativeSpendUsd,
     delegatedSpendUsd,
+    ...(shared ? { reconciliationUsd } : {}),
     mode: accountingBlocked ? 'blocked' : mode,
     projectedMode: accountingBlocked ? 'blocked' : projectedMode,
     ...(accountingBlocked ? { accountingBlocked: true, accountingIssue: delegatedSummary.accountingIssue } : {}),

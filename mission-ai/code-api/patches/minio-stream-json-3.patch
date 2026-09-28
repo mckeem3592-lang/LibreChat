@@ -1,0 +1,60 @@
+--- a/dist/main/notification.js
++++ b/dist/main/notification.js
+@@ -4,7 +4,7 @@
+   value: true
+ });
+ var _eventemitter = require("eventemitter3");
+-var _Parser = require("stream-json/jsonl/Parser.js");
++var _Parser = require("stream-json/jsonl/parser.js").default;
+ var _helpers = require("./helpers.js");
+ var _helper = require("./internal/helper.js");
+ /*
+@@ -196,7 +196,7 @@
+       bucketName: this.bucketName,
+       query
+     }, '', [200], region).then(response => {
+-      const asm = _Parser.make();
++      const asm = _Parser.asStream();
+       (0, _helper.pipesetup)(response, asm).on('data', data => {
+         // Data is flushed periodically (every 5 seconds), so we should
+         // handle it after flushing from the JSON parser.
+--- a/dist/esm/notification.mjs
++++ b/dist/esm/notification.mjs
+@@ -15,7 +15,7 @@
+  */
+ 
+ import { EventEmitter } from 'eventemitter3';
+-import jsonLineParser from 'stream-json/jsonl/Parser.js';
++import jsonLineParser from 'stream-json/jsonl/parser.js';
+ import { DEFAULT_REGION } from "./helpers.mjs";
+ import { pipesetup, uriEscape } from "./internal/helper.mjs";
+ 
+@@ -176,7 +176,7 @@
+       bucketName: this.bucketName,
+       query
+     }, '', [200], region).then(response => {
+-      const asm = jsonLineParser.make();
++      const asm = jsonLineParser.asStream();
+       pipesetup(response, asm).on('data', data => {
+         // Data is flushed periodically (every 5 seconds), so we should
+         // handle it after flushing from the JSON parser.
+--- a/src/notification.ts
++++ b/src/notification.ts
+@@ -15,7 +15,7 @@
+  */
+ 
+ import { EventEmitter } from 'eventemitter3'
+-import jsonLineParser from 'stream-json/jsonl/Parser.js'
++import jsonLineParser from 'stream-json/jsonl/parser.js'
+ 
+ import { DEFAULT_REGION } from './helpers.ts'
+ import type { TypedClient } from './internal/client.ts'
+@@ -216,7 +216,7 @@
+ 
+     this.client.makeRequestAsync({ method, bucketName: this.bucketName, query }, '', [200], region).then(
+       (response) => {
+-        const asm = jsonLineParser.make()
++        const asm = jsonLineParser.asStream()
+ 
+         pipesetup(response, asm)
+           .on('data', (data) => {

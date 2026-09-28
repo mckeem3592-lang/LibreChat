@@ -14,6 +14,7 @@ import { monthStartFor } from '../../plugin/mission-ai-budget/scripts/budget-tim
 
 const MAX_ROWS = 100_000;
 const TIME_ZONE = 'America/Denver';
+const PROVIDERS = ['openai', 'anthropic', 'google', 'unknown'];
 const SAFE_ERRORS = new Set(['configuration_invalid', 'database_identity_invalid', 'database_scope_mismatch',
   'row_limit', 'ledger_integrity_invalid', 'ledger_changed_during_observation', 'native_not_drained',
   'invalid_native_transaction', 'invalid_native_total', 'native_history_too_large', 'cutover_month_changed',
@@ -75,6 +76,58 @@ async function rows(resource, collection, filter, projection) {
   return result;
 }
 
+function providerUsage(transactions, catalog) {
+  const buckets = new Map(PROVIDERS.map((provider) => [provider, {
+    provider, transactionCount: 0, promptRows: 0, completionRows: 0,
+    completeRows: 0, incompleteRows: 0, missingFieldRows: 0, invalidFieldRows: 0,
+    promptTotalMismatchRows: 0, unsafeTotal: false, usageComplete: true,
+    inputTokens: 0, writeTokens: 0, readTokens: 0, outputTokens: 0,
+  }]));
+  const promptFields = ['inputTokens', 'writeTokens', 'readTokens'];
+  const add = (a, b) => b <= Number.MAX_SAFE_INTEGER - a ? a + b : null;
+  for (const row of transactions) {
+    // The money planner has already validated dates/types and rejected invalid charges.
+    // Positive credits and zero-value rows are never evidence of paid token usage.
+    if (row.tokenValue >= 0) continue;
+    const bucket = buckets.get(providerForModel(row.model ?? 'unknown', catalog)) || buckets.get('unknown');
+    const prompt = row.tokenType === 'prompt';
+    const fields = prompt ? ['rawAmount', ...promptFields] : ['rawAmount'];
+    const missing = fields.some((field) => row[field] == null);
+    // A charged token-based transaction cannot have a zero or positive raw debit.
+    const invalid = fields.some((field) => row[field] != null &&
+      (!Number.isSafeInteger(row[field]) || (field === 'rawAmount' && row[field] >= 0)));
+    let mismatch = false, unsafe = false;
+    if (!missing && !invalid && prompt) {
+      let total = 0;
+      for (const field of promptFields) {
+        total = add(total, Math.abs(row[field]));
+        if (total === null) { unsafe = true; break; }
+      }
+      if (!unsafe) mismatch = total !== Math.abs(row.rawAmount);
+    }
+    bucket.transactionCount += 1;
+    bucket[prompt ? 'promptRows' : 'completionRows'] += 1;
+    if (missing) bucket.missingFieldRows += 1;
+    if (invalid) bucket.invalidFieldRows += 1;
+    if (mismatch) bucket.promptTotalMismatchRows += 1;
+    const complete = !missing && !invalid && !mismatch && !unsafe;
+    bucket[complete ? 'completeRows' : 'incompleteRows'] += 1;
+    bucket.unsafeTotal ||= unsafe;
+    const outputFields = prompt ? promptFields : ['outputTokens'];
+    for (const field of outputFields) {
+      // Null means the full category total is unknown, never a subtotal or guessed zero.
+      if (!complete) bucket[field] = null;
+      else if (bucket[field] !== null) {
+        bucket[field] = add(bucket[field], Math.abs(row[prompt ? field : 'rawAmount']));
+        if (bucket[field] === null) bucket.unsafeTotal = true;
+      }
+    }
+    // completeRows describes individual rows; aggregate overflow can still prevent a total.
+    bucket.usageComplete = bucket.incompleteRows === 0 && !bucket.unsafeTotal;
+  }
+  return [...buckets.values()];
+}
+
 function compareLedger(states, events, monthStart, cutoff) {
   const balances = new Map();
   const totals = new Map();
@@ -91,8 +144,9 @@ function compareLedger(states, events, monthStart, cutoff) {
     balances.set(state._id, state);
     if (state.accountingBlocked) blockedStates += 1;
   }
-  const partitions = { nativeUsd: 0, delegatedUsd: 0, historyUsd: 0 };
-  const sourceKeys = new Map([['native', 'nativeUsd'], ['delegated', 'delegatedUsd'], ['native-history', 'historyUsd']]);
+  const partitions = { nativeUsd: 0, delegatedUsd: 0, historyUsd: 0, reconciliationUsd: 0 };
+  const sourceKeys = new Map([['native', 'nativeUsd'], ['delegated', 'delegatedUsd'],
+    ['native-history', 'historyUsd'], ['provider-reconciliation', 'reconciliationUsd']]);
   for (const event of events) {
     const source = event.source ?? event.metadata?.source ?? 'delegated';
     if (!Object.hasOwn(counts, event.status) || !balances.has(event.monthStart) ||
@@ -101,7 +155,7 @@ function compareLedger(states, events, monthStart, cutoff) {
         (event.source !== undefined && !sourceKeys.has(event.source)) ||
         (event.metadata?.source !== undefined && !sourceKeys.has(event.metadata.source)) ||
         (event.source !== undefined && event.metadata?.source !== undefined && event.source !== event.metadata.source) ||
-        (source === 'native-history' && event.status !== 'settled') ||
+        (['native-history', 'provider-reconciliation'].includes(source) && event.status !== 'settled') ||
         (event.underestimated !== undefined && typeof event.underestimated !== 'boolean') ||
         (event.usage?.estimated !== undefined && typeof event.usage.estimated !== 'boolean')) fail('ledger_integrity_invalid');
     ids.add(event.reservationId);
@@ -165,21 +219,25 @@ export async function runAccountingPreflight({ env = process.env, now = () => ne
         active();
         const catalog = await catalogLoader();
         active();
+        let nativeRows;
         const planner = createNativeCutover({ now, monthStart: monthStartFor,
           hash: (text) => crypto.createHash('sha256').update(text).digest('hex'),
           providerForModel: (model) => providerForModel(model, catalog),
           // The planner's apply method is never exposed or invoked by this diagnostic.
           activate: () => fail('configuration_invalid'),
-          readRows: async () => (await rows(resource, 'transactions', {
-            createdAt: { $gte: new Date(monthStart) }, tokenType: { $in: ['prompt', 'completion'] },
-          }, { _id: 1, createdAt: 1, tokenType: 1, tokenValue: 1, model: 1 }))
-            .map((row) => ({ id: String(row._id), createdAt: row.createdAt?.toISOString(),
-              tokenType: row.tokenType, tokenValue: row.tokenValue, model: row.model })),
+          readRows: async () => {
+            nativeRows = await rows(resource, 'transactions', {
+              createdAt: { $gte: new Date(monthStart) }, tokenType: { $in: ['prompt', 'completion'] },
+            }, { _id: 1, createdAt: 1, tokenType: 1, tokenValue: 1, model: 1,
+              rawAmount: 1, inputTokens: 1, writeTokens: 1, readTokens: 1 });
+            return nativeRows.map((row) => ({ id: String(row._id), createdAt: row.createdAt?.toISOString(),
+              tokenType: row.tokenType, tokenValue: row.tokenValue, model: row.model }));
+          },
         });
         const plan = await planner.plan({ database: 'test', cutoverAt: cutoff.toISOString(), timeZone: TIME_ZONE, policy });
         // Labels are a fixed public vocabulary, never arbitrary catalog keys or model IDs.
         // Counts represent charged transaction rows, not provider requests.
-        const providerTotals = new Map(['openai', 'anthropic', 'google', 'unknown'].map((provider) =>
+        const providerTotals = new Map(PROVIDERS.map((provider) =>
           [provider, { provider, transactionCount: 0, spendUsd: 0 }]));
         for (const entry of plan.history) {
           const bucket = providerTotals.get(entry.provider) || providerTotals.get('unknown');
@@ -192,7 +250,8 @@ export async function runAccountingPreflight({ env = process.env, now = () => ne
           fail('invalid_native_total');
         }
         return { roleInspection, transactionCount: plan.history.length, nativeUsd: plan.nativeUsd,
-          byProvider, providerTotalsMatch: true, planDigest: plan.digest, policy: plan.policy };
+          byProvider, byProviderUsage: providerUsage(nativeRows, catalog),
+          providerTotalsMatch: true, planDigest: plan.digest, policy: plan.policy };
       }),
       section('ledger', async () => {
         const resource = await connect({ uri: env.MISSION_AI_LEDGER_MONGO_URI, database: 'MissionAI', registerClose });

@@ -171,22 +171,31 @@ async function executeAnthropic({ model, prompt, system, maxOutputTokens, fetchI
       .map((part) => part.text)
       .join(''),
     usage: (() => {
-      const cacheCreation = body?.usage?.cache_creation || {};
-      const cacheWrite5mTokens = tokenCount('anthropic', cacheCreation?.ephemeral_5m_input_tokens, true);
-      const cacheWrite1hTokens = tokenCount('anthropic', cacheCreation?.ephemeral_1h_input_tokens, true);
+      const cacheCreation = body?.usage?.cache_creation;
       const reportedCacheWriteTokens = tokenCount('anthropic', body?.usage?.cache_creation_input_tokens, true);
+      const hasCacheDetail = cacheCreation != null;
+      if (hasCacheDetail && (typeof cacheCreation !== 'object' || Array.isArray(cacheCreation))) {
+        throw invalidUsage('anthropic');
+      }
+      // A combined count cannot establish the billed TTL. Reject uncertain usage so
+      // callers retain the reserved maximum as an explicitly estimated settlement.
+      const cacheWrite5mTokens = hasCacheDetail
+        ? tokenCount('anthropic', cacheCreation.ephemeral_5m_input_tokens, true) : 0;
+      const cacheWrite1hTokens = hasCacheDetail
+        ? tokenCount('anthropic', cacheCreation.ephemeral_1h_input_tokens, true) : 0;
       const detailedCacheWriteTokens = cacheWrite5mTokens + cacheWrite1hTokens;
-      if (body?.usage?.cache_creation != null &&
-          body?.usage?.cache_creation_input_tokens !== undefined &&
-          detailedCacheWriteTokens !== reportedCacheWriteTokens) throw invalidUsage('anthropic');
+      if (!Number.isSafeInteger(detailedCacheWriteTokens) ||
+          ((reportedCacheWriteTokens > 0 || detailedCacheWriteTokens > 0) &&
+            (!hasCacheDetail || cacheCreation.ephemeral_5m_input_tokens === undefined ||
+              cacheCreation.ephemeral_1h_input_tokens === undefined)) ||
+          (body?.usage?.cache_creation_input_tokens !== undefined &&
+            detailedCacheWriteTokens !== reportedCacheWriteTokens)) throw invalidUsage('anthropic');
       return {
         inputTokens: tokenCount('anthropic', body?.usage?.input_tokens),
         outputTokens: tokenCount('anthropic', body?.usage?.output_tokens),
         cachedInputTokens: tokenCount('anthropic', body?.usage?.cache_read_input_tokens, true),
-        cacheWriteTokens:
-          detailedCacheWriteTokens > 0 ? detailedCacheWriteTokens : reportedCacheWriteTokens,
-        cacheWrite5mTokens:
-          detailedCacheWriteTokens > 0 ? cacheWrite5mTokens : reportedCacheWriteTokens,
+        cacheWriteTokens: detailedCacheWriteTokens,
+        cacheWrite5mTokens,
         cacheWrite1hTokens,
       };
     })(),

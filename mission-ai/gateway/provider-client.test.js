@@ -108,28 +108,96 @@ test('Anthropic adapter uses Messages API without unsupported sampling params', 
   });
 });
 
-test('Anthropic cache usage falls back to combined creation count when TTL detail is absent', async () => {
+test('Anthropic cache writes preserve explicit 5-minute and 1-hour counts', async () => {
   await withEnv({ ANTHROPIC_API_KEY: 'secret' }, async () => {
-    const result = await executeProvider({
-      provider: 'anthropic',
-      model: 'claude-sonnet-5',
-      prompt: 'fix code',
-      fetchImpl: async () =>
-        mockResponse({
-          id: 'msg_2',
-          model: 'claude-sonnet-5',
-          content: [{ type: 'text', text: 'fixed' }],
-          usage: {
-            input_tokens: 12,
-            output_tokens: 8,
-            cache_read_input_tokens: 2,
-            cache_creation_input_tokens: 4,
-          },
+    for (const [fiveMinuteTokens, oneHourTokens] of [[4, 0], [0, 4], [3, 2]]) {
+      for (const includeTotal of [true, false]) {
+        const result = await executeProvider({
+          provider: 'anthropic', model: 'claude-sonnet-5', prompt: 'fix code',
+          fetchImpl: async () => mockResponse({
+            usage: {
+              input_tokens: 12, output_tokens: 8, cache_read_input_tokens: 2,
+              ...(includeTotal ? { cache_creation_input_tokens: fiveMinuteTokens + oneHourTokens } : {}),
+              cache_creation: {
+                ephemeral_5m_input_tokens: fiveMinuteTokens,
+                ephemeral_1h_input_tokens: oneHourTokens,
+              },
+            },
+          }),
+        });
+        assert.equal(result.usage.cacheWriteTokens, fiveMinuteTokens + oneHourTokens);
+        assert.equal(result.usage.cacheWrite5mTokens, fiveMinuteTokens);
+        assert.equal(result.usage.cacheWrite1hTokens, oneHourTokens);
+      }
+    }
+  });
+});
+
+test('Anthropic zero cache writes do not require TTL details', async () => {
+  await withEnv({ ANTHROPIC_API_KEY: 'secret' }, async () => {
+    for (const fields of [
+      {}, { cache_creation_input_tokens: 0 },
+      { cache_creation_input_tokens: 0, cache_creation: null },
+      { cache_creation_input_tokens: 0, cache_creation: {} },
+      { cache_creation_input_tokens: 0, cache_creation: { ephemeral_5m_input_tokens: 0 } },
+      { cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 0 } },
+    ]) {
+      const result = await executeProvider({
+        provider: 'anthropic', model: 'claude-sonnet-5', prompt: 'fix code',
+        fetchImpl: async () => mockResponse({
+          usage: { input_tokens: 12, output_tokens: 8, ...fields },
         }),
-    });
-    assert.equal(result.usage.cacheWriteTokens, 4);
-    assert.equal(result.usage.cacheWrite5mTokens, 4);
-    assert.equal(result.usage.cacheWrite1hTokens, 0);
+      });
+      assert.equal(result.usage.cacheWriteTokens, 0);
+      assert.equal(result.usage.cacheWrite5mTokens, 0);
+      assert.equal(result.usage.cacheWrite1hTokens, 0);
+    }
+  });
+});
+
+test('Anthropic missing or partial TTL details make nonzero cache charges uncertain', async () => {
+  await withEnv({ ANTHROPIC_API_KEY: 'secret' }, async () => {
+    for (const fields of [
+      { cache_creation_input_tokens: 4 },
+      { cache_creation_input_tokens: 4, cache_creation: null },
+      { cache_creation_input_tokens: 4, cache_creation: {} },
+      { cache_creation_input_tokens: 4, cache_creation: { ephemeral_5m_input_tokens: 4 } },
+      { cache_creation_input_tokens: 4, cache_creation: { ephemeral_1h_input_tokens: 4 } },
+      { cache_creation: { ephemeral_5m_input_tokens: 4 } },
+      { cache_creation: { ephemeral_1h_input_tokens: 4 } },
+      { cache_creation_input_tokens: 4,
+        cache_creation: { ephemeral_5m_input_tokens: 3, ephemeral_1h_input_tokens: 0 } },
+    ]) {
+      await assert.rejects(() => executeProvider({
+        provider: 'anthropic', model: 'claude-sonnet-5', prompt: 'fix code',
+        fetchImpl: async () => mockResponse({
+          content: [{ type: 'text', text: 'already generated' }],
+          usage: { input_tokens: 12, output_tokens: 8, ...fields },
+        }),
+      }), (error) => error instanceof ProviderRequestError &&
+        error.code === 'provider_usage_invalid' && error.chargeUnknown === true);
+    }
+  });
+});
+
+test('Anthropic malformed TTL details never become exact usage', async () => {
+  await withEnv({ ANTHROPIC_API_KEY: 'secret' }, async () => {
+    const invalidDetails = [[], false, 4, 'invalid',
+      ...[null, '4', -1, 0.5, NaN, Infinity].flatMap((value) => [
+        { ephemeral_5m_input_tokens: value, ephemeral_1h_input_tokens: 0 },
+        { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: value },
+      ]),
+      { ephemeral_5m_input_tokens: Number.MAX_SAFE_INTEGER, ephemeral_1h_input_tokens: 1 },
+    ];
+    for (const cache_creation of invalidDetails) {
+      await assert.rejects(() => executeProvider({
+        provider: 'anthropic', model: 'claude-sonnet-5', prompt: 'fix code',
+        fetchImpl: async () => mockResponse({
+          usage: { input_tokens: 12, output_tokens: 8, cache_creation },
+        }),
+      }), (error) => error instanceof ProviderRequestError &&
+        error.code === 'provider_usage_invalid' && error.chargeUnknown === true);
+    }
   });
 });
 

@@ -23,7 +23,7 @@ test('shared activation preserves delegated spend and exposes disjoint native/hi
   await ledger.settle({ reservationId: native.reservationId, actualUsd: 0.75 });
   assert.deepEqual(await ledger.summary({ now, timeZone }), {
     monthStart: '2026-09-01T06:00:00.000Z', settledUsd: 3.25, reservedUsd: 0,
-    sharedMode: true, nativeUsd: 0.75, delegatedUsd: 0.5, historyUsd: 2,
+    sharedMode: true, nativeUsd: 0.75, delegatedUsd: 0.5, historyUsd: 2, reconciliationUsd: 0,
   });
 });
 
