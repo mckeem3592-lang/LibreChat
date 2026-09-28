@@ -6,6 +6,12 @@ ENV_FILE="$ROOT_DIR/.env"
 PLIST="$HOME/Library/LaunchAgents/com.missionai.companion.plist"
 DEVICE_SERVICE="mission-ai-device-token"
 LOG_DIR="$HOME/Library/Logs/MissionAI"
+NATIVE_HOST_NAME="com.missionai.browser_bridge"
+NATIVE_HOST_DIR="$HOME/.local/share/mission-ai/native-host"
+NATIVE_HOST_LAUNCHER="$NATIVE_HOST_DIR/browser-bridge-host"
+CHROME_NATIVE_DIR="$HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts"
+CHROME_NATIVE_MANIFEST="$CHROME_NATIVE_DIR/$NATIVE_HOST_NAME.json"
+MISSION_AI_EXTENSION_ID="ggkpmldfojmlehhbadliodeplhneelmb"
 
 # Resolve Node independently of interactive shell PATH.
 if ! command -v node >/dev/null 2>&1; then
@@ -50,6 +56,28 @@ npm install --omit=dev
 mkdir -p "$HOME/Library/LaunchAgents" "$LOG_DIR"
 
 NODE_PATH="$(command -v node)"
+
+mkdir -p "$NATIVE_HOST_DIR" "$CHROME_NATIVE_DIR"
+cat > "$NATIVE_HOST_LAUNCHER" <<HOST
+#!/bin/zsh
+export MISSION_AI_BROWSER_PORT="${MISSION_AI_BROWSER_PORT:-8766}"
+exec "$NODE_PATH" "$ROOT_DIR/native-browser-host.js"
+HOST
+chmod 700 "$NATIVE_HOST_LAUNCHER"
+
+cat > "$CHROME_NATIVE_MANIFEST" <<HOSTJSON
+{
+  "name": "$NATIVE_HOST_NAME",
+  "description": "Mission AI local Chrome bridge",
+  "path": "$NATIVE_HOST_LAUNCHER",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://$MISSION_AI_EXTENSION_ID/"
+  ]
+}
+HOSTJSON
+chmod 600 "$CHROME_NATIVE_MANIFEST"
+
 cat > "$PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -107,4 +135,5 @@ rm -f "$ENV_FILE"
 echo "Mission AI companion installed and started."
 echo "Long-lived credentials are stored in macOS Keychain, not the LaunchAgent."
 echo "Logs: $LOG_DIR"
+echo "Chrome native messaging host installed for Mission AI Browser Bridge."
 echo "Next: Chrome > Extensions > Developer mode > Load unpacked > $ROOT_DIR/../chrome-extension"
