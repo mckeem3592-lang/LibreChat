@@ -7,6 +7,9 @@
     "node": ">=20"
   },
   "scripts": {
+    "build:native": "tsc -p tsconfig.native.json",
+    "typecheck:native": "tsc -p tsconfig.native.json --noEmit",
+    "pretest": "npm run build:native",
     "start": "node server.js",
     "test": "node --test *.test.js ../companion/*.test.js ../chrome-extension/*.test.js ../../plugin/mission-ai-budget/scripts/*.test.mjs",
     "test:integration": "node --test *.integration.mjs",
@@ -14,15 +17,17 @@
     "postinstall": "npm run check && npm test"
   },
   "dependencies": {
+    "@modelcontextprotocol/client": "^2.1.0",
     "@modelcontextprotocol/node": "^2.1.0",
     "@modelcontextprotocol/server": "^2.1.0",
     "express": "^5.1.0",
     "mongoose": "^8.24.1",
+    "typescript": "5.9.3",
     "ws": "^8.18.3",
-    "zod": "^4.6.5",
-    "@modelcontextprotocol/client": "^2.1.0"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "mongodb-memory-server-core": "11.0.1"
+    "mongodb-memory-server-core": "11.0.1",
+    "openai": "6.41.0"
   }
 }

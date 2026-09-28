@@ -6,7 +6,7 @@ import { executeImageProvider, normalizeOutputTokenLimit, ProviderRequestError }
 import { queryCostDashboard } from './dashboard.js';
 import { defaultUsageLedger } from './usage-ledger.js';
 import { calculateUsageCost, loadPricing, maximumImageRequestCost } from './cost.js';
-import { requestBudget } from './request-budget.js';
+import { requestBudget, readBudgetDashboard } from './request-budget.js';
 
 function enabled(value) {
   if (typeof value === 'boolean') return value;
@@ -43,8 +43,8 @@ export async function generateImage({
   const model = modelOverride('image') || await catalogModel('google', 'image');
   if (!model) throw new Error('image_model_not_configured');
 
-  const dashboard = await dashboardReader({ now });
   const ledger = usageLedger || defaultUsageLedger();
+  const dashboard = await readBudgetDashboard({ ledger, nativeReader: dashboardReader, now });
   if (typeof ledger.reconcileStaleReservations === 'function') {
     await ledger.reconcileStaleReservations({ now });
   }
@@ -74,6 +74,7 @@ export async function generateImage({
     now,
     timeZone: dashboard.timeZone,
     metadata: {
+      source: 'delegated',
       provider: 'google',
       model,
       role: 'image',
@@ -120,7 +121,7 @@ export async function generateImage({
       cost,
       budget: {
         nativeSpendUsd: budget.nativeUsd,
-        delegatedSpendUsd: finalSummary.settledUsd,
+        delegatedSpendUsd: finalSummary.delegatedUsd ?? finalSummary.settledUsd,
         hardUsd: budget.policy.hardUsd,
       },
     };

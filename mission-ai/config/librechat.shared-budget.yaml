@@ -1,0 +1,118 @@
+# Prepared configuration for a SEPARATE managed LibreChat deployment.
+# Do not merge this with librechat.mission-ai.yaml or an existing tenant override.
+# Required deployment controls and cutover: ../NATIVE_BUDGET_CUTOVER.md.
+# This file alone is not a network boundary and does not gate every LibreChat API.
+version: 1.3.17
+cache: true
+
+interface:
+  modelSelect: true
+  parameters: false
+  multiConvo: false
+  presets: false
+  agents: false
+  remoteAgents:
+    use: false
+    create: false
+    share: false
+    public: false
+  schedules: false
+  skills: false
+  memories: false
+  runCode: false
+  webSearch: false
+  fileSearch: false
+  marketplace:
+    use: false
+  mcpServers:
+    use: false
+    create: false
+    share: false
+    public: false
+  defaultPinnedTools: []
+  contextUsage: true
+  # Native token-credit estimates are not the authoritative shared USD ledger.
+  contextCost: false
+
+# Keep native transaction history for audit. Shared-mode totals must not add
+# these post-cutover copies to the same requests already settled by the gateway.
+transactions:
+  enabled: true
+balance:
+  enabled: false
+
+memory:
+  disabled: true
+  personalize: false
+summarization:
+  enabled: false
+
+# These hide speech controls; they are NOT authorization for the speech API.
+# No speech providers/credentials and denied direct egress are also required.
+speech:
+  speechTab:
+    speechToText: false
+    textToSpeech: false
+
+fileConfig:
+  endpoints:
+    default:
+      disabled: true
+    agents:
+      disabled: true
+    custom:
+      disabled: true
+    MissionAI:
+      disabled: true
+
+endpoints:
+  all:
+    titleConvo: false
+    activityLabel: false
+    activityPhaseLabel: false
+    reasoningLabel: false
+  agents:
+    disableBuilder: true
+    # An empty allowedProviders array means unrestricted, so name only the
+    # managed custom endpoint. Saved-agent access is also disabled above.
+    allowedProviders: ['MissionAI']
+    capabilities: []
+  custom:
+    - name: 'MissionAI'
+      apiKey: '${MISSION_AI_NATIVE_TOKEN}'
+      baseURL: '${MISSION_AI_GATEWAY_URL}/native/openai/v1'
+      models:
+        default: ['gpt-6-luna', 'gpt-6-sol', 'gpt-6-astra']
+        fetch: false
+      modelDisplayLabel: 'Mission AI'
+      titleConvo: false
+      # Force the supported Chat Completions path, including stored settings
+      # that previously selected Responses. Gateway validation remains final.
+      dropParams: ['useResponsesApi']
+
+modelSpecs:
+  enforce: true
+  prioritize: true
+  list:
+    - name: 'mission-ai-economy'
+      label: 'Mission AI Economy'
+      default: true
+      preset:
+        endpoint: 'MissionAI'
+        model: 'gpt-6-luna'
+        useResponsesApi: false
+        max_tokens: 4096
+    - name: 'mission-ai-primary'
+      label: 'Mission AI Primary'
+      preset:
+        endpoint: 'MissionAI'
+        model: 'gpt-6-sol'
+        useResponsesApi: false
+        max_tokens: 4096
+    - name: 'mission-ai-reasoning'
+      label: 'Mission AI Reasoning'
+      preset:
+        endpoint: 'MissionAI'
+        model: 'gpt-6-astra'
+        useResponsesApi: false
+        max_tokens: 4096

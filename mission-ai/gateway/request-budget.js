@@ -14,8 +14,12 @@ export function requestBudget(dashboard, ledgerSummary) {
     economyUsd: amount(dashboard.economyUsd),
     hardUsd: amount(dashboard.hardUsd),
   });
-  const nativeUsd = amount(dashboard.spendUsd);
-  const delegatedUsd = amount(ledgerSummary.settledUsd);
+  const shared = dashboard.accountingMode === 'shared';
+  if (shared !== (ledgerSummary.sharedMode === true)) throw new Error('budget_mode_changed');
+  const nativeUsd = shared
+    ? amount(ledgerSummary.nativeUsd) + amount(ledgerSummary.historyUsd)
+    : amount(dashboard.spendUsd);
+  const delegatedUsd = shared ? amount(ledgerSummary.delegatedUsd) : amount(ledgerSummary.settledUsd);
   const reservedUsd = amount(ledgerSummary.reservedUsd);
   const projectedUsd = amount(nativeUsd + delegatedUsd + reservedUsd);
   if (projectedUsd >= policy.hardUsd) throw new Error('monthly_hard_limit');
@@ -24,6 +28,18 @@ export function requestBudget(dashboard, ledgerSummary) {
     nativeUsd,
     delegatedUsd,
     projectedUsd,
-    directCapUsd: Math.max(0, policy.hardUsd - nativeUsd),
+    directCapUsd: shared ? policy.hardUsd : Math.max(0, policy.hardUsd - nativeUsd),
+  };
+}
+
+// The ledger becomes the sole accounting authority after a drained, one-time cutover.
+export async function readBudgetDashboard({ ledger, nativeReader, now }) {
+  const shared = typeof ledger.sharedBudget === 'function' ? await ledger.sharedBudget() : null;
+  if (!shared) return nativeReader({ now });
+  return {
+    accountingMode: 'shared',
+    timeZone: shared.timeZone,
+    ...shared.policy,
+    spendUsd: 0,
   };
 }

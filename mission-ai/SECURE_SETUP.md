@@ -29,6 +29,7 @@ Access:
 - Read/write access only to a separate `MissionAI` database.
 - The gateway uses:
   - `budget_state`
+  - `budget_control` (shared accounting activation and transaction fence)
   - `delegated_usage`
   - `paid_acceptance_claims` (durable, explicitly approved acceptance runs only)
 - Do not grant write access to the LibreChat application database.
@@ -60,6 +61,14 @@ General enablement also requires the [accounting acceptance checks](acceptance/a
 The native LibreChat spend snapshot does not reserve native in-flight requests;
 do not interpret the delegated ledger's cap as an atomic limit across both services.
 Keep delegation disabled until that boundary is resolved and enablement is approved.
+
+The development branch now contains an opt-in native Chat Completions bridge and
+shared ledger. It remains inactive by default. Follow the reviewed
+[native cutover procedure](NATIVE_BUDGET_CUTOVER.md) before using it: a dedicated
+`MISSION_AI_NATIVE_TOKEN`, an exact `MISSION_AI_NATIVE_MODELS` allowlist,
+`MISSION_AI_NATIVE_ENABLED=true`, and durable shared-ledger activation are all
+required. Deploying the code alone does not activate native requests or establish
+a platform-wide cap. Keep both paid gates false during preparation.
 
 ## Mission AI budget
 

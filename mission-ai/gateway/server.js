@@ -13,6 +13,10 @@ import { delegateRequest } from './delegate.js';
 import { buildCostComparison, comparisonCsv } from './cost-comparison.js';
 import { generateImage } from './image.js';
 import { createPaidHttpHandlers } from './paid-http.js';
+import { createNativeBridge } from './generated/native.js';
+import { createNativeHttp } from './generated/http.js';
+import { defaultUsageLedger } from './usage-ledger.js';
+import { loadPricing, maximumTextRequestCost, calculateUsageCost } from './cost.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const DEVICE_TOKEN = process.env.MISSION_AI_DEVICE_TOKEN || '';
@@ -61,6 +65,37 @@ function requireToolAuth(req, res, next) {
   }
   next();
 }
+
+const nativeLedger = defaultUsageLedger();
+async function nativeModels() {
+  const pricing = await loadPricing();
+  return [...new Set((process.env.MISSION_AI_NATIVE_MODELS || '').split(',').map((s) => s.trim()))]
+    .filter((model) => model && pricing.models?.[model]?.provider === 'openai');
+}
+const nativeHttp = createNativeHttp({
+  enabled: () => process.env.MISSION_AI_NATIVE_ENABLED === 'true',
+  token: [TOOL_TOKEN, DEVICE_TOKEN].includes(process.env.MISSION_AI_NATIVE_TOKEN)
+    ? '' : process.env.MISSION_AI_NATIVE_TOKEN || '',
+  safeEqual,
+  models: nativeModels,
+  bridge: createNativeBridge({
+    ledger: nativeLedger,
+    budgetReader: async ({ now }) => {
+      const shared = await nativeLedger.sharedBudget();
+      if (!shared) throw new Error('shared_budget_unready');
+      await nativeLedger.reconcileStaleReservations({ now });
+      return { ...shared, directCapUsd: shared.policy.hardUsd };
+    },
+    pricingLoader: loadPricing,
+    estimateCost: maximumTextRequestCost,
+    calculateCost: calculateUsageCost,
+    fetchImpl: fetch,
+    providerKey: process.env.OPENAI_API_KEY || '',
+    modelAllowed: async (model) => (await nativeModels()).includes(model),
+    now: () => new Date(),
+    randomId: () => crypto.randomUUID(),
+  }),
+});
 
 function getDevice(deviceId) {
   const socket = devices.get(deviceId);
@@ -211,6 +246,10 @@ const missionMcp = createMissionMcpNodeHandler({
 app.use('/pair', express.json({ limit: '16kb' }));
 app.use('/v1', requireToolAuth, express.json({ limit: '12mb' }));
 app.use('/mcp', requireToolAuth, express.json({ limit: '12mb' }));
+app.use('/native/openai/v1', nativeHttp.authorize, express.json({ limit: '1mb' }));
+app.get('/native/openai/v1/models', nativeHttp.models);
+app.post('/native/openai/v1/chat/completions', nativeHttp.complete);
+app.use('/native/openai/v1', nativeHttp.unsupported);
 
 app.get('/health', (_req, res) => {
   const expiresAt = Date.parse(process.env.MISSION_AI_PAIR_EXPIRES_AT || '');
@@ -494,4 +533,3 @@ server.listen(PORT, '0.0.0.0', () => {
       console.warn('Mission AI code worker status unavailable');
     });
 });
-

@@ -9,6 +9,7 @@ From the repository root:
 ```sh
 npm ci --prefix mission-ai/gateway --include=dev --ignore-scripts
 npm run check --prefix mission-ai/gateway
+npm run typecheck:native --prefix mission-ai/gateway
 npm test --prefix mission-ai/gateway
 npm run test:integration --prefix mission-ai/gateway
 ```
@@ -27,7 +28,7 @@ The integration suite starts its own MongoDB 8.0.17 replica set on loopback, wit
 
 The first ledger write establishes a unique `reservationId` index. Duplicate legacy records make initialization fail closed; do not delete or rewrite records automatically to make the index succeed.
 
-Before the first committed mutation on each connection, a transactional integrity audit compares historical events with stored balances. Missing state, orphan events, and numeric discrepancies block writes without repairing or discarding records. This full audit is cached for the connection; it is not a continuous detector for external edits. Stop the gateway before any manual restore or repair and restart it afterward so the audit runs before further paid work. Later reservations also refuse to recreate a missing balance over existing events.
+Before the first committed mutation on each connection, a transactional integrity audit compares historical events with stored balances. Missing state, orphan events, and numeric discrepancies block writes without repairing or discarding records. Reservations also verify current-month state/event agreement under the global transaction fence. Stop the gateway before any manual restore or repair and restart it afterward so the full historical audit runs before further paid work.
 
 ## Reservations and exact cost
 
@@ -40,6 +41,32 @@ The input allowance is not a provider-certified upper bound. An overrun stops fu
 ## Remaining acceptance boundaries
 
 The untouched production LibreChat service does not reserve native in-flight requests through this ledger. Its native spend is read from settled transactions. Consequently, a simultaneous native request can change total spending after the gateway's snapshot. The delegated ledger's atomic cap is tested with a known native-spend snapshot; it is not proof of a platform-wide atomic $175 ceiling. Do not enable general paid delegation or promote production until that cross-service boundary is addressed.
+
+## Opt-in shared native mode
+
+The TypeScript adapter in `packages/api/src/missionBudget` is compiled separately
+by the gateway so it does not require the entire LibreChat runtime. The restricted
+OpenAI-compatible route authenticates with a dedicated native token, allows only
+priced OpenAI models, and reserves the full serialized text/tool payload plus
+bounded output before one upstream call. It requires durable shared activation;
+request bodies cannot supply credentials, dependencies, budget values, or URLs.
+Unsupported APIs and modalities fail before dispatch. Client-facing SSE is
+buffered until usage has been settled; token-by-token delivery is not provided.
+The protocol follows the official [Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
+
+Shared activation atomically imports immutable native history and preserves
+existing delegated costs. Native/delegated admission uses the stored hard cap
+under one transaction fence. Subsequent dashboards use only ledger events;
+LibreChat's transaction mirror is not added again. Local tests include real Mongo
+races, activation replay/conflicts, billing-month transitions, fake-provider
+failure cases, and OpenAI client JSON/SSE compatibility without paid calls.
+
+These tests do not prove that a deployed LibreChat has no bypass route. The
+[managed configuration and cutover checklist](../NATIVE_BUDGET_CUTOVER.md) must be
+completed, including old-caller drain, historical reconciliation, deployment
+restrictions, and explicitly approved live native acceptance. No activation
+route is exposed over HTTP. The CLI requires a reviewed, unchanged plan digest
+and both paid gates disabled. Its drain flag is an operator attestation.
 
 No unit or integration test calls a paid provider. A live acceptance test requires a separately authorized, durable one-shot run with a fixed maximum charge, no fallback, real usage reconciliation, and delegation still disabled globally. An estimated or pending charge is not a passing exact-cost result.
 

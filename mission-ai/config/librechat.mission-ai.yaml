@@ -40,9 +40,10 @@ mcpServers:
 
 # LibreChat uses micro-USD-equivalent token credits:
 # 1,000 credits = $0.001, therefore 175,000,000 credits = $175.
-# The Mission AI budget plugin reconciles this remaining balance to current-month
-# settled spend before each user prompt. LibreChat's native balance reservations
-# then protect the remaining balance while requests are in flight.
+# Legacy prompt-time credit check: the plugin reconciles settled native spend.
+# Native reservations cover the initial prompt only, not the complete output,
+# repeated model calls, or paid tools. This is NOT a shared monthly dollar cap.
+# Use librechat.shared-budget.yaml only with NATIVE_BUDGET_CUTOVER.md controls.
 balance:
   enabled: true
   startBalance: 175000000

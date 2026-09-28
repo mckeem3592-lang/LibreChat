@@ -8,7 +8,7 @@ import { executeProvider, normalizeOutputTokenLimit, ProviderRequestError } from
 import { queryCostDashboard } from './dashboard.js';
 import { defaultUsageLedger } from './usage-ledger.js';
 import { calculateUsageCost, loadPricing, maximumTextRequestCost } from './cost.js';
-import { requestBudget } from './request-budget.js';
+import { requestBudget, readBudgetDashboard } from './request-budget.js';
 
 function delegationEnabled(value) {
   if (typeof value === 'boolean') return value;
@@ -49,8 +49,8 @@ export async function delegateRequest({
     : null;
   const safeProject = String(project || 'unassigned').slice(0, 200);
 
-  const dashboard = await dashboardReader({ now });
   const ledger = usageLedger || defaultUsageLedger();
+  const dashboard = await readBudgetDashboard({ ledger, nativeReader: dashboardReader, now });
   if (typeof ledger.reconcileStaleReservations === 'function') {
     await ledger.reconcileStaleReservations({ now });
   }
@@ -100,6 +100,7 @@ export async function delegateRequest({
       now,
       timeZone: dashboard.timeZone,
       metadata: {
+        source: 'delegated',
         provider: target.provider,
         model,
         role: target.role,
@@ -150,7 +151,7 @@ export async function delegateRequest({
         cost,
         budget: {
           libreChatSpendUsd: budget.nativeUsd,
-          delegatedSpendUsd: finalSummary.settledUsd,
+          delegatedSpendUsd: finalSummary.delegatedUsd ?? finalSummary.settledUsd,
           hardUsd: budget.policy.hardUsd,
         },
         output,

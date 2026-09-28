@@ -5,11 +5,13 @@ on:
     branches: [mission-ai-v1]
     paths:
       - 'mission-ai/**'
+      - 'packages/api/src/missionBudget/**'
       - 'plugin/mission-ai-budget/**'
       - '.github/workflows/mission-ai-ci.yml'
   pull_request:
     paths:
       - 'mission-ai/**'
+      - 'packages/api/src/missionBudget/**'
       - 'plugin/mission-ai-budget/**'
       - '.github/workflows/mission-ai-ci.yml'
 
@@ -57,7 +59,9 @@ jobs:
           node -e "JSON.parse(require('fs').readFileSync('plugin/mission-ai-budget/plugin.json','utf8'))"
           node -e "JSON.parse(require('fs').readFileSync('plugin/mission-ai-budget/ai.librechat/hooks/hooks.json','utf8'))"
       - name: Test gateway and budget helpers
-        run: npm test --prefix mission-ai/gateway
+        run: |
+          npm run typecheck:native --prefix mission-ai/gateway
+          npm test --prefix mission-ai/gateway
       - name: Cache integration-test MongoDB binary
         uses: actions/cache@v4
         with:

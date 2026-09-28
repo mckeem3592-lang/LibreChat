@@ -14,8 +14,12 @@ function mergeBuckets(left = [], right = [], key) {
 }
 
 export function combineDashboard(nativeDashboard, delegatedSummary, delegatedBreakdown) {
-  const nativeSpendUsd = Number(nativeDashboard?.spendUsd || 0);
-  const delegatedSpendUsd = Number(delegatedSummary?.settledUsd || 0);
+  const shared = nativeDashboard.accountingMode === 'shared';
+  if (shared !== (delegatedSummary.sharedMode === true)) throw new Error('budget_mode_changed');
+  const nativeSpendUsd = shared
+    ? Number(delegatedSummary.nativeUsd) + Number(delegatedSummary.historyUsd)
+    : Number(nativeDashboard?.spendUsd || 0);
+  const delegatedSpendUsd = Number(shared ? delegatedSummary.delegatedUsd : delegatedSummary?.settledUsd || 0);
   const reservedUsd = Number(delegatedSummary?.reservedUsd || 0);
   const totalSpendUsd = nativeSpendUsd + delegatedSpendUsd;
   const projectedSpendUsd = totalSpendUsd + reservedUsd;
@@ -27,18 +31,19 @@ export function combineDashboard(nativeDashboard, delegatedSummary, delegatedBre
   const mode = budgetDecision(totalSpendUsd, policy);
   const projectedMode = budgetDecision(projectedSpendUsd, policy);
 
-  const nativeTask = nativeSpendUsd > 0
+  const nativeTask = !shared && nativeSpendUsd > 0
     ? [{ task: 'librechat-native', spendUsd: nativeSpendUsd }]
     : [];
-  const nativeProject = nativeSpendUsd > 0
+  const nativeProject = !shared && nativeSpendUsd > 0
     ? [{ project: 'librechat-native', spendUsd: nativeSpendUsd }]
     : [];
 
   return {
     monthStart: nativeDashboard.monthStart,
     timeZone: nativeDashboard.timeZone,
+    accountingMode: shared ? 'shared' : 'snapshot',
     pricing: {
-      nativeSource: 'librechat-transactions',
+      nativeSource: shared ? 'mission-ai-ledger' : 'librechat-transactions',
       delegatedSource: 'mission-ai-ledger',
     },
     spendUsd: totalSpendUsd,
@@ -54,12 +59,12 @@ export function combineDashboard(nativeDashboard, delegatedSummary, delegatedBre
     economyUsd,
     hardUsd,
     byProvider: mergeBuckets(
-      nativeDashboard.byProvider,
+      shared ? [] : nativeDashboard.byProvider,
       delegatedBreakdown.byProvider,
       'provider',
     ),
     byModel: mergeBuckets(
-      nativeDashboard.byModel,
+      shared ? [] : nativeDashboard.byModel,
       delegatedBreakdown.byModel,
       'model',
     ),
@@ -78,8 +83,11 @@ export async function queryMissionDashboard({
   nativeReader = queryCostDashboard,
   usageLedger,
 } = {}) {
-  const nativeDashboard = await nativeReader({ now });
   const ledger = usageLedger || defaultUsageLedger();
+  const shared = typeof ledger.sharedBudget === 'function' ? await ledger.sharedBudget() : null;
+  const nativeDashboard = shared
+    ? { accountingMode: 'shared', timeZone: shared.timeZone, ...shared.policy, spendUsd: 0 }
+    : await nativeReader({ now });
   if (typeof ledger.reconcileStaleReservations === 'function') {
     await ledger.reconcileStaleReservations({ now });
   }
@@ -88,5 +96,6 @@ export async function queryMissionDashboard({
     ledger.summary(options),
     ledger.breakdown(options),
   ]);
+  if (shared) nativeDashboard.monthStart = delegatedSummary.monthStart;
   return combineDashboard(nativeDashboard, delegatedSummary, delegatedBreakdown);
 }

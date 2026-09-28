@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"],
+    "types": [],
+    "strict": true,
+    "noEmitOnError": true,
+    "isolatedModules": true,
+    "rootDir": "../../packages/api/src/missionBudget",
+    "outDir": "./generated"
+  },
+  "include": ["../../packages/api/src/missionBudget/**/*.ts"]
+}
