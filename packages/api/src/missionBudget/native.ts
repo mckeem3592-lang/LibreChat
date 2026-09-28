@@ -1,6 +1,9 @@
+import { anthropicRequest, anthropicUsage, anthropicCompletion } from './anthropicNative.js';
+
 /** Restricted, non-streaming upstream transport. The host owns HTTP authentication and SSE. */
 type JsonObject = Record<string, unknown>;
-type Usage = { inputTokens: number; outputTokens: number; cachedInputTokens: number; cacheWriteTokens: number };
+type Usage = { inputTokens: number; outputTokens: number; cachedInputTokens: number; cacheWriteTokens: number;
+  cacheWrite5mTokens?: number; cacheWrite1hTokens?: number };
 type Awaitable<T> = T | Promise<T>;
 
 interface NativeLedger {
@@ -41,6 +44,7 @@ export interface NativeBridgeDependencies {
   ) => { totalUsd: number; pricingVerifiedOn?: string | null };
   fetchImpl: (url: string, init: RequestInit) => Promise<Pick<Response, 'status' | 'json'>>;
   providerKey: string;
+  provider?: 'openai' | 'anthropic';
   modelAllowed: (model: string) => Awaitable<boolean>;
   now: () => Date;
   randomId: () => string;
@@ -319,7 +323,10 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
   return {
     async handle(input) {
       const { body, model, outputLimit } = normalizeBody(input);
-      const serialized = JSON.stringify(body);
+      const provider = deps.provider ?? 'openai';
+      if (!['openai', 'anthropic'].includes(provider)) fail('native_provider_unready', 503);
+      const upstreamBody = provider === 'anthropic' ? anthropicRequest(body) : body;
+      const serialized = JSON.stringify(upstreamBody);
       if (new TextEncoder().encode(serialized).length > MAX_BODY_BYTES) fail('native_request_too_large', 413);
       try {
         if (await deps.modelAllowed(model) !== true) fail('native_model_unsupported');
@@ -333,7 +340,7 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
       let pricing;
       let reserveUsd;
       let reservation;
-      const metadata = { source: 'native', provider: 'openai', model, task: 'native_chat', project: 'native' };
+      const metadata = { source: 'native', provider, model, task: 'native_chat', project: 'native' };
       try {
         budget = await deps.budgetReader({ now });
         if (budget.mode !== 'shared' || typeof budget.timeZone !== 'string' || !budget.timeZone) {
@@ -346,7 +353,7 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
             amount(budget.directCapUsd) > policy.hardUsd) fail('shared_budget_unready', 503);
         pricing = await deps.pricingLoader();
         reserveUsd = amount(deps.estimateCost({
-          provider: 'openai', model, prompt: serialized, system: '', maxOutputTokens: outputLimit, pricing,
+          provider, model, prompt: serialized, system: '', maxOutputTokens: outputLimit, pricing,
         }), true);
         const reservationId = deps.randomId();
         if (typeof reservationId !== 'string' || !reservationId || reservationId.length > 200) fail('native_accounting_invalid', 503);
@@ -367,21 +374,25 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
         // The deadline covers headers AND the body. Promise.race also bounds a broken injected transport.
         response = await Promise.race([
           (async () => {
-            const upstream = await deps.fetchImpl(UPSTREAM_URL, {
-              method: 'POST', headers: { Authorization: `Bearer ${deps.providerKey}`, 'Content-Type': 'application/json' },
+            const upstream = await deps.fetchImpl(provider === 'anthropic'
+              ? 'https://api.anthropic.com/v1/messages' : UPSTREAM_URL, {
+              method: 'POST', headers: provider === 'anthropic'
+                ? { 'x-api-key': deps.providerKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }
+                : { Authorization: `Bearer ${deps.providerKey}`, 'Content-Type': 'application/json' },
               body: serialized, redirect: 'error', signal: controller.signal,
             });
             if (upstream.status < 200 || upstream.status >= 300) {
               definitiveRejection = upstream.status >= 400 && upstream.status < 500 && upstream.status !== 408;
               fail('native_provider_rejected', 502);
             }
-            return responseUsage(await upstream.json(), model);
+            const raw = await upstream.json();
+            return provider === 'anthropic' ? anthropicUsage(raw, model) : responseUsage(raw, model);
           })(),
           new Promise<never>((_resolve, reject) => {
             timer = setTimeout(() => {
               controller.abort();
               reject(new NativeBridgeError('native_provider_timeout', 504));
-            }, PROVIDER_TIMEOUT_MS);
+            }, provider === 'anthropic' ? 120_000 : PROVIDER_TIMEOUT_MS);
           }),
         ]);
       } catch (error) {
@@ -406,18 +417,20 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
         throw failure ?? new NativeBridgeError('native_provider_response_invalid', 502);
       }
       try {
-        const cost = deps.calculateCost('openai', model, response.usage, pricing);
+        const cost = deps.calculateCost(provider, model, response.usage, pricing);
         const actualUsd = amount(cost.totalUsd);
         await deps.ledger.settle({
           reservationId: reservation.reservationId, actualUsd,
-          usage: { ...metadata, ...response.usage, serviceTier: 'default', estimated: false,
+          usage: { ...metadata, ...response.usage, serviceTier: provider === 'anthropic' ? 'standard' : 'default', estimated: false,
             pricingVerifiedOn: cost.pricingVerifiedOn ?? null },
         });
         if (actualUsd > reserveUsd + 1e-9) fail('reservation_underestimated', 503);
         // Valid billable usage survives malformed presentation/protocol fields.
-        validateCompletionResponse(response.response);
+        const completion = provider === 'anthropic'
+          ? anthropicCompletion(response.response, response.usage, now) : response.response;
+        validateCompletionResponse(completion);
         if (response.usage.outputTokens > outputLimit) fail('native_output_limit_exceeded', 502);
-        return response.response;
+        return completion;
       } catch (error) {
         // A provider response exists: never release on pricing/database/internal failures.
         throw safeFailure(error, 'native_settlement_failed');

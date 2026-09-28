@@ -40,7 +40,7 @@ async function request({
   baseURLIsUserProvided = false,
 }: {
   directEndpoint: boolean;
-  mode: 'headers' | 'idle' | 'active' | 'redirect';
+  mode: 'headers' | 'idle' | 'active' | 'redirect' | 'reject';
   bodyTimeout?: number;
   headersTimeout?: number;
   streaming?: boolean;
@@ -57,6 +57,11 @@ async function request({
   const server = createServer((req, res) => {
     paths.push(req.url ?? '');
     req.resume();
+    if (mode === 'reject') {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: { message: 'synthetic failure' } }));
+      return;
+    }
     if (mode === 'redirect') {
       res.writeHead(302, { Location: '/must-not-follow' });
       res.end();
@@ -152,6 +157,11 @@ describe.each([false, true])('model transport directEndpoint=%s', (directEndpoin
 });
 
 describe('direct endpoint stream lifecycle', () => {
+  it('makes one attempt on a retryable gateway error when maxRetries is zero', async () => {
+    const result = await request({ directEndpoint: false, mode: 'reject' });
+    expect(result.failure).toBeDefined();
+    expect(result.paths).toEqual(['/v1/chat/completions']);
+  });
   it('allows a longer idle allowance to complete', async () => {
     const result = await request({ directEndpoint: true, mode: 'idle', bodyTimeout: 5000 });
     expect(result.failure).toBeUndefined();

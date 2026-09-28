@@ -48,6 +48,16 @@ jobs:
         run: bash mission-ai/code-api/build.sh
       - name: Smoke-test installed Code API dependencies
         run: node --test mission-ai/code-api/runtime.test.mjs mission-ai/code-api/notification.test.mjs
+      - name: Build pinned local worker with mandatory manual approval
+        run: |
+          node mission-ai/code-worker/apply-approval-patch.mjs .mission-ai-code-api prepare
+          npm ci --prefix .mission-ai-code-api/packages/code --include=dev --ignore-scripts --no-audit --no-fund
+          npm run build --prefix .mission-ai-code-api/packages/code --ignore-scripts
+          node mission-ai/code-worker/apply-approval-patch.mjs .mission-ai-code-api runtime
+      - name: Check actual worker execution boundary with synthetic requests
+        env:
+          MISSION_AI_CODE_APPROVAL_TEST_ROOT: .mission-ai-code-api
+        run: node --test mission-ai/code-worker/runtime-approval.integration.mjs
       - name: Reject any known dependency vulnerability
         run: npm audit --prefix .mission-ai-code-api/service --package-lock-only --include=dev --ignore-scripts --audit-level=low
 
@@ -134,6 +144,9 @@ jobs:
       - name: Typecheck the changed API workspace
         working-directory: packages/api
         run: npx tsc --noEmit
+      - name: Verify managed model defaults and zero-retry client transport
+        working-directory: packages/api
+        run: npx jest src/endpoints/openai/config.spec.ts src/endpoints/openai/transport.spec.ts --runInBand --coverage=false
       - name: Audit existing chat loading with simulated database latency
         env:
           E2E_CHROMIUM_CHANNEL: chrome

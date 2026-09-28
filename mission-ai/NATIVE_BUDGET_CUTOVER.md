@@ -1,8 +1,8 @@
 > September 28 offline baseline supersedes the OpenAI model defaults below.
 > All text routes are pinned to `claude-sonnet-5-5`; native and delegation gates
-> remain false. The current native adapter is OpenAI-only and must not be enabled
-> for this Anthropic model. A capped Anthropic chat adapter and live acceptance
-> are required before enablement. Older model pricing remains for historical costs.
+> remain false. The capped Anthropic text adapter is implemented behind the
+> compatible transport. Reviewed deployment and live accounting acceptance are
+> required before enablement. Older model pricing remains for historical costs.
 
 # Managed native spending cutover
 
@@ -12,9 +12,9 @@ The managed configuration is [`config/librechat.shared-budget.yaml`](config/libr
 
 ## Supported scope
 
-The initial adapter supports allowlisted OpenAI text Chat Completions and function-tool message/schema transport. A function call describes work for its caller; accepting its schema does not authorize or account for an external tool's fees. This initial LibreChat configuration disables its native tools, agents, uploads, automatic titles/labels, memory generation, summarization, speech, and schedules. The managed text path must work first. Expanding a feature requires its own dispatch, maximum-cost, failure, and cancellation coverage.
+The production adapter translates the compatible Chat Completions transport to Anthropic Messages for `claude-sonnet-5-5` only. It supports text conversations and initial system/developer instructions, with standard-only capacity, low effort, bounded output, and one dispatch. Tools, multimodal content and unsupported sampling parameters are refused before reservation; a tool-capable adapter must preserve Anthropic thinking signatures before expansion. OpenAI transport coverage remains for historical fixtures, but production wiring never selects its credential or models. This initial LibreChat configuration disables its native tools, agents, uploads, automatic titles/labels, memory generation, summarization, speech, and schedules. The managed text path must work first. Expanding a feature requires its own dispatch, maximum-cost, failure, and cancellation coverage.
 
-The prepared model list is `gpt-6-luna`, `gpt-6-sol`, and `gpt-6-astra`, with a 4096-token output setting and Economy as the initial selection. Set gateway `MISSION_AI_NATIVE_MODELS=gpt-6-luna,gpt-6-sol,gpt-6-astra` only after those exact models pass the adapter's checks; it is a comma-separated allowlist of priced OpenAI model IDs. The gateway's allowlist, price catalog, request validation, output cap, and budget decisions are authoritative. Keep the YAML models/specs aligned and remove any unapproved model from both. Native transaction prices and UI estimates are not authoritative ledger settlements.
+The prepared model is `claude-sonnet-5-5`, with a 4096-token output setting. Set `MISSION_AI_NATIVE_MODELS=claude-sonnet-5-5` and keep native requests disabled until acceptance passes. Managed `addParams.maxRetries=0` disables the client retry loop as well as gateway fallbacks; its 180-second timeout exceeds the gateway's 120-second upstream deadline. Unsupported generated sampling defaults are dropped by the reviewed endpoint configuration. The gateway allowlist, priced Anthropic model, request validation, output cap, and atomic budget decisions remain authoritative. Native transaction prices and UI estimates are not authoritative ledger settlements.
 
 General Mission AI delegation remains `MISSION_AI_DELEGATION_ENABLED=false`. Native admission is separately disabled unless `MISSION_AI_NATIVE_ENABLED=true` and the shared ledger has been explicitly activated. Shared accounting mode is selected by that durable activation record; there is no separate shared-mode environment toggle. Do not use the tool token as the native token or add a public override of either gate.
 

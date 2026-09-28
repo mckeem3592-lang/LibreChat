@@ -70,6 +70,21 @@ shared ledger. It remains inactive by default. Follow the reviewed
 required. Deploying the code alone does not activate native requests or establish
 a platform-wide cap. Keep both paid gates false during preparation.
 
+The production text bridge is pinned to Anthropic `claude-sonnet-5-5`, with
+standard-only capacity and no retry/fallback. The managed model client also has
+`maxRetries: 0`; only text is supported by the compatible adapter. Native tools
+require a later reviewed transport that preserves thinking signatures.
+
+Keep `MISSION_AI_SEARCH_ENABLED=false` until search acceptance. The gateway's
+only search path is Tavily basic, with no model answer or alternate provider.
+It checks current account/key limits and requires a verified PAYG-off timestamp
+(`MISSION_AI_TAVILY_PAYG_OFF_VERIFIED_AT`) bound to the saved key's SHA-256
+(`MISSION_AI_TAVILY_KEY_SHA256`). The check expires after 24 hours and at the
+UTC month boundary. A null API PAYG limit alone is not accepted as proof.
+Free-credit holds live in `MissionAI.free_search_state` and remain blocked after
+crashes or ambiguous usage. These credit holds are separate from the USD ledger.
+Do not clear them or substitute a paid plan to pass a check.
+
 ## Mission AI budget
 
 - Target: $100/month

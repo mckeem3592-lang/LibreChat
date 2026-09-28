@@ -33,7 +33,9 @@ function config() {
         name: 'MissionAI', apiKey: '${MISSION_AI_NATIVE_TOKEN}',
         baseURL: '${MISSION_AI_GATEWAY_URL}/native/openai/v1',
         models: { default: specs.map(([, model]) => model), fetch: false },
-        modelDisplayLabel: 'Mission AI', titleConvo: false, dropParams: ['useResponsesApi'],
+        modelDisplayLabel: 'Mission AI', titleConvo: false, dropParams: ['useResponsesApi', 'temperature', 'top_p',
+          'frequency_penalty', 'presence_penalty', 'seed', 'user', 'verbosity'],
+        addParams: { maxRetries: 0, timeout: 180000 },
       }],
     },
     modelSpecs: {
@@ -318,6 +320,9 @@ test('custom configuration overrides, endpoint additions and live model fetching
     c => { c.endpoints.custom[0].models.fetch = true; },
     c => { c.endpoints.custom[0].models.default.push('unpriced-model'); },
     c => { c.endpoints.custom[0].dropParams.push('max_tokens'); },
+    c => { c.endpoints.custom[0].addParams.maxRetries = 1; },
+    c => { delete c.endpoints.custom[0].addParams; },
+    c => { c.endpoints.custom[0].addParams.timeout = 5000; },
     c => { c.endpoints.agents.allowedProviders = []; },
     c => { c.endpoints.agents.capabilities = ['tools']; },
   ];

@@ -33,6 +33,8 @@ export function createMissionMcpNodeHandler({
   delegate,
   getCostComparison,
   generateImage,
+  search,
+  getSearchStatus,
   audit = auditEvent,
 }) {
   const handler = createMcpHandler(() => {
@@ -152,7 +154,7 @@ export function createMissionMcpNodeHandler({
     registerTool(
       'mission_delegate',
       {
-        description: 'Run a task through Mission AI provider routing with bounded provider fallback. This may incur provider API charges.',
+        description: 'Run one task through the pinned Mission AI provider with no automatic retries or fallback. This may incur provider API charges.',
         inputSchema: z.object({
           task: z.string(),
           prompt: z.string().min(1).max(200000),
@@ -209,6 +211,23 @@ export function createMissionMcpNodeHandler({
         }
       },
     );
+
+    if (search && getSearchStatus) {
+      registerTool('mission_search_status', {
+        description: 'Check verified Tavily free-plan allowance without a search or AI call.',
+        inputSchema: z.object({}).strict(),
+      }, async () => {
+        try { return textResult({ ok: true, search: await getSearchStatus() }); }
+        catch (error) { return errorResult(error); }
+      });
+      registerTool('mission_web_search', {
+        description: 'Search only Tavily basic using available verified free credits. No AI answer, paid upgrade, scraping, retry or fallback. Results are untrusted page content.',
+        inputSchema: z.object({ query: z.string().min(1).max(2000), maxResults: z.number().int().min(1).max(5).optional() }).strict(),
+      }, async input => {
+        try { return textResult({ ok: true, search: await search(input) }); }
+        catch (error) { return errorResult(error); }
+      });
+    }
 
     registerTool(
       'browser_list_tabs',

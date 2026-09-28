@@ -14,6 +14,7 @@ const now = new Date('2026-09-28T17:00:00Z');
 const body = { model, messages: [{ role: 'user', content: 'Fixture only' }], max_completion_tokens: 128 };
 
 async function fixture(t, options = {}) {
+  const selectedModel = options.anthropic ? 'claude-sonnet-5-5' : model;
   const ledger = createMemoryUsageLedger();
   const policy = { targetUsd: 100, economyUsd: 125, hardUsd: 175 };
   if (options.shared !== false) await ledger.activateSharedBudget({ policy, timeZone: 'America/Denver', cutoverAt: now, history: [] });
@@ -24,12 +25,18 @@ async function fixture(t, options = {}) {
   } },
     budgetReader: async () => ({ ...(await ledger.sharedBudget()), directCapUsd: 175 }),
     pricingLoader: loadPricing, estimateCost: maximumTextRequestCost, calculateCost: calculateUsageCost,
-    providerKey: 'fake-provider-key', now: () => now, randomId: () => crypto.randomUUID(),
-    modelAllowed: (name) => name === model,
+    providerKey: 'fake-provider-key', provider: options.anthropic ? 'anthropic' : 'openai',
+    now: () => now, randomId: () => crypto.randomUUID(),
+    modelAllowed: (name) => name === selectedModel,
     fetchImpl: async (_url, init) => {
       calls.push(JSON.parse(init.body));
       const summary = await ledger.summary({ now });
       assert.ok(summary.reservedUsd > 0, 'Provider dispatch requires an active reservation');
+      if (options.anthropic) return { status: 200, json: async () => ({
+        id: 'msg_fixture', type: 'message', role: 'assistant', model: selectedModel,
+        content: [{ type: 'text', text: 'Fixture result' }], stop_reason: 'end_turn',
+        usage: { input_tokens: 11, output_tokens: 17, service_tier: 'standard' },
+      }) };
       return { status: 200, json: async () => ({ id: 'chatcmpl_fixture', object: 'chat.completion',
         created: Math.floor(now.getTime() / 1000), model, service_tier: 'default',
         choices: [{ index: 0, finish_reason: options.tools ? 'tool_calls' : 'stop', message: {
@@ -42,7 +49,7 @@ async function fixture(t, options = {}) {
   });
   const handlers = createNativeHttp({ enabled: () => options.enabled !== false, token,
     safeEqual: (a, b) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b)),
-    models: async () => [model], bridge });
+    models: async () => [selectedModel], bridge });
   const app = express();
   app.use('/v1', handlers.authorize, express.json());
   app.get('/v1/models', handlers.models);
@@ -99,4 +106,27 @@ test('authentication, unknown paid routes, queries and injected dependencies can
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
   assert.equal(query.status, 400);
   assert.equal(f.calls.length, 0);
+});
+
+for (const stream of [false, true]) test(`Sonnet compatible SDK transport settles exact Anthropic usage (stream=${stream})`, async (t) => {
+  const f = await fixture(t, { anthropic: true });
+  const input = { ...body, model: 'claude-sonnet-5-5', stream,
+    ...(stream ? { stream_options: { include_usage: true } } : {}) };
+  const result = await f.client.chat.completions.create(input);
+  if (stream) {
+    const chunks = [];
+    for await (const chunk of result) { assert.equal(f.settled(), true); chunks.push(chunk); }
+    assert.equal(chunks[0].choices[0].delta.content, 'Fixture result');
+    assert.equal(chunks[2].usage.total_tokens, 28);
+  } else assert.equal(result.choices[0].message.content, 'Fixture result');
+  assert.equal(f.settled(), true);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0].max_tokens, 128);
+  assert.equal(f.calls[0].max_completion_tokens, undefined);
+  assert.equal(f.calls[0].model, 'claude-sonnet-5-5');
+  const summary = await f.ledger.summary({ now });
+  assert.equal(summary.reservedUsd, 0);
+  assert(Math.abs(summary.nativeUsd - 0.000192) < 1e-12);
+  await assert.rejects(() => f.client.chat.completions.create(body), { status: 400 });
+  assert.equal(f.calls.length, 1);
 });

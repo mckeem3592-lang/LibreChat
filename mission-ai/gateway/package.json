@@ -11,7 +11,7 @@
     "typecheck:native": "tsc -p tsconfig.native.json --noEmit",
     "pretest": "npm run build:native",
     "start": "node server.js",
-    "test": "node --test *.test.js ../companion/*.test.js ../chrome-extension/*.test.js ../../plugin/mission-ai-budget/scripts/*.test.mjs",
+    "test": "node --test *.test.js ../companion/*.test.js ../chrome-extension/*.test.js ../code-worker/*.test.mjs ../../plugin/mission-ai-budget/scripts/*.test.mjs",
     "test:integration": "node --test *.integration.mjs",
     "check": "for f in *.js ../companion/*.js ../chrome-extension/*.js; do node --check \"$f\"; done && bash -n ../acceptance/check-macos.sh ../companion/install-macos.sh ../companion/pair-macos.sh ../code-api/build.sh ../code-api/start.sh ../code-worker/install-macos.sh ../code-worker/uninstall-macos.sh",
     "postinstall": "npm run check && npm test"

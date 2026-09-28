@@ -539,6 +539,18 @@ export function createMongoUsageLedger({
   }
 
   return {
+    // Storage adapter only; quota admission and transition rules live in the typed package.
+    freeSearchRepository: {
+      async initialize(id) {
+        return (await db()).collection('free_search_state').updateOne({ _id: id },
+          { $setOnInsert: { accountUsed: 0, keyUsage: {}, pending: null, uncertain: false } }, { upsert: true });
+      },
+      async read(id) { return (await db()).collection('free_search_state').findOne({ _id: id }); },
+      async update(query, update) {
+        return (await db()).collection('free_search_state').findOneAndUpdate(query, update,
+          { returnDocument: 'after', includeResultMetadata: false });
+      },
+    },
     async sharedBudget() {
       return sharedConfig(await (await db()).collection(CONTROL_COLLECTION).findOne({ _id: 'global' }));
     },

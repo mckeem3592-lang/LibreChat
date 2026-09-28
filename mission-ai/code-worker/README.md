@@ -15,13 +15,21 @@ LibreChat's official outbound `@librechat/code` bridge.
   boundary.
 - Network egress is denied by default because no command allowlist is configured.
 - LibreChat tool approval remains an independent per-call control.
+- The Mission AI installer verifies the pinned worker source fingerprint and
+  adds the shared local text-preview/literal-`y` checkpoint before any coding
+  mutation dispatch. It snapshots the exact request before approval.
+- Daemon file writes, commands and programmatic execution fail closed. Static
+  reads remain available. Named environment scripts and implicit worktree
+  provisioning are refused because their resolved changes cannot be previewed.
 
 ## Install flow
 
 1. LibreChat issues a one-time pairing code for the `Mission AI Mac` environment.
 2. Run `bash install-macos.sh`.
 3. Enter that one-time pairing code when prompted.
-4. The launchd worker reconnects automatically after login/restart.
+4. The launchd worker reconnects automatically after login/restart for reads.
+   Mutations require a user-controlled interactive local terminal. Keep the
+   worker disabled until the patched build, pairing and live approval checks pass.
 
 Additional project repositories can be registered later as explicit, non-overlapping
 workspace roots. Do not register `~`, SSH/config directories, browser profiles, or

@@ -86,15 +86,19 @@ endpoints:
         fetch: false
       modelDisplayLabel: 'Mission AI'
       titleConvo: false
+      # Disable the model client's own retry loop as well as gateway fallbacks.
+      addParams:
+        maxRetries: 0
+        timeout: 180000
       # Force the supported Chat Completions path, including stored settings
       # that previously selected Responses. Gateway validation remains final.
-      dropParams: ['useResponsesApi']
+      dropParams: ['useResponsesApi', 'temperature', 'top_p', 'frequency_penalty', 'presence_penalty', 'seed', 'user', 'verbosity']
 
 modelSpecs:
   enforce: true
   prioritize: true
-  # Prepared model pin. The OpenAI-native bridge does not yet implement a
-  # capped Anthropic chat adapter; keep native requests disabled.
+  # Capped Anthropic text adapter behind the compatible transport. Keep native
+  # requests disabled until reviewed deployment and paid acceptance pass.
   list:
     - name: 'mission-ai-sonnet'
       label: 'Mission AI — Claude Sonnet 5.5 (offline)'

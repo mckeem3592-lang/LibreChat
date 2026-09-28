@@ -552,6 +552,21 @@ describe('getOpenAIConfig', () => {
     expect((result.llmConfig as Record<string, unknown>).customParam).toBeUndefined();
   });
 
+  it('keeps Mission AI client retries off and removes incompatible generated defaults without removing the output cap', () => {
+    const result = getOpenAIConfig(mockApiKey, {
+      modelOptions: { model: 'claude-sonnet-5-5', max_tokens: 4096, temperature: 1, topP: 1,
+        frequency_penalty: 0, presence_penalty: 0, useResponsesApi: false },
+      addParams: { maxRetries: 0, timeout: 180000 },
+      dropParams: ['useResponsesApi', 'temperature', 'top_p', 'frequency_penalty', 'presence_penalty', 'seed', 'user', 'verbosity'],
+    });
+    expect(result.llmConfig.maxRetries).toBe(0);
+    expect(result.llmConfig.timeout).toBe(180000);
+    expect(result.llmConfig.maxTokens).toBe(4096);
+    expect(result.llmConfig.temperature).toBeUndefined();
+    expect(result.llmConfig.topP).toBeUndefined();
+    expect(result.llmConfig.useResponsesApi).not.toBe(true);
+  });
+
   it('should handle proxy configuration', () => {
     const proxy = 'http://proxy.example.com:8080';
 

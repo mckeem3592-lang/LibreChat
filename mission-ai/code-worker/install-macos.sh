@@ -13,6 +13,7 @@ PLIST="$HOME/Library/LaunchAgents/com.missionai.code-worker.plist"
 LOG_DIR="$HOME/Library/Logs/MissionAI"
 DOC_BIN="$HOME/.local/share/mission-ai/document-tools/venv/bin"
 CLI="$RELEASE_DIR/packages/code/dist/cli.js"
+APPROVAL_PATCH="$(cd "$(dirname "$0")" && pwd)/apply-approval-patch.mjs"
 PAIR_SERVICE="mission-ai-code-pairing-code"
 
 need() {
@@ -63,6 +64,12 @@ if [[ ! -f "$CLI" ]]; then
   rm -rf "$RELEASE_DIR"
   mv "$TMP" "$RELEASE_DIR"
 fi
+
+# The pinned worker has no local manual checkpoint upstream. Integrate and
+# rebuild before registration; a changed upstream source fails closed.
+node "$APPROVAL_PATCH" "$RELEASE_DIR" prepare
+npm run build --prefix "$RELEASE_DIR/packages/code" --ignore-scripts
+node "$APPROVAL_PATCH" "$RELEASE_DIR" runtime
 
 ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
 

@@ -300,7 +300,7 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
   if (!Array.isArray(endpoints.custom) || endpoints.custom.length !== 1) throw new Error();
   const custom = object(endpoints.custom[0]);
   keys(custom, new Set(['name', 'apiKey', 'baseURL', 'models', 'modelDisplayLabel', 'titleConvo',
-    'dropParams', 'iconURL', 'streamRate']));
+    'dropParams', 'addParams', 'iconURL', 'streamRate']));
   if (custom.name !== ENDPOINT || custom.titleConvo !== false ||
       ![options.nativeToken, '${MISSION_AI_NATIVE_TOKEN}'].includes(custom.apiKey as string) ||
       ![baseURL, '${MISSION_AI_GATEWAY_URL}/native/openai/v1'].includes(custom.baseURL as string)) {
@@ -310,7 +310,11 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
   keys(models, new Set(['default', 'fetch']));
   if (models.fetch !== false) throw new Error();
   sameStrings(models.default, Object.values(SPEC_MODELS));
-  sameStrings(custom.dropParams, ['useResponsesApi']);
+  sameStrings(custom.dropParams, ['useResponsesApi', 'temperature', 'top_p',
+    'frequency_penalty', 'presence_penalty', 'seed', 'user', 'verbosity']);
+  const transport = object(custom.addParams);
+  keys(transport, new Set(['maxRetries', 'timeout']));
+  if (transport.maxRetries !== 0 || transport.timeout !== 180_000) throw new Error();
   const specs = object(config.modelSpecs);
   keys(specs, new Set(['enforce', 'prioritize', 'list', 'addedEndpoints']));
   if (specs.enforce !== true || specs.prioritize !== true) throw new Error();

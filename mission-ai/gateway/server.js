@@ -15,6 +15,8 @@ import { generateImage } from './image.js';
 import { createPaidHttpHandlers } from './paid-http.js';
 import { createNativeBridge } from './generated/native.js';
 import { createNativeHttp } from './generated/http.js';
+import { createFreeSearch, FreeSearchError } from './generated/freeSearch.js';
+import { createFreeCreditStore } from './generated/freeCredits.js';
 import { defaultUsageLedger } from './usage-ledger.js';
 import { loadPricing, maximumTextRequestCost, calculateUsageCost } from './cost.js';
 
@@ -32,6 +34,26 @@ if (!DEVICE_TOKEN || !TOOL_TOKEN) {
 }
 
 const paidHttp = createPaidHttpHandlers({ delegateRequest, generateImage });
+const nativeLedger = defaultUsageLedger();
+const tavilyKey = process.env.TAVILY_API_KEY || '';
+const freeSearch = createFreeSearch({
+  enabled: () => process.env.MISSION_AI_SEARCH_ENABLED === 'true',
+  apiKey: tavilyKey,
+  fetchImpl: fetch,
+  creditStore: createFreeCreditStore({
+    repository: nativeLedger.freeSearchRepository,
+    keyId: crypto.createHash('sha256').update(tavilyKey).digest('hex'),
+    now: () => new Date(), randomId: () => crypto.randomUUID(),
+  }),
+  freePlanVerified: () => {
+    const verifiedAt = Date.parse(process.env.MISSION_AI_TAVILY_PAYG_OFF_VERIFIED_AT || '');
+    const age = Date.now() - verifiedAt;
+    return Number.isFinite(age) && age >= 0 && age <= 86_400_000 &&
+      new Date(verifiedAt).toISOString().slice(0, 7) === new Date().toISOString().slice(0, 7) &&
+      safeEqual(crypto.createHash('sha256').update(tavilyKey).digest('hex'),
+        process.env.MISSION_AI_TAVILY_KEY_SHA256 || '');
+  },
+});
 
 const app = express();
 app.disable('x-powered-by');
@@ -66,11 +88,10 @@ function requireToolAuth(req, res, next) {
   next();
 }
 
-const nativeLedger = defaultUsageLedger();
 async function nativeModels() {
   const pricing = await loadPricing();
   return [...new Set((process.env.MISSION_AI_NATIVE_MODELS || '').split(',').map((s) => s.trim()))]
-    .filter((model) => model && pricing.models?.[model]?.provider === 'openai');
+    .filter((model) => model === 'claude-sonnet-5-5' && pricing.models?.[model]?.provider === 'anthropic');
 }
 const nativeHttp = createNativeHttp({
   enabled: () => process.env.MISSION_AI_NATIVE_ENABLED === 'true',
@@ -90,7 +111,8 @@ const nativeHttp = createNativeHttp({
     estimateCost: maximumTextRequestCost,
     calculateCost: calculateUsageCost,
     fetchImpl: fetch,
-    providerKey: process.env.OPENAI_API_KEY || '',
+    provider: 'anthropic',
+    providerKey: process.env.ANTHROPIC_API_KEY || '',
     modelAllowed: async (model) => (await nativeModels()).includes(model),
     now: () => new Date(),
     randomId: () => crypto.randomUUID(),
@@ -241,6 +263,8 @@ const missionMcp = createMissionMcpNodeHandler({
   delegate: delegateRequest,
   getCostComparison: async () => buildCostComparison(await queryMissionDashboard()),
   generateImage,
+  search: freeSearch.search,
+  getSearchStatus: freeSearch.status,
 });
 
 app.use('/pair', express.json({ limit: '16kb' }));
@@ -373,6 +397,23 @@ app.get('/v1/cost-comparison', async (req, res) => {
 app.post('/v1/route', async (req, res) => {
   const result = await handleRoute(req.body || {});
   res.status(result.status).json(result.body);
+});
+
+app.get('/v1/search/status', async (_req, res) => {
+  res.set('cache-control', 'no-store');
+  try { res.json({ ok: true, search: await freeSearch.status() }); }
+  catch (error) {
+    res.status(error instanceof FreeSearchError ? error.status : 503)
+      .json({ ok: false, error: error instanceof FreeSearchError ? error.code : 'search_unavailable' });
+  }
+});
+app.post('/v1/search', async (req, res) => {
+  res.set('cache-control', 'no-store');
+  try { res.json({ ok: true, search: await freeSearch.search(req.body) }); }
+  catch (error) {
+    res.status(error instanceof FreeSearchError ? error.status : 503)
+      .json({ ok: false, error: error instanceof FreeSearchError ? error.code : 'search_unavailable' });
+  }
 });
 
 app.get('/v1/fallback/:role', async (req, res) => {
