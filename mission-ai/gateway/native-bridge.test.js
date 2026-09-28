@@ -100,6 +100,23 @@ test('function definitions, calls and tool outputs are forwarded and fully reser
     model: MODEL, prompt: f.events[1].init.body, maxOutputTokens: 128, pricing }));
 });
 
+test('current documented text details preserve cache-write billing without counting text twice', async () => {
+  const f = fixture({ pricingLoader: () => ({ ...pricing, models: {
+    [MODEL]: { ...pricing.models[MODEL], cacheWrite: 1.25 },
+  } }), fetchImpl: async () => ({ status: 200, json: async () => completion({ usage: {
+    prompt_tokens: 20, completion_tokens: 10, total_tokens: 30,
+    prompt_tokens_details: { cached_tokens: 4, cache_write_tokens: 5, text_tokens: 20, audio_tokens: 0, image_tokens: 0 },
+    completion_tokens_details: { reasoning_tokens: 3, text_tokens: 7, audio_tokens: 0 },
+  } }) }) });
+  await f.bridge.handle(request());
+  const settled = f.events.at(-1).input;
+  assert(Math.abs(settled.actualUsd - 0.00003925) < 1e-12);
+  assert.equal(settled.usage.cacheWriteTokens, 5);
+  assert.equal(settled.usage.cachedInputTokens, 4);
+  assert.equal(settled.usage.estimated, false);
+  assert.equal((await f.summary()).reservedUsd, 0);
+});
+
 test('returns valid function tool-call completion after accounting', async () => {
   const response = completion({ choices: [{ index: 0, finish_reason: 'tool_calls', message: {
     role: 'assistant', content: null, tool_calls: [{ id: 'call_2', type: 'function',
@@ -226,6 +243,12 @@ test('unverified model/tier and inconsistent or unsupported usage cannot pass ac
     { usage: { prompt_tokens: '20', completion_tokens: 10, total_tokens: 30 } },
     { usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30, prompt_tokens_details: { cached_tokens: 21 } } },
     { usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30, completion_tokens_details: { audio_tokens: 1 } } },
+    ...[
+      { cached_tokens: 4, cache_write_tokens: 17 }, { cache_write_tokens: -1 },
+      { cache_write_tokens: '5' }, { text_tokens: 21 }, { image_tokens: 1 },
+      { text_tokens: 20, unknown_billable_tokens: 1 },
+    ].map((prompt_tokens_details) => ({ usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30, prompt_tokens_details } })),
+    { usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30, completion_tokens_details: { text_tokens: 11 } } },
   ];
   for (const variant of variants) {
     const f = fixture({ fetchImpl: async () => ({ status: 200, json: async () => completion(variant) }) });

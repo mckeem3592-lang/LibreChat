@@ -1,6 +1,6 @@
 /** Restricted, non-streaming upstream transport. The host owns HTTP authentication and SSE. */
 type JsonObject = Record<string, unknown>;
-type Usage = { inputTokens: number; outputTokens: number; cachedInputTokens: number };
+type Usage = { inputTokens: number; outputTokens: number; cachedInputTokens: number; cacheWriteTokens: number };
 type Awaitable<T> = T | Promise<T>;
 
 interface NativeLedger {
@@ -268,21 +268,25 @@ function responseUsage(value: unknown, model: string): { response: JsonObject; u
   const outputTokens = integer(usage.completion_tokens, 0, Number.MAX_SAFE_INTEGER);
   if (integer(usage.total_tokens, 1, Number.MAX_SAFE_INTEGER) !== inputTokens + outputTokens) fail();
   let cachedInputTokens = 0;
+  let cacheWriteTokens = 0;
   if (usage.prompt_tokens_details !== undefined && usage.prompt_tokens_details !== null) {
     const details = object(usage.prompt_tokens_details);
-    keys(details, ['cached_tokens', 'audio_tokens']);
+    keys(details, ['cached_tokens', 'cache_write_tokens', 'audio_tokens', 'image_tokens', 'text_tokens']);
     cachedInputTokens = integer(details.cached_tokens ?? 0, 0, inputTokens);
-    if ((details.audio_tokens ?? 0) !== 0) fail();
+    cacheWriteTokens = integer(details.cache_write_tokens ?? 0, 0, inputTokens - cachedInputTokens);
+    if (details.text_tokens !== undefined) integer(details.text_tokens, 0, inputTokens);
+    if ((details.audio_tokens ?? 0) !== 0 || (details.image_tokens ?? 0) !== 0) fail();
   }
   if (usage.completion_tokens_details !== undefined && usage.completion_tokens_details !== null) {
     const details = object(usage.completion_tokens_details);
-    keys(details, ['reasoning_tokens', 'audio_tokens', 'accepted_prediction_tokens', 'rejected_prediction_tokens']);
+    keys(details, ['reasoning_tokens', 'text_tokens', 'audio_tokens', 'accepted_prediction_tokens', 'rejected_prediction_tokens']);
     integer(details.reasoning_tokens ?? 0, 0, outputTokens);
+    if (details.text_tokens !== undefined) integer(details.text_tokens, 0, outputTokens);
     for (const key of ['audio_tokens', 'accepted_prediction_tokens', 'rejected_prediction_tokens']) {
       if ((details[key] ?? 0) !== 0) fail();
     }
   }
-  return { response, usage: { inputTokens, outputTokens, cachedInputTokens } };
+  return { response, usage: { inputTokens, outputTokens, cachedInputTokens, cacheWriteTokens } };
 }
 
 function validateCompletionResponse(response: JsonObject): void {
