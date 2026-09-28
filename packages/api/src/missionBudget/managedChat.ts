@@ -58,7 +58,7 @@ const BODY_FIELDS = new Set([
   'isCreatedByUser', 'error', 'ephemeralAgent', 'editedContent', 'key', 'timezone',
   'promptPrefix', 'max_tokens', 'maxContextTokens', 'stop', 'reasoning_effort', 'verbosity',
   'disableStreaming', 'resendFiles', 'artifacts', 'imageDetail', 'codeApprovalMode', 'codeEnvironmentMode',
-  'expectedPredecessorCreatedAt',
+  'expectedPredecessorCreatedAt', 'generationProtocolVersion',
 ]);
 
 function object(value: unknown): ObjectValue {
@@ -122,6 +122,12 @@ function chatBody(value: unknown): ObjectValue {
     text: string(input.text, 1_000_000), useResponsesApi: false, resendFiles: false,
     max_tokens: integer(input.max_tokens ?? 4096, 1, 32768),
   };
+  // postGenerationRequest adds this after createPayload. Preserve negotiation
+  // metadata for the existing controller, but admit only this client's version.
+  if (own(input, 'generationProtocolVersion')) {
+    if (input.generationProtocolVersion !== 2) throw new Error();
+    out.generationProtocolVersion = 2;
+  }
   for (const [key, value] of Object.entries(input)) {
     if (value == null) {
       if (ID_FIELDS.has(key) && value === null) out[key] = null;

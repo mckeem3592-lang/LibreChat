@@ -48,9 +48,11 @@ function config() {
   };
 }
 function payload() {
-  // createPayload + parseCompactConvo/openAISchema + useChatFunctions: normal new
-  // text chat with the UI's dormant workspace metadata and nullable branches.
+  // createPayload + parseCompactConvo/openAISchema + useChatFunctions, then
+  // postGenerationRequest's protocol wrapper: normal new text chat with the
+  // UI's dormant workspace metadata and nullable branches.
   return {
+    generationProtocolVersion: 2,
     endpoint: 'MissionAI', endpointType: 'custom', spec: 'mission-ai-economy', model: 'gpt-6-luna',
     text: 'Local fixture text', sender: 'User', isCreatedByUser: true, error: false,
     clientTimestamp: '2026-09-28T12:00:00', messageId: 'message-id', parentMessageId: 'root',
@@ -101,6 +103,29 @@ test('representative text UI payload reaches existing auth/controller with inert
   const second = invoke(configuration, { body: first.req.body });
   assert.equal(second.next, 1);
   assert.deepEqual(second.req.body, first.req.body);
+});
+
+test('stock generation protocol metadata survives both guards and unsupported versions fail closed', () => {
+  const accepted = invoke(admission);
+  assert.equal(accepted.next, 1);
+  assert.equal(accepted.req.body.generationProtocolVersion, 2);
+  const afterConfig = invoke(configuration, { body: accepted.req.body });
+  assert.equal(afterConfig.next, 1);
+  assert.equal(afterConfig.req.body.generationProtocolVersion, 2);
+  const legacy = payload();
+  delete legacy.generationProtocolVersion;
+  const legacyAccepted = invoke(admission, { body: legacy });
+  assert.equal(legacyAccepted.next, 1);
+  assert.equal(Object.hasOwn(legacyAccepted.req.body, 'generationProtocolVersion'), false);
+  assert.equal(invoke(configuration, { body: legacyAccepted.req.body }).next, 1);
+  for (const generationProtocolVersion of [0, 1, 3, -1, 2.1, '2', true, null, undefined,
+    NaN, Infinity, [], [2], { version: 2 }]) {
+    for (const middleware of [admission, configuration]) {
+      const result = invoke(middleware, { body: { ...payload(), generationProtocolVersion } });
+      assert.equal(result.status, 403, `version ${String(generationProtocolVersion)}`);
+      assert.equal(result.next, 0);
+    }
+  }
 });
 
 test('all three fixed model specs and text edits/regeneration are supported', () => {
