@@ -1,9 +1,15 @@
 import { readSecret } from './keychain.js';
 import WebSocket from 'ws';
+import {
+  drainNativeFrames,
+  encodeNativeMessage,
+  MAX_NATIVE_MESSAGE_BYTES,
+  nativeReconnectDelayMs,
+} from './native-message-framing.js';
 
 const BROWSER_PORT = Number(process.env.MISSION_AI_BROWSER_PORT || 8766);
 const LOOPBACK = `ws://127.0.0.1:${BROWSER_PORT}/browser`;
-const MAX_MESSAGE_BYTES = 1_000_000;
+const MAX_MESSAGE_BYTES = MAX_NATIVE_MESSAGE_BYTES;
 
 let socket = null;
 let reconnectTimer = null;
@@ -11,16 +17,12 @@ let reconnectAttempt = 0;
 let stopped = false;
 
 function writeNative(message) {
-  const payload = Buffer.from(JSON.stringify(message), 'utf8');
-  if (payload.length > MAX_MESSAGE_BYTES) return;
-  const header = Buffer.alloc(4);
-  header.writeUInt32LE(payload.length, 0);
-  process.stdout.write(header);
-  process.stdout.write(payload);
-}
-
-function reconnectDelay(attempt) {
-  return Math.min(30_000, 500 * (2 ** Math.min(attempt, 6)));
+  try {
+    process.stdout.write(encodeNativeMessage(message, MAX_MESSAGE_BYTES));
+  } catch {
+    stopped = true;
+    process.exitCode = 2;
+  }
 }
 
 async function connect() {
@@ -57,7 +59,7 @@ async function connect() {
     if (socket === ws) socket = null;
     writeNative({ type: 'status', connected: false, error: 'companion_disconnected' });
     if (stopped) return;
-    const delay = reconnectDelay(reconnectAttempt);
+    const delay = nativeReconnectDelayMs(reconnectAttempt);
     reconnectAttempt += 1;
     reconnectTimer = setTimeout(connect, delay);
   });
@@ -70,26 +72,25 @@ async function connect() {
 let stdinBuffer = Buffer.alloc(0);
 process.stdin.on('data', (chunk) => {
   stdinBuffer = Buffer.concat([stdinBuffer, chunk]);
-  while (stdinBuffer.length >= 4) {
-    const length = stdinBuffer.readUInt32LE(0);
-    if (length < 0 || length > MAX_MESSAGE_BYTES) {
-      stopped = true;
-      process.exit(2);
-      return;
-    }
-    if (stdinBuffer.length < 4 + length) return;
-    const body = stdinBuffer.subarray(4, 4 + length);
-    stdinBuffer = stdinBuffer.subarray(4 + length);
-    try {
-      const message = JSON.parse(body.toString('utf8'));
-      if (message?.type === 'browser_result' && typeof message.id === 'string') {
-        if (socket?.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify(message));
-        }
-      } else if (message?.type === 'ping') {
-        writeNative({ type: 'status', connected: socket?.readyState === WebSocket.OPEN });
+  let parsed;
+  try {
+    parsed = drainNativeFrames(stdinBuffer, MAX_MESSAGE_BYTES);
+  } catch {
+    stopped = true;
+    process.exitCode = 2;
+    try { socket?.close(); } catch {}
+    return;
+  }
+
+  stdinBuffer = parsed.remainder;
+  for (const message of parsed.messages) {
+    if (message?.type === 'browser_result' && typeof message.id === 'string') {
+      if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(message));
       }
-    } catch {}
+    } else if (message?.type === 'ping') {
+      writeNative({ type: 'status', connected: socket?.readyState === WebSocket.OPEN });
+    }
   }
 });
 
