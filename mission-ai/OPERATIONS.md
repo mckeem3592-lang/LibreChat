@@ -66,7 +66,7 @@ Do not promote Mission AI to production until representative browser, Mac, code,
 Mission AI has two Chrome control layers on the personal Mac:
 
 - Direct macOS Chrome automation is the resilient fallback for tab inventory, tab activation, opening a new tab, and closing explicitly selected tabs. It does not require the browser extension.
-- The Chrome extension remains the page-level control layer for DOM-aware state, click, type, scroll, and navigation.
+- The Chrome extension remains the page-level control layer for DOM-aware state, click, type, scroll, and navigation. Its transport uses Chrome Native Messaging to a locally installed Mission AI host process. The extension does not store the browser credential or open a localhost WebSocket itself; the native host reads the existing browser credential from macOS Keychain and relays only browser-tool messages over loopback to the companion.
 
 Closing tabs is treated as destructive because a tab may contain unsaved work. The local companion rejects direct tab-close calls unless `confirm=true` is supplied. Do not auto-close tabs merely because they appear unused.
 
