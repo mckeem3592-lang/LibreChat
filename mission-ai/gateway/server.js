@@ -117,6 +117,44 @@ function toolHandler(tool) {
   };
 }
 
+async function codeWorkerStatus() {
+  if (!CODE_API_URL || !CODE_BRIDGE_ADMIN_TOKEN) {
+    return { configured: false, online: false, ready: false, operations: [] };
+  }
+
+  const response = await fetch(
+    `${CODE_API_URL}/bridge/workers/${encodeURIComponent(CODE_WORKER_ID)}/status`,
+    {
+      headers: { authorization: `Bearer ${CODE_BRIDGE_ADMIN_TOKEN}` },
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+
+  if (!response.ok) {
+    return {
+      configured: true,
+      online: false,
+      ready: false,
+      operations: [],
+      statusCode: response.status,
+    };
+  }
+
+  const body = await response.json();
+  const operations = Array.isArray(body?.capabilities?.workspaceTools?.operations)
+    ? body.capabilities.workspaceTools.operations
+        .filter((value) => typeof value === 'string')
+        .slice(0, 32)
+    : [];
+
+  return {
+    configured: true,
+    online: body?.online === true,
+    ready: body?.ready === true,
+    operations,
+  };
+}
+
 function mongoConfiguration() {
   const nativeUri = process.env.MISSION_AI_MONGO_URI || process.env.MONGO_URI || '';
   const ledgerUri = process.env.MISSION_AI_LEDGER_MONGO_URI || process.env.MISSION_AI_MONGO_URI || '';
@@ -240,6 +278,24 @@ app.get('/v1/providers', (_req, res) => {
 
 app.get('/v1/readiness', (_req, res) => {
   res.json({ ok: true, readiness: currentReadiness() });
+});
+
+app.get('/v1/code-worker-status', async (_req, res) => {
+  res.set('cache-control', 'no-store');
+  try {
+    res.json({ ok: true, worker: await codeWorkerStatus() });
+  } catch {
+    res.status(502).json({
+      ok: false,
+      worker: {
+        configured: Boolean(CODE_API_URL && CODE_BRIDGE_ADMIN_TOKEN),
+        online: false,
+        ready: false,
+        operations: [],
+      },
+      error: 'code_worker_status_unavailable',
+    });
+  }
 });
 
 app.get('/v1/dashboard', async (_req, res) => {
