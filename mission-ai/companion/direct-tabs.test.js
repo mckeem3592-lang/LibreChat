@@ -8,8 +8,11 @@ import {
 
 test('parses stable Chrome window and tab identifiers', () => {
   const tabs = parseChromeTabRows(
-    '101\\t9001\\t1\\t1\\t1\\tMission AI\\thttps://example.com/a\n' +
-    '101\\t9002\\t1\\t2\\t0\\tSecond\\thttps://example.com/b\n',
+    [
+      ['101', '9001', '1', '1', '1', 'Mission AI', 'https://example.com/a'].join('\t'),
+      ['101', '9002', '1', '2', '0', 'Second', 'https://example.com/b'].join('\t'),
+      '',
+    ].join('\n'),
   );
   assert.deepEqual(tabs, [
     {
