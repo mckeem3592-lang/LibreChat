@@ -469,4 +469,14 @@ server.listen(PORT, '0.0.0.0', () => {
       return mongo.nativeConfigured && mongo.ledgerConfigured;
     })()}`,
   );
+
+  void codeWorkerStatus()
+    .then((worker) => {
+      console.log(
+        `Mission AI code worker status: configured=${worker.configured} online=${worker.online} ready=${worker.ready} operations=${JSON.stringify(worker.operations)}`,
+      );
+    })
+    .catch(() => {
+      console.warn('Mission AI code worker status unavailable');
+    });
 });
