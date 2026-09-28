@@ -52,3 +52,10 @@ This file records concrete development evidence. It is not a production approval
 - The pinned upstream service has no service-level lockfile, so Mission AI now resolves a package lock first, verifies its SHA-256 against a checked-in approved fingerprint, and only then installs with `npm ci`.
 - Approved dependency lock SHA-256: `2e21aa25df9bb912765cc1ade7d3a5a6cf0f63580bc55357edeafd56bb606838`.
 - The first fingerprinted development build succeeded before the fingerprint was frozen.
+
+
+### Direct-tab validator test recovery
+- Direct-tab validation was extracted into a pure helper module so stable tab IDs, explicit close confirmation, expected-URL checks, and duplicate suppression are directly testable.
+- The first test-only deploy exposed two fixture/assertion defects: a parser fixture used escaped delimiter text instead of real tab delimiters, and a legacy source-inspection test still expected the close-confirmation guard to live in `companion.js` after it had moved into the helper.
+- The prior known-good development deploy remained live while the failing commits were rejected.
+- Both test defects were corrected on `mission-ai-v1`; final fix-forward pass is required before this incident is closed.
