@@ -13,9 +13,7 @@ const options = {
   titleConvo: 'false',
 };
 const specs = [
-  ['mission-ai-economy', 'gpt-6-luna'],
-  ['mission-ai-primary', 'gpt-6-sol'],
-  ['mission-ai-reasoning', 'gpt-6-astra'],
+  ['mission-ai-sonnet', 'claude-sonnet-5-5'],
 ];
 function config() {
   const ui = {
@@ -53,7 +51,7 @@ function payload() {
   // UI's dormant workspace metadata and nullable branches.
   return {
     generationProtocolVersion: 2,
-    endpoint: 'MissionAI', endpointType: 'custom', spec: 'mission-ai-economy', model: 'gpt-6-luna',
+    endpoint: 'MissionAI', endpointType: 'custom', spec: 'mission-ai-sonnet', model: 'claude-sonnet-5-5',
     text: 'Local fixture text', sender: 'User', isCreatedByUser: true, error: false,
     clientTimestamp: '2026-09-28T12:00:00', messageId: 'message-id', parentMessageId: 'root',
     responseMessageId: 'response-id', conversationId: null, overrideParentMessageId: null,
@@ -128,7 +126,7 @@ test('stock generation protocol metadata survives both guards and unsupported ve
   }
 });
 
-test('all three fixed model specs and text edits/regeneration are supported', () => {
+test('the exclusive Sonnet spec supports text edits/regeneration', () => {
   for (const [spec, model] of specs) {
     const result = invoke(admission, { body: { ...payload(), spec, model, isRegenerate: true,
       conversationId: 'existing-conversation', editedContent: { index: 0, type: 'text', text: 'Edited fixture' } } });

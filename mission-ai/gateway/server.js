@@ -124,7 +124,7 @@ function invoke(deviceId, tool, args = {}, requestedTimeoutMs) {
     }, timeoutMs);
 
     pending.set(id, { resolve, reject, timer, deviceId });
-    socket.send(JSON.stringify({ type: 'tool', id, tool, args }));
+    socket.send(JSON.stringify({ type: 'tool', id, tool, args, deadlineMs: Date.now() + timeoutMs }));
   });
 }
 

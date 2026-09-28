@@ -6,38 +6,38 @@
   },
   "routes": {
     "economy": {
-      "provider": "openai",
-      "defaultModel": "gpt-6-luna",
+      "provider": "anthropic",
+      "defaultModel": "claude-sonnet-5-5",
       "modelEnv": "MISSION_AI_MODEL_ECONOMY",
       "premium": false
     },
     "primary": {
-      "provider": "openai",
-      "defaultModel": "gpt-6-sol",
+      "provider": "anthropic",
+      "defaultModel": "claude-sonnet-5-5",
       "modelEnv": "MISSION_AI_MODEL_PRIMARY",
       "premium": false
     },
     "coding": {
       "provider": "anthropic",
-      "defaultModel": "claude-sonnet-5",
+      "defaultModel": "claude-sonnet-5-5",
       "modelEnv": "MISSION_AI_MODEL_CODING",
-      "premium": true
+      "premium": false
     },
     "reasoning": {
-      "provider": "openai",
-      "defaultModel": "gpt-6-astra",
+      "provider": "anthropic",
+      "defaultModel": "claude-sonnet-5-5",
       "modelEnv": "MISSION_AI_MODEL_REASONING",
-      "premium": true
+      "premium": false
     },
     "research": {
-      "provider": "google",
-      "defaultModel": "gemini-3.8-flash",
+      "provider": "anthropic",
+      "defaultModel": "claude-sonnet-5-5",
       "modelEnv": "MISSION_AI_MODEL_RESEARCH",
       "premium": false
     },
     "computer": {
-      "provider": "openai",
-      "defaultModel": "gpt-6-sol",
+      "provider": "anthropic",
+      "defaultModel": "claude-sonnet-5-5",
       "modelEnv": "MISSION_AI_MODEL_COMPUTER",
       "premium": false
     },
@@ -47,5 +47,9 @@
       "modelEnv": "MISSION_AI_MODEL_IMAGE",
       "premium": false
     }
+  },
+  "textPolicy": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-5-5"
   }
 }

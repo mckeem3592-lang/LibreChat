@@ -82,7 +82,7 @@ endpoints:
       apiKey: '${MISSION_AI_NATIVE_TOKEN}'
       baseURL: '${MISSION_AI_GATEWAY_URL}/native/openai/v1'
       models:
-        default: ['gpt-6-luna', 'gpt-6-sol', 'gpt-6-astra']
+        default: ['claude-sonnet-5-5']
         fetch: false
       modelDisplayLabel: 'Mission AI'
       titleConvo: false
@@ -93,26 +93,32 @@ endpoints:
 modelSpecs:
   enforce: true
   prioritize: true
+  # Prepared model pin. The OpenAI-native bridge does not yet implement a
+  # capped Anthropic chat adapter; keep native requests disabled.
   list:
-    - name: 'mission-ai-economy'
-      label: 'Mission AI Economy'
+    - name: 'mission-ai-sonnet'
+      label: 'Mission AI — Claude Sonnet 5.5 (offline)'
       default: true
       preset:
         endpoint: 'MissionAI'
-        model: 'gpt-6-luna'
+        model: 'claude-sonnet-5-5'
         useResponsesApi: false
         max_tokens: 4096
-    - name: 'mission-ai-primary'
-      label: 'Mission AI Primary'
-      preset:
-        endpoint: 'MissionAI'
-        model: 'gpt-6-sol'
-        useResponsesApi: false
-        max_tokens: 4096
-    - name: 'mission-ai-reasoning'
-      label: 'Mission AI Reasoning'
-      preset:
-        endpoint: 'MissionAI'
-        model: 'gpt-6-astra'
-        useResponsesApi: false
-        max_tokens: 4096
+
+# Search remains disabled above until Free-plan/PAYG-off verification passes.
+webSearch:
+  searchProvider: tavily
+  scraperProvider: tavily
+  rerankerType: none
+  tavilyApiKey: '${TAVILY_API_KEY}'
+  tavilySearchOptions:
+    searchDepth: basic
+    maxResults: 5
+    includeAnswer: false
+    includeImages: false
+    includeRawContent: false
+    timeout: 15000
+  tavilyScraperOptions:
+    extractDepth: basic
+    includeImages: false
+    timeout: 15000

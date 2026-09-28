@@ -57,7 +57,7 @@ export async function delegateRequest({
   const ledgerSummary = await ledger.summary({ now, timeZone: dashboard.timeZone });
   const budget = requestBudget(dashboard, ledgerSummary);
 
-  let routeDecision = await configuredRouteRequest({
+  const routeDecision = await configuredRouteRequest({
     task,
     monthSpendUsd: budget.projectedUsd,
     budget: budget.policy,
@@ -67,8 +67,8 @@ export async function delegateRequest({
   }
 
   const pricing = await pricingLoader();
-  let role = routeDecision.routeName || 'primary';
-  let targets = await fallbackTargets(role);
+  const role = routeDecision.routeName || 'primary';
+  const targets = await fallbackTargets(role);
   const attempts = [];
   const directCapUsd = budget.directCapUsd;
 
@@ -182,21 +182,9 @@ export async function delegateRequest({
         attempts.push(safeAttempt(target, model, 'failed', error.code));
       }
 
-      if (error.code === 'provider_input_invalid') throw error;
-      const refreshedBudget = requestBudget(dashboard, await ledger.summary({ now, timeZone: dashboard.timeZone }));
-      const refreshedRoute = await configuredRouteRequest({
-        task,
-        monthSpendUsd: refreshedBudget.projectedUsd,
-        budget: refreshedBudget.policy,
-      });
-      if (!refreshedRoute.route || refreshedRoute.mode === 'blocked') throw new Error('monthly_hard_limit');
-      if (refreshedRoute.routeName !== routeDecision.routeName) {
-        role = refreshedRoute.routeName || 'primary';
-        targets = (await fallbackTargets(role)).filter((candidate) =>
-          !attempts.some((attempt) => attempt.provider === candidate.provider && attempt.role === candidate.role));
-        index = -1;
-      }
-      routeDecision = refreshedRoute;
+      // Never re-route after a failed or uncertain provider request.
+      // Settlement above is preserved; a later request needs a fresh user action.
+      break;
     }
   }
 

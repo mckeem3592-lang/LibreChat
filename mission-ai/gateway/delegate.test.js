@@ -54,71 +54,40 @@ test('hard budget stops before any provider request', async () => {
   assert.equal(calls, 0);
 });
 
-test('coding falls back once from Anthropic failure to OpenAI and settles actual cost', async () => {
+test('provider failure stops after one request even with another configured provider', async () => {
   await env({ ANTHROPIC_API_KEY: 'a', OPENAI_API_KEY: 'o' }, async () => {
     const urls = [];
     const ledger = createMemoryUsageLedger();
-    const result = await delegateRequest({
-      task: 'coding',
-      prompt: 'fix this',
-      enabled: true,
-      dashboardReader: dashboard(0),
-      usageLedger: ledger,
+    await assert.rejects(() => delegateRequest({
+      task: 'coding', prompt: 'fix this', enabled: true,
+      dashboardReader: dashboard(), usageLedger: ledger,
       fetchImpl: async (url) => {
         urls.push(url);
-        if (url.includes('anthropic.com')) {
-          return response({ error: { type: 'rate_limit_error' } }, 429);
-        }
-        return response({
-          id: 'resp_ok',
-          model: 'gpt-6-sol',
-          service_tier: 'default',
-          output: [{ content: [{ type: 'output_text', text: 'fixed' }] }],
-          usage: { input_tokens: 20, output_tokens: 5 },
-        });
+        return response({ error: { type: 'rate_limit_error' } }, 429);
       },
-    });
-
-    assert.equal(urls.length, 2);
-    assert.equal(result.fallbackUsed, true);
-    assert.equal(result.selected.provider, 'openai');
-    assert.equal(result.output.text, 'fixed');
-    assert.equal(result.cost.totalUsd, 0.00009);
-    assert.deepEqual(result.attempts.map(({ status }) => status), ['failed', 'succeeded']);
-    const summary = await ledger.summary({ now: new Date() });
+    }), /delegate_all_providers_failed/);
+    assert.equal(urls.length, 1);
+    assert.ok(urls[0].includes('anthropic.com'));
+    const summary = await ledger.summary();
     assert.equal(summary.reservedUsd, 0);
-    assert.equal(summary.settledUsd, result.cost.totalUsd);
+    assert.equal(summary.settledUsd, 0);
   });
 });
 
-test('unconfigured providers are skipped without network calls', async () => {
+test('missing primary provider never switches to another configured provider', async () => {
   await env({ ANTHROPIC_API_KEY: null, OPENAI_API_KEY: 'o' }, async () => {
     let calls = 0;
-    const result = await delegateRequest({
-      task: 'coding',
-      prompt: 'fix',
-      enabled: true,
-      dashboardReader: dashboard(0),
-      usageLedger: createMemoryUsageLedger(),
-      fetchImpl: async () => {
-        calls += 1;
-        return response({
-          id: 'resp_ok',
-          model: 'gpt-6-sol',
-          service_tier: 'default',
-          output: [{ content: [{ type: 'output_text', text: 'ok' }] }],
-          usage: { input_tokens: 1, output_tokens: 1 },
-        });
-      },
-    });
-    assert.equal(calls, 1);
-    assert.equal(result.selected.provider, 'openai');
-    assert.equal(result.attempts[0].status, 'skipped');
+    await assert.rejects(() => delegateRequest({
+      task: 'coding', prompt: 'fix', enabled: true,
+      dashboardReader: dashboard(), usageLedger: createMemoryUsageLedger(),
+      fetchImpl: async () => { calls++; return response({}); },
+    }), /delegate_all_providers_failed/);
+    assert.equal(calls, 0);
   });
 });
 
 test('preflight reservation prevents a request that could cross the hard cap', async () => {
-  await env({ OPENAI_API_KEY: 'o' }, async () => {
+  await env({ ANTHROPIC_API_KEY: 'a', OPENAI_API_KEY: 'o' }, async () => {
     let calls = 0;
     await assert.rejects(
       () => delegateRequest({
@@ -137,7 +106,7 @@ test('preflight reservation prevents a request that could cross the hard cap', a
 });
 
 test('network uncertainty conservatively settles the reserved amount', async () => {
-  await env({ OPENAI_API_KEY: 'o' }, async () => {
+  await env({ ANTHROPIC_API_KEY: 'a', OPENAI_API_KEY: 'o' }, async () => {
     const ledger = createMemoryUsageLedger();
     await assert.rejects(
       () => delegateRequest({
@@ -167,8 +136,8 @@ test('invalid output limits fail before budget reads or provider calls', async (
   }
 });
 
-test('missing usage is charged conservatively before another paid attempt', async () => {
-  await env({ OPENAI_API_KEY: 'o', ANTHROPIC_API_KEY: null, GEMINI_API_KEY: null }, async () => {
+test('missing usage is charged conservatively without another paid attempt', async () => {
+  await env({ OPENAI_API_KEY: 'o', ANTHROPIC_API_KEY: 'a', GEMINI_API_KEY: null }, async () => {
     const ledger = createMemoryUsageLedger();
     let calls = 0;
     await assert.rejects(() => delegateRequest({
@@ -245,7 +214,7 @@ test('a failed settlement preserves the reservation and prevents fallback', asyn
 });
 
 test('runtime economy threshold includes outstanding reservations', async () => {
-  await env({ OPENAI_API_KEY: 'o' }, async () => {
+  await env({ ANTHROPIC_API_KEY: 'a', OPENAI_API_KEY: 'o' }, async () => {
     const ledger = createMemoryUsageLedger();
     await ledger.reserve({ reserveUsd: 2, directCapUsd: 175 });
     const result = await delegateRequest({
@@ -255,29 +224,27 @@ test('runtime economy threshold includes outstanding reservations', async () => 
       fetchImpl: async () => response({ output_text: 'answer', service_tier: 'default', usage: { input_tokens: 10, output_tokens: 10 } }),
     });
     assert.equal(result.mode, 'economy');
-    assert.equal(result.role, 'economy');
+    assert.equal(result.role, 'reasoning');
+    assert.equal(result.selected.model, 'claude-sonnet-5-5');
   });
 });
 
-test('uncertain premium charges trigger economy routing before a fallback request', async () => {
+test('uncertain charge never re-routes even when it crosses the economy threshold', async () => {
   await env({ OPENAI_API_KEY: 'o', ANTHROPIC_API_KEY: 'a' }, async () => {
     const ledger = createMemoryUsageLedger();
     const models = [];
-    const result = await delegateRequest({
+    await assert.rejects(() => delegateRequest({
       task: 'reasoning', prompt: 'test', enabled: true,
       dashboardReader: async () => ({ ...(await dashboard()()), targetUsd: 0.10, economyUsd: 0.15, hardUsd: 1 }),
       usageLedger: ledger,
       fetchImpl: async (_url, options) => {
-        const { model } = JSON.parse(options.body);
-        models.push(model);
-        if (models.length === 1) throw new Error('network down');
-        return response({ output_text: 'answer', service_tier: 'default', usage: { input_tokens: 10, output_tokens: 10 } });
+        models.push(JSON.parse(options.body).model);
+        throw new Error('network down');
       },
-    });
-    assert.deepEqual(models, ['gpt-6-astra', 'gpt-6-luna']);
-    assert.equal(result.mode, 'economy');
-    assert.equal(result.role, 'economy');
-    assert.equal(result.fallbackUsed, true);
-    assert.equal(result.budget.delegatedSpendUsd, (await ledger.summary()).settledUsd);
+    }), /delegate_all_providers_failed/);
+    assert.deepEqual(models, ['claude-sonnet-5-5']);
+    const summary = await ledger.summary();
+    assert.equal(summary.reservedUsd, 0);
+    assert.ok(summary.settledUsd > 0);
   });
 });

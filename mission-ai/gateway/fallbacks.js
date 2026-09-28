@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { providerConfig } from './providers.js';
-import { catalogModel } from './model-catalog.js';
+import { catalogModel, loadModelCatalog } from './model-catalog.js';
 import { modelOverride } from './model-overrides.js';
 
 let cachedPolicy;
@@ -19,10 +19,10 @@ export function parseTarget(target) {
 }
 
 export function chooseAvailableTarget(targets, readiness = {}) {
-  for (const target of targets || []) {
-    const parsed = parseTarget(target);
-    if (readiness[parsed.provider] === true) return parsed;
-  }
+  const target = targets?.[0];
+  if (!target) return null;
+  const parsed = parseTarget(target);
+  if (readiness[parsed.provider] === true) return parsed;
   return null;
 }
 
@@ -32,7 +32,8 @@ export async function fallbackTargets(role, policy) {
   if (!Array.isArray(targets) || targets.length === 0) {
     throw new Error('fallback_role_not_configured');
   }
-  return targets.map((target) => parseTarget(target));
+  // Only the primary target is eligible. A missing provider fails closed.
+  return targets.slice(0, 1).map((target) => parseTarget(target));
 }
 
 export async function providerReadiness() {
@@ -63,7 +64,10 @@ export async function fallbackPlan(role, {
     };
   }
 
-  const model = modelOverride(selected.role) || await catalogModel(selected.provider, selected.role);
+  const { textPolicy } = await loadModelCatalog();
+  const model = selected.role !== 'image' && textPolicy
+    ? textPolicy.model
+    : modelOverride(selected.role) || await catalogModel(selected.provider, selected.role);
   return {
     available: true,
     role,

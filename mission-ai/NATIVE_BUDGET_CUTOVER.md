@@ -1,3 +1,9 @@
+> September 28 offline baseline supersedes the OpenAI model defaults below.
+> All text routes are pinned to `claude-sonnet-5-5`; native and delegation gates
+> remain false. The current native adapter is OpenAI-only and must not be enabled
+> for this Anthropic model. A capped Anthropic chat adapter and live acceptance
+> are required before enablement. Older model pricing remains for historical costs.
+
 # Managed native spending cutover
 
 This is a prepared deployment and cutover procedure, not evidence of a deployed or activated service. Do not change `My-Workstation-McKee`, its database login, or its direct-provider configuration while preparing the new service. Production promotion, stopping its paid work, and redirecting users require explicit approval of the concrete deployment and cutover plan.

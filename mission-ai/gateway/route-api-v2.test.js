@@ -10,5 +10,5 @@ test('primary uses catalog model', async () => {
 test('economy mode selects an economy route', async () => {
   const result = await verifiedRouteRequest({ task: 'coding', monthSpendUsd: 125 });
   assert.equal(result.mode, 'economy');
-  assert.equal(result.route.provider, 'openai');
+  assert.equal(result.route.provider, 'anthropic');
 });

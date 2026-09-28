@@ -1,12 +1,27 @@
 {
   "version": 1,
   "roles": {
-    "economy": ["openai:economy", "google:research"],
-    "primary": ["openai:primary", "anthropic:coding", "google:research"],
-    "coding": ["anthropic:coding", "openai:primary"],
-    "reasoning": ["openai:reasoning", "anthropic:coding"],
-    "research": ["google:research", "openai:primary"],
-    "computer": ["openai:computer"],
-    "image": ["google:image"]
-  }
+    "economy": [
+      "anthropic:economy"
+    ],
+    "primary": [
+      "anthropic:primary"
+    ],
+    "coding": [
+      "anthropic:coding"
+    ],
+    "reasoning": [
+      "anthropic:reasoning"
+    ],
+    "research": [
+      "anthropic:research"
+    ],
+    "computer": [
+      "anthropic:computer"
+    ],
+    "image": [
+      "google:image"
+    ]
+  },
+  "automaticFallbacks": false
 }

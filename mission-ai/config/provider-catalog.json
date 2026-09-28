@@ -1,5 +1,5 @@
 {
-  "verifiedOn": "2026-09-27",
+  "verifiedOn": "2026-09-28",
   "providers": {
     "openai": {
       "economy": "gpt-6-luna",
@@ -8,11 +8,20 @@
       "computer": "gpt-6-sol"
     },
     "anthropic": {
-      "coding": "claude-sonnet-5"
+      "economy": "claude-sonnet-5-5",
+      "primary": "claude-sonnet-5-5",
+      "coding": "claude-sonnet-5-5",
+      "reasoning": "claude-sonnet-5-5",
+      "research": "claude-sonnet-5-5",
+      "computer": "claude-sonnet-5-5"
     },
     "google": {
       "research": "gemini-3.8-flash",
       "image": "gemini-3.1-flash-image"
     }
+  },
+  "textPolicy": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-5-5"
   }
 }

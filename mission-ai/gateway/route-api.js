@@ -25,6 +25,11 @@ export async function routeRequest(input = {}) {
 
   if (!decision.route) return decision;
 
+  // Pin every text route before resolving environment overrides.
+  if (task !== 'image' && config.textPolicy) {
+    decision.route = { ...decision.route, provider: config.textPolicy.provider,
+      defaultModel: config.textPolicy.model, modelEnv: null };
+  }
   const provider = providerConfig(decision.route.provider);
   return {
     ...decision,

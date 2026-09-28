@@ -70,6 +70,16 @@
       "cacheWrite": 0,
       "output": 3,
       "imageOutput": 60
+    },
+    "claude-sonnet-5-5": {
+      "provider": "anthropic",
+      "input": 2,
+      "output": 10,
+      "cachedInput": 0.2,
+      "cacheWrite": 2.5,
+      "cacheWrite1h": 4,
+      "verifiedOn": "2026-09-28",
+      "source": "https://platform.claude.com/docs/en/models/sonnet-5-5/overview"
     }
   }
 }

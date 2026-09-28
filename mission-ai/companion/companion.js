@@ -7,6 +7,7 @@ import WebSocket, { WebSocketServer } from 'ws';
 import { readSecret, writeSecret } from './keychain.js';
 import { normalizeMacControlError } from './permission-errors.js';
 import { reconnectDelayMs } from './reconnect-policy.js';
+import { requireManualApproval } from './approval-gate.js';
 import {
   normalizeCloseTabRequest,
   parseChromeTabRows,
@@ -289,7 +290,13 @@ function callBrowser(tool, args = {}) {
   });
 }
 
-async function dispatch(tool, args) {
+async function dispatch(tool, args, deadlineMs) {
+  // Execute the same immutable arguments shown in the local preview.
+  args = structuredClone(args || {});
+  await requireManualApproval(tool, args, {
+    deadlineMs,
+    isConnected: () => gatewayConnected && gatewaySocket?.readyState === WebSocket.OPEN,
+  });
   switch (tool) {
     case 'mac.active_app':
       return await activeApp();
@@ -450,7 +457,7 @@ function connectGateway() {
     }
     if (message?.type !== 'tool' || typeof message.id !== 'string') return;
     try {
-      const result = await dispatch(message.tool, message.args);
+      const result = await dispatch(message.tool, message.args, message.deadlineMs);
       ws.send(JSON.stringify({ type: 'tool_result', id: message.id, ok: true, result }));
     } catch (error) {
       ws.send(

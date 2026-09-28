@@ -31,9 +31,7 @@ type Middleware = (
 const ENDPOINT = 'MissionAI';
 const CHAT_PATH = '/api/agents/chat/MissionAI';
 const SPEC_MODELS: Readonly<Record<string, string>> = Object.freeze({
-  'mission-ai-economy': 'gpt-6-luna',
-  'mission-ai-primary': 'gpt-6-sol',
-  'mission-ai-reasoning': 'gpt-6-astra',
+  'mission-ai-sonnet': 'claude-sonnet-5-5',
 });
 const IDENTIFIER = /^[A-Za-z0-9_-]{1,256}$/;
 const ID_FIELDS = new Set([

@@ -135,7 +135,7 @@ export function createMissionMcpNodeHandler({
     registerTool(
       'mission_fallback_plan',
       {
-        description: 'Return the first currently available provider/model target for a routing role using a bounded fallback chain.',
+        description: 'Return the sole configured provider/model target for a routing role. Automatic provider fallbacks are disabled.',
         inputSchema: z.object({
           role: z.enum(['economy', 'primary', 'coding', 'reasoning', 'research', 'computer', 'image']),
         }),

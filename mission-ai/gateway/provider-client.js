@@ -155,6 +155,9 @@ async function executeAnthropic({ model, prompt, system, maxOutputTokens, fetchI
       },
       body: JSON.stringify({
         model,
+        ...(model === 'claude-sonnet-5-5'
+          ? { thinking: { type: 'between_tools' }, output_config: { effort: 'low' } }
+          : {}),
         max_tokens: maxOutputTokens,
         messages: [{ role: 'user', content: prompt }],
         ...(system ? { system } : {}),

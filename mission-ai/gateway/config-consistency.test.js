@@ -10,10 +10,10 @@ test('routing config includes required route classes', async () => {
   }
 });
 
-test('LibreChat Mission AI config keeps keyless web research enabled', async () => {
+test('LibreChat Mission AI config pins Tavily basic search without paid alternatives', async () => {
   const text = await readFile(new URL('../config/librechat.mission-ai.yaml', import.meta.url), 'utf8');
-  assert.match(text, /searchProvider:\s*keenable/);
-  assert.match(text, /scraperProvider:\s*keenable/);
+  assert.match(text, /searchProvider:\s*tavily/);
+  assert.match(text, /scraperProvider:\s*tavily/);
   assert.match(text, /rerankerType:\s*none/);
   assert.equal(/keenableApiKey:/.test(text), false);
 });
