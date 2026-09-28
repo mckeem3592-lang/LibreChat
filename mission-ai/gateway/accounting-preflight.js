@@ -177,8 +177,22 @@ export async function runAccountingPreflight({ env = process.env, now = () => ne
               tokenType: row.tokenType, tokenValue: row.tokenValue, model: row.model })),
         });
         const plan = await planner.plan({ database: 'test', cutoverAt: cutoff.toISOString(), timeZone: TIME_ZONE, policy });
+        // Labels are a fixed public vocabulary, never arbitrary catalog keys or model IDs.
+        // Counts represent charged transaction rows, not provider requests.
+        const providerTotals = new Map(['openai', 'anthropic', 'google', 'unknown'].map((provider) =>
+          [provider, { provider, transactionCount: 0, spendUsd: 0 }]));
+        for (const entry of plan.history) {
+          const bucket = providerTotals.get(entry.provider) || providerTotals.get('unknown');
+          bucket.transactionCount += 1;
+          bucket.spendUsd += entry.usd;
+        }
+        const byProvider = [...providerTotals.values()];
+        if (byProvider.reduce((sum, bucket) => sum + bucket.transactionCount, 0) !== plan.history.length ||
+            !same(byProvider.reduce((sum, bucket) => sum + bucket.spendUsd, 0), plan.nativeUsd)) {
+          fail('invalid_native_total');
+        }
         return { roleInspection, transactionCount: plan.history.length, nativeUsd: plan.nativeUsd,
-          planDigest: plan.digest, policy: plan.policy };
+          byProvider, providerTotalsMatch: true, planDigest: plan.digest, policy: plan.policy };
       }),
       section('ledger', async () => {
         const resource = await connect({ uri: env.MISSION_AI_LEDGER_MONGO_URI, database: 'MissionAI', registerClose });

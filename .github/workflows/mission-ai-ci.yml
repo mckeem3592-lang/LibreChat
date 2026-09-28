@@ -25,6 +25,30 @@ permissions:
   contents: read
 
 jobs:
+  code-api-build:
+    name: Build pinned Code API
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.16.0'
+          cache: npm
+          cache-dependency-path: mission-ai/code-api/package-lock.json
+      - name: Check Code API launch scripts
+        run: |
+          bash -n mission-ai/code-api/build.sh
+          bash -n mission-ai/code-api/start.sh
+      - name: Test locked dependency installation safeguards
+        run: node --test mission-ai/code-api/build.test.mjs
+      - name: Build Code API from reviewed dependency lock
+        run: bash mission-ai/code-api/build.sh
+      - name: Smoke-test installed Code API dependencies
+        run: node --test mission-ai/code-api/runtime.test.mjs
+
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 15

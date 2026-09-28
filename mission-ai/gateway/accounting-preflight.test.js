@@ -61,6 +61,13 @@ test('provisional plan and all-month ledger comparison use only read methods and
   assert.equal(report.monthStart, MONTH);
   assert.equal(report.native.transactionCount, 2);
   assert.equal(report.native.nativeUsd, 0.065);
+  assert.equal(report.native.providerTotalsMatch, true);
+  assert.deepEqual(report.native.byProvider, [
+    { provider: 'openai', transactionCount: 2, spendUsd: 0.065 },
+    { provider: 'anthropic', transactionCount: 0, spendUsd: 0 },
+    { provider: 'google', transactionCount: 0, spendUsd: 0 },
+    { provider: 'unknown', transactionCount: 0, spendUsd: 0 },
+  ]);
   assert.match(report.native.planDigest, /^[a-f0-9]{64}$/);
   assert.deepEqual(report.native.policy, { targetUsd: 100, economyUsd: 125, hardUsd: 175 });
   assert.equal(report.ledger.stateEventsMatch, true);
@@ -74,6 +81,56 @@ test('provisional plan and all-month ledger comparison use only read methods and
     assert.equal(output.includes(privateValue), false);
   }
   assert.ok(output.length < 3000);
+});
+
+test('provider row counts and spend reconcile across providers without new queries or model disclosure', async () => {
+  const f = fixture();
+  f.options.catalogLoader = async () => ({ providers: {
+    openai: { economy: 'private-openai-model' }, anthropic: { economy: 'private-anthropic-model' },
+    google: { economy: 'private-google-model' },
+  } });
+  f.data.transactions = ['openai', 'anthropic', 'anthropic', 'google', 'unlisted'].map((provider, index) => ({
+    _id: `private-row-${index}`, createdAt: NOW, tokenType: index % 2 ? 'completion' : 'prompt',
+    tokenValue: -(index + 1) * 10_000, model: `private-${provider}-model`,
+  }));
+  const result = await runAccountingPreflight(f.options);
+  assert.equal(result.native.transactionCount, 5);
+  assert.ok(Math.abs(result.native.nativeUsd - 0.15) < 1e-12);
+  assert.deepEqual(result.native.byProvider, [
+    { provider: 'openai', transactionCount: 1, spendUsd: 0.01 },
+    { provider: 'anthropic', transactionCount: 2, spendUsd: 0.05 },
+    { provider: 'google', transactionCount: 1, spendUsd: 0.04 },
+    { provider: 'unknown', transactionCount: 1, spendUsd: 0.05 },
+  ]);
+  assert.equal(result.native.byProvider.reduce((sum, row) => sum + row.transactionCount, 0), result.native.transactionCount);
+  assert.ok(Math.abs(result.native.byProvider.reduce((sum, row) => sum + row.spendUsd, 0) - result.native.nativeUsd) < 1e-12);
+  assert.equal(f.calls.length, 3);
+  assert.equal(JSON.stringify(result).includes('private-'), false);
+});
+
+test('unrecognized and unsafe provider labels collapse to unknown without creating unsafe properties', async () => {
+  const f = fixture();
+  const labels = ['__proto__', 'constructor', 'prototype', `<script>${SECRET}</script>`];
+  f.options.catalogLoader = async () => ({ providers: Object.fromEntries(labels.map((label, index) =>
+    [label, { economy: `private-model-${index}` }])) });
+  f.data.transactions = labels.map((_, index) => ({ _id: `private-id-${index}`, createdAt: NOW,
+    tokenType: 'completion', tokenValue: -10_000, model: `private-model-${index}` }));
+  const result = await runAccountingPreflight(f.options);
+  assert.equal(result.native.providerTotalsMatch, true);
+  assert.deepEqual(result.native.byProvider[3], { provider: 'unknown', transactionCount: 4, spendUsd: 0.04 });
+  assert.ok(result.native.byProvider.slice(0, 3).every((row) => row.transactionCount === 0 && row.spendUsd === 0));
+  for (const row of result.native.byProvider) assert.deepEqual(Object.keys(row), ['provider', 'transactionCount', 'spendUsd']);
+  for (const value of [...labels, 'private-model-', 'private-id-']) assert.equal(JSON.stringify(result).includes(value), false);
+});
+
+test('empty charged history has zero provider totals and credits are excluded', async () => {
+  const f = fixture();
+  f.data.transactions = f.data.transactions.filter((row) => row.tokenValue > 0);
+  const result = await runAccountingPreflight(f.options);
+  assert.equal(result.native.transactionCount, 0);
+  assert.equal(result.native.nativeUsd, 0);
+  assert.equal(result.native.providerTotalsMatch, true);
+  assert.ok(result.native.byProvider.every((row) => row.transactionCount === 0 && row.spendUsd === 0));
 });
 
 test('receipt includes only a validated source commit, never arbitrary environment text', async () => {
