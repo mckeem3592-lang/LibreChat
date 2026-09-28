@@ -40,12 +40,17 @@ test('Mac installer restricts native host to the deterministic extension origin'
 });
 
 test('native host reads browser credential from Keychain and uses Chrome framing', async () => {
-  const host = await text('../companion/native-browser-host.js');
+  const [host, framing] = await Promise.all([
+    text('../companion/native-browser-host.js'),
+    text('../companion/native-message-framing.js'),
+  ]);
   assert.ok(host.includes("readSecret('mission-ai-browser-token')"));
-  assert.ok(host.includes('writeUInt32LE'));
-  assert.ok(host.includes('readUInt32LE'));
   assert.ok(host.includes("type === 'browser_result'"));
   assert.ok(host.includes("type === 'browser_tool'"));
   assert.ok(host.includes("ws://127.0.0.1:"));
+  assert.ok(host.includes("drainNativeFrames"));
+  assert.ok(host.includes("encodeNativeMessage"));
+  assert.ok(framing.includes('writeUInt32LE'));
+  assert.ok(framing.includes('readUInt32LE'));
   assert.ok(!host.includes('console.log'));
 });
