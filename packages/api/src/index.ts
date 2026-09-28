@@ -1,6 +1,7 @@
 export * from './app';
 export { createManagedChatAdmission, createManagedChatConfigGuard } from './missionBudget/managedChat';
 export { bootstrapMissionAiOwner } from './missionBudget/bootstrap';
+export { createMissionControlProxy } from './missionBudget/control';
 export * from './acl/accessControlService';
 export * from './acl/insightsPermissions';
 export * from './acl/middleware';

@@ -9,6 +9,12 @@ on:
       - 'packages/api/src/index.ts'
       - 'api/server/index.js'
       - 'api/server/routes/agents/index.js'
+      - 'api/server/routes/mission-ai.js'
+      - 'api/server/routes/index.js'
+      - 'client/src/components/Nav/MissionControl.tsx'
+      - 'client/src/components/Nav/__tests__/MissionControl.spec.tsx'
+      - 'client/src/components/UnifiedSidebar/**'
+      - 'client/src/locales/en/translation.json'
       - 'plugin/mission-ai-budget/**'
       - '.github/workflows/mission-ai-ci.yml'
   pull_request:
@@ -18,6 +24,12 @@ on:
       - 'packages/api/src/index.ts'
       - 'api/server/index.js'
       - 'api/server/routes/agents/index.js'
+      - 'api/server/routes/mission-ai.js'
+      - 'api/server/routes/index.js'
+      - 'client/src/components/Nav/MissionControl.tsx'
+      - 'client/src/components/Nav/__tests__/MissionControl.spec.tsx'
+      - 'client/src/components/UnifiedSidebar/**'
+      - 'client/src/locales/en/translation.json'
       - 'plugin/mission-ai-budget/**'
       - '.github/workflows/mission-ai-ci.yml'
 
@@ -147,6 +159,12 @@ jobs:
       - name: Verify managed model defaults and zero-retry client transport
         working-directory: packages/api
         run: npx jest src/endpoints/openai/config.spec.ts src/endpoints/openai/transport.spec.ts --runInBand --coverage=false
+      - name: Typecheck Mission AI interface
+        working-directory: client
+        run: npx tsc --noEmit
+      - name: Verify Mission AI controls and free-search interface
+        working-directory: client
+        run: npx jest src/components/Nav/__tests__/MissionControl.spec.tsx --runInBand --coverage=false
       - name: Audit existing chat loading with simulated database latency
         env:
           E2E_CHROMIUM_CHANNEL: chrome

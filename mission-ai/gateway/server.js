@@ -17,6 +17,7 @@ import { createNativeBridge } from './generated/native.js';
 import { createNativeHttp } from './generated/http.js';
 import { createFreeSearch, FreeSearchError } from './generated/freeSearch.js';
 import { createFreeCreditStore } from './generated/freeCredits.js';
+import { createMissionControlHttp } from './generated/control.js';
 import { defaultUsageLedger } from './usage-ledger.js';
 import { loadPricing, maximumTextRequestCost, calculateUsageCost } from './cost.js';
 
@@ -274,6 +275,24 @@ app.use('/native/openai/v1', nativeHttp.authorize, express.json({ limit: '1mb' }
 app.get('/native/openai/v1/models', nativeHttp.models);
 app.post('/native/openai/v1/chat/completions', nativeHttp.complete);
 app.use('/native/openai/v1', nativeHttp.unsupported);
+
+const controlHttp = createMissionControlHttp({
+  token: [TOOL_TOKEN, DEVICE_TOKEN].includes(process.env.MISSION_AI_NATIVE_TOKEN)
+    ? '' : process.env.MISSION_AI_NATIVE_TOKEN || '',
+  safeEqual,
+  dashboard: queryMissionDashboard,
+  flags: () => ({
+    paidText: process.env.MISSION_AI_NATIVE_ENABLED === 'true',
+    delegation: process.env.MISSION_AI_DELEGATION_ENABLED === 'true',
+    images: process.env.MISSION_AI_DELEGATION_ENABLED === 'true',
+    freeSearch: process.env.MISSION_AI_SEARCH_ENABLED === 'true',
+  }),
+  search: freeSearch.search,
+});
+app.use('/native/control', controlHttp.authorize, express.json({ limit: '16kb' }));
+app.get('/native/control/status', controlHttp.status);
+app.post('/native/control/search', controlHttp.search);
+app.use('/native/control', controlHttp.unsupported);
 
 app.get('/health', (_req, res) => {
   const expiresAt = Date.parse(process.env.MISSION_AI_PAIR_EXPIRES_AT || '');

@@ -42,12 +42,12 @@ export function anthropicRequest(body: Json): Json {
       if (messages.length) fail('native_content_unsupported');
       system.push(...blocks);
     } else {
-      const previous = messages.at(-1);
+      const previous = messages[messages.length - 1];
       if (previous && previous.role === message.role) (previous.content as Json[]).push(...blocks);
       else messages.push({ role: message.role, content: [...blocks] });
     }
   }
-  if (!messages.length || messages[0].role !== 'user' || messages.at(-1)?.role !== 'user') {
+  if (!messages.length || messages[0].role !== 'user' || messages[messages.length - 1]?.role !== 'user') {
     fail('native_request_invalid');
   }
   return {

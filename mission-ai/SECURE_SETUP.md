@@ -2,6 +2,22 @@
 
 Do not paste secrets into chat, source code, commits, or screenshots.
 
+## Owner controls in the separate chat
+
+The sidebar's Mission AI controls show ledger spending and run only basic free
+search. The authenticated owner reaches exact `/api/mission-ai/capabilities`,
+`/api/mission-ai/status`, and `/api/mission-ai/search` routes. Other users, extra
+routes, and cross-origin search submissions are denied. Gateway credentials stay
+on the server. No paid model is called to open or refresh this panel.
+
+The startup wrapper retains only the owner email as
+`MISSION_AI_CONTROL_OWNER_EMAIL` before discarding bootstrap credentials. After
+one-time bootstrap is removed, keep this email configured privately; an absent
+email denies controls. The gateway's native token protects the separate
+`/native/control` status/search routes even while paid native chat is disabled.
+These routes do not expose paid, image, shell, or browser execution operations.
+All paid gates remain off during setup. Original chat remains outside this cap.
+
 ## MongoDB Atlas
 
 Create two dedicated users rather than reusing LibreChat's primary application user.

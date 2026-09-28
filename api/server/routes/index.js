@@ -43,8 +43,10 @@ const user = require('./user');
 const mcp = require('./mcp');
 const rum = require('./rum');
 const insights = require('./insights');
+const missionAi = require('./mission-ai');
 
 module.exports = {
+  missionAi,
   insights,
   rum,
   mcp,

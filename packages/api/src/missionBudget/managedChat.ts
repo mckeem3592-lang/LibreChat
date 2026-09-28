@@ -217,11 +217,14 @@ function chatBody(value: unknown): ObjectValue {
 }
 
 const READ_PATHS = new Set([
+  '/api/mission-ai/status',
+  '/api/mission-ai/capabilities',
   '/api/config', '/api/user', '/api/user/terms', '/api/endpoints', '/api/endpoints/token-config',
   '/api/models', '/api/balance', '/api/banner', '/api/presets', '/api/tags', '/api/search/enable',
   '/api/convos', '/api/messages', '/api/agents/chat/active',
 ]);
 const POST_PATHS = new Set([
+  '/api/mission-ai/search',
   '/api/auth/login', '/api/auth/refresh', '/api/auth/logout', '/api/auth/2fa/verify-temp',
   '/api/auth/2fa/enable', '/api/auth/2fa/verify', '/api/auth/2fa/confirm',
   '/api/auth/2fa/disable', '/api/auth/2fa/backup/regenerate',
