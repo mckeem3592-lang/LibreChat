@@ -228,7 +228,7 @@ export function createMissionMcpNodeHandler({
     registerTool(
       'browser_activate_tab',
       {
-        description: 'Activate a specific Google Chrome tab by window and tab index using direct macOS Chrome automation.',
+        description: 'Activate a specific Google Chrome tab by stable Chrome window and tab IDs using direct macOS Chrome automation.',
         inputSchema: z.object({
           deviceId: z.string().optional(),
           windowId: z.string().min(1),
