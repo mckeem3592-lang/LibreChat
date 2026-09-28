@@ -1,3 +1,4 @@
+jest.mock('~/components/Nav/MissionControl', () => ({ __esModule: true, default: () => null }));
 import React from 'react';
 import { RecoilRoot } from 'recoil';
 import '@testing-library/jest-dom/extend-expect';

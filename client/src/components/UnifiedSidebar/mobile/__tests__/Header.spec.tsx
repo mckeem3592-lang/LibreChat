@@ -1,3 +1,4 @@
+jest.mock('~/components/Nav/MissionControl', () => ({ __esModule: true, default: () => null }));
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { render, screen } from '@testing-library/react';

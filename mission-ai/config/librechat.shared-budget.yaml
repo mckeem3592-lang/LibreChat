@@ -92,7 +92,7 @@ endpoints:
         timeout: 180000
       # Force the supported Chat Completions path, including stored settings
       # that previously selected Responses. Gateway validation remains final.
-      dropParams: ['useResponsesApi', 'temperature', 'top_p', 'frequency_penalty', 'presence_penalty', 'seed', 'user', 'verbosity']
+      dropParams: ['useResponsesApi', 'temperature', 'top_p', 'topP', 'frequency_penalty', 'frequencyPenalty', 'presence_penalty', 'presencePenalty', 'seed', 'user', 'verbosity']
 
 modelSpecs:
   enforce: true

@@ -313,8 +313,8 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
   keys(models, new Set(['default', 'fetch']));
   if (models.fetch !== false) throw new Error();
   sameStrings(models.default, Object.values(SPEC_MODELS));
-  sameStrings(custom.dropParams, ['useResponsesApi', 'temperature', 'top_p',
-    'frequency_penalty', 'presence_penalty', 'seed', 'user', 'verbosity']);
+  sameStrings(custom.dropParams, ['useResponsesApi', 'temperature', 'top_p', 'topP',
+    'frequency_penalty', 'frequencyPenalty', 'presence_penalty', 'presencePenalty', 'seed', 'user', 'verbosity']);
   const transport = object(custom.addParams);
   keys(transport, new Set(['maxRetries', 'timeout']));
   if (transport.maxRetries !== 0 || transport.timeout !== 180_000) throw new Error();
