@@ -427,10 +427,21 @@ wss.on('connection', (ws, deviceId) => {
         return;
       }
       if (message?.type === 'device_capabilities' && Array.isArray(message.capabilities)) {
-        const safeCapabilities = message.capabilities
-          .filter((value) => typeof value === 'string' && KNOWN_DEVICE_CAPABILITIES.has(value))
-          .slice(0, 16);
+        const safeCapabilities = [...new Set(
+          message.capabilities
+            .filter((value) => typeof value === 'string' && KNOWN_DEVICE_CAPABILITIES.has(value))
+            .slice(0, 16),
+        )].sort();
+        const previous = deviceCapabilities.get(deviceId) || new Set();
+        const changed =
+          previous.size !== safeCapabilities.length ||
+          safeCapabilities.some((value) => !previous.has(value));
         deviceCapabilities.set(deviceId, new Set(safeCapabilities));
+        if (changed) {
+          console.log(
+            `Mission AI device capabilities: ${deviceId} ${JSON.stringify(safeCapabilities)}`,
+          );
+        }
       }
     } catch {
       ws.close(1003, 'invalid_json');
