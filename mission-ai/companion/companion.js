@@ -7,6 +7,11 @@ import WebSocket, { WebSocketServer } from 'ws';
 import { readSecret, writeSecret } from './keychain.js';
 import { normalizeMacControlError } from './permission-errors.js';
 import { reconnectDelayMs } from './reconnect-policy.js';
+import {
+  normalizeCloseTabRequest,
+  parseChromeTabRows,
+  validateActivateTab,
+} from './direct-tabs.js';
 
 const execFileAsync = promisify(execFile);
 const GATEWAY_URL = process.env.MISSION_AI_GATEWAY_URL || '';
@@ -162,35 +167,11 @@ async function chromeListTabs() {
     '-e', 'end tell',
   ];
   const { stdout } = await execFileAsync('osascript', script);
-  const tabs = stdout
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => {
-      const [windowId, tabId, windowIndex, tabIndex, active, title, ...urlParts] = line.split('\t');
-      return {
-        windowId: String(windowId || ''),
-        tabId: String(tabId || ''),
-        windowIndex: Number(windowIndex),
-        tabIndex: Number(tabIndex),
-        active: active === '1',
-        title: title || '',
-        url: urlParts.join('\t') || '',
-      };
-    })
-    .filter(
-      (tab) =>
-        tab.windowId &&
-        tab.tabId &&
-        Number.isInteger(tab.windowIndex) &&
-        Number.isInteger(tab.tabIndex),
-    );
-  return { tabs };
+  return { tabs: parseChromeTabRows(stdout) };
 }
 
 async function chromeActivateTab(args) {
-  const windowId = String(args?.windowId || '');
-  const tabId = String(args?.tabId || '');
-  if (!windowId || !tabId) throw new Error('invalid_tab_selection');
+  const { windowId, tabId } = validateActivateTab(args);
 
   await execFileAsync('osascript', [
     '-e', 'on run argv',
@@ -220,22 +201,11 @@ async function chromeActivateTab(args) {
 }
 
 async function chromeCloseTabs(args) {
-  if (args?.confirm !== true) throw new Error('confirmation_required');
-  const requested = Array.isArray(args?.tabs) ? args.tabs : [];
-  if (!requested.length || requested.length > 100) throw new Error('invalid_tab_selection');
-
-  const seen = new Set();
+  const requested = normalizeCloseTabRequest(args);
   let closed = 0;
 
   for (const item of requested) {
-    const windowId = String(item?.windowId || '');
-    const tabId = String(item?.tabId || '');
-    const expectedUrl = String(item?.expectedUrl || '');
-    if (!windowId || !tabId || !expectedUrl) throw new Error('invalid_tab_selection');
-
-    const key = `${windowId}:${tabId}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const { windowId, tabId, expectedUrl } = item;
 
     await execFileAsync('osascript', [
       '-e', 'on run argv',
