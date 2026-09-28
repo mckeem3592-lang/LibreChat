@@ -12,6 +12,7 @@ import { fallbackPlan } from './fallbacks.js';
 import { delegateRequest } from './delegate.js';
 import { buildCostComparison, comparisonCsv } from './cost-comparison.js';
 import { generateImage } from './image.js';
+import { createPaidHttpHandlers } from './paid-http.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const DEVICE_TOKEN = process.env.MISSION_AI_DEVICE_TOKEN || '';
@@ -25,6 +26,8 @@ const MAX_TIMEOUT_MS = 120_000;
 if (!DEVICE_TOKEN || !TOOL_TOKEN) {
   throw new Error('MISSION_AI_DEVICE_TOKEN and MISSION_AI_TOOL_TOKEN are required');
 }
+
+const paidHttp = createPaidHttpHandlers({ delegateRequest, generateImage });
 
 const app = express();
 app.disable('x-powered-by');
@@ -347,7 +350,7 @@ app.get('/v1/fallback/:role', async (req, res) => {
 app.post('/v1/image', async (req, res) => {
   try {
     res.set('cache-control', 'no-store');
-    res.json(await generateImage(req.body || {}));
+    res.json(await paidHttp.image(req.body || {}));
   } catch (error) {
     const code = error instanceof Error ? error.message : 'image_error';
     const status =
@@ -360,7 +363,7 @@ app.post('/v1/image', async (req, res) => {
 
 app.post('/v1/delegate', async (req, res) => {
   try {
-    res.json(await delegateRequest(req.body || {}));
+    res.json(await paidHttp.delegate(req.body || {}));
   } catch (error) {
     const code = error instanceof Error ? error.message : 'delegation_error';
     const status =
@@ -491,3 +494,4 @@ server.listen(PORT, '0.0.0.0', () => {
       console.warn('Mission AI code worker status unavailable');
     });
 });
+
