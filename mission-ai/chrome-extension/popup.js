@@ -7,41 +7,18 @@ function refresh() {
       return;
     }
     status.textContent = response?.connected
-      ? 'Connected to Mac companion'
+      ? 'Connected to Mission AI on this Mac'
       : response?.error
-        ? `Companion not connected: ${response.error}`
-        : 'Companion not connected';
+        ? `Not connected: ${response.error}`
+        : 'Not connected';
   });
 }
 
-document.getElementById('pair').addEventListener('click', async () => {
-  status.textContent = 'Pairing…';
-  try {
-    const response = await fetch('http://127.0.0.1:8766/browser/pair', {
-      method: 'GET',
-      cache: 'no-store',
-    });
-    if (!response.ok) throw new Error(`pair_http_${response.status}`);
-    const body = await response.json();
-    if (!body?.ok || !body.browserToken) throw new Error('pair_invalid_response');
-
-    chrome.runtime.sendMessage(
-      { type: 'mission-ai-set-token', token: body.browserToken },
-      (result) => {
-        if (chrome.runtime.lastError || !result?.ok) {
-          const reason =
-            result?.error ||
-            chrome.runtime.lastError?.message ||
-            'background_worker_rejected_token';
-          status.textContent = `Pairing failed: ${reason}`;
-          return;
-        }
-        setTimeout(refresh, 500);
-      },
-    );
-  } catch (error) {
-    status.textContent = `Pairing failed: ${error instanceof Error ? error.message : 'unknown_error'}`;
-  }
+document.getElementById('pair').addEventListener('click', () => {
+  status.textContent = 'Connecting…';
+  chrome.runtime.sendMessage({ type: 'mission-ai-reconnect' }, () => {
+    setTimeout(refresh, 750);
+  });
 });
 
 refresh();
