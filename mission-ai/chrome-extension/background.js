@@ -1,85 +1,76 @@
 import { createSnapshot, pageUrlAllowed, validateSnapshot } from './browser-snapshot.js';
 
+const NATIVE_HOST = 'com.missionai.browser_bridge';
 let latestSnapshot = null;
+let nativePort = null;
 let transportConnected = false;
-let lastConnectionError = 'pairing_required';
-let creatingOffscreen = null;
+let lastConnectionError = 'native_host_not_connected';
+let reconnectTimer = null;
+let reconnectAttempt = 0;
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function reconnectDelay(attempt) {
+  return Math.min(30_000, 500 * (2 ** Math.min(attempt, 6)));
 }
 
-async function offscreenExists() {
-  if (typeof chrome.offscreen?.hasDocument === 'function') {
-    return await chrome.offscreen.hasDocument();
-  }
-  const url = chrome.runtime.getURL('offscreen.html');
-  const contexts = await chrome.runtime.getContexts({
-    contextTypes: ['OFFSCREEN_DOCUMENT'],
-    documentUrls: [url],
-  });
-  return contexts.length > 0;
+function scheduleReconnect() {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  const delay = reconnectDelay(reconnectAttempt);
+  reconnectAttempt += 1;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectNative();
+  }, delay);
 }
 
-async function ensureOffscreen() {
-  if (await offscreenExists()) return;
-
-  if (!creatingOffscreen) {
-    creatingOffscreen = chrome.offscreen.createDocument({
-      url: 'offscreen.html',
-      reasons: ['LOCAL_STORAGE'],
-      justification: 'Persist the local browser bridge credential in the offscreen transport context.',
-    }).finally(() => {
-      creatingOffscreen = null;
-    });
-  }
-  await creatingOffscreen;
-}
-
-async function sendOffscreen(message) {
-  let lastError = 'offscreen_receiver_unavailable';
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    try {
-      const response = await chrome.runtime.sendMessage(message);
-      if (response) return response;
-      lastError = 'offscreen_empty_response';
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : 'offscreen_message_failed';
-    }
-    await delay(100 * (attempt + 1));
-  }
-  throw new Error(lastError);
-}
-
-async function connectTransport(token) {
-  const browserToken = String(token || '');
-  if (!browserToken) {
-    transportConnected = false;
-    lastConnectionError = 'empty_token';
-    return { ok: false, error: lastConnectionError };
-  }
-
+function connectNative() {
+  if (nativePort) return;
   try {
-    await ensureOffscreen();
-    const response = await sendOffscreen({
-      target: 'offscreen',
-      type: 'mission-ai-offscreen-connect',
-      token: browserToken,
+    const port = chrome.runtime.connectNative(NATIVE_HOST);
+    nativePort = port;
+    lastConnectionError = 'connecting_native_host';
+
+    port.onMessage.addListener(async (message) => {
+      if (message?.type === 'status') {
+        transportConnected = message.connected === true;
+        lastConnectionError = transportConnected ? null : (message.error || 'native_host_disconnected');
+        if (transportConnected) reconnectAttempt = 0;
+        return;
+      }
+
+      if (message?.type !== 'browser_tool' || typeof message.id !== 'string') return;
+
+      try {
+        const result = await execute(message.tool, message.args || {});
+        port.postMessage({
+          type: 'browser_result',
+          id: message.id,
+          ok: true,
+          result,
+        });
+      } catch (error) {
+        port.postMessage({
+          type: 'browser_result',
+          id: message.id,
+          ok: false,
+          error: error instanceof Error ? error.message : 'browser_error',
+        });
+      }
     });
-    if (response?.ok) {
-      transportConnected = true;
-      lastConnectionError = null;
-      return { ok: true };
-    }
-    transportConnected = false;
-    lastConnectionError = response?.error || 'offscreen_connection_failed';
-    return { ok: false, error: lastConnectionError };
+
+    port.onDisconnect.addListener(() => {
+      const error = chrome.runtime.lastError?.message || 'native_host_disconnected';
+      if (nativePort === port) nativePort = null;
+      transportConnected = false;
+      lastConnectionError = error;
+      scheduleReconnect();
+    });
+
+    port.postMessage({ type: 'ping' });
   } catch (error) {
+    nativePort = null;
     transportConnected = false;
-    lastConnectionError = error instanceof Error
-      ? `offscreen_transport: ${error.message}`
-      : 'offscreen_transport: offscreen_connection_failed';
-    return { ok: false, error: lastConnectionError };
+    lastConnectionError = error instanceof Error ? error.message : 'native_host_connect_failed';
+    scheduleReconnect();
   }
 }
 
@@ -273,9 +264,8 @@ async function execute(tool, args) {
   throw new Error('tool_not_allowed');
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.target === 'offscreen') return;
 
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'mission-ai-status') {
     sendResponse({
       connected: transportConnected,
@@ -284,31 +274,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return;
   }
 
-  if (message?.type === 'mission-ai-set-token') {
-    connectTransport(message.token).then(sendResponse);
-    return true;
-  }
-
-  if (message?.type === 'mission-ai-offscreen-status') {
-    transportConnected = Boolean(message.connected);
-    lastConnectionError = message.error
-      ? `${message.phase || 'offscreen'}: ${message.error}`
-      : message.connected
-        ? null
-        : message.phase || lastConnectionError;
+  if (message?.type === 'mission-ai-reconnect') {
+    if (nativePort) {
+      try { nativePort.disconnect(); } catch {}
+      nativePort = null;
+    }
+    connectNative();
     sendResponse({ ok: true });
     return;
   }
-
-  if (message?.type === 'mission-ai-browser-tool') {
-    execute(message.tool, message.args || {})
-      .then((result) => sendResponse({ ok: true, result }))
-      .catch((error) =>
-        sendResponse({
-          ok: false,
-          error: error instanceof Error ? error.message : 'browser_error',
-        }),
-      );
-    return true;
-  }
 });
+
+chrome.runtime.onInstalled.addListener(connectNative);
+chrome.runtime.onStartup.addListener(connectNative);
+connectNative();
