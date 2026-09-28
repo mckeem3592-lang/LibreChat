@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { executeProvider, executeImageProvider, ProviderRequestError } from './provider-client.js';
+import {
+  executeProvider,
+  executeImageProvider,
+  normalizeOutputTokenLimit,
+  ProviderRequestError,
+} from './provider-client.js';
 
 function withEnv(values, fn) {
   const original = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]));
@@ -41,6 +46,7 @@ test('OpenAI adapter uses Responses API and normalizes usage', async () => {
         return mockResponse({
           id: 'resp_1',
           model: 'gpt-6-sol',
+          service_tier: 'default',
           output: [{ content: [{ type: 'output_text', text: 'hi' }] }],
           usage: {
             input_tokens: 10,
@@ -52,6 +58,8 @@ test('OpenAI adapter uses Responses API and normalizes usage', async () => {
     });
     assert.match(request.url, /\/responses$/);
     assert.equal(JSON.parse(request.options.body).input, 'hello');
+    assert.equal(JSON.parse(request.options.body).service_tier, 'default');
+    assert.equal(result.serviceTier, 'default');
     assert.equal(request.options.headers.authorization, 'Bearer secret');
     assert.equal(result.text, 'hi');
     assert.deepEqual(result.usage, {
@@ -180,6 +188,7 @@ test('Gemini image adapter parses base64 image output and modality usage', async
       prompt: 'draw a moon',
       aspectRatio: '16:9',
       imageSize: '2K',
+      maxOutputTokens: 6000,
       fetchImpl: async (url, options) => {
         request = { url, options };
         return mockResponse({
@@ -212,6 +221,8 @@ test('Gemini image adapter parses base64 image output and modality usage', async
     assert.match(request.url, /\/v1beta\/interactions$/);
     assert.equal(sent.response_format.aspect_ratio, '16:9');
     assert.equal(sent.response_format.image_size, '2K');
+    assert.equal(sent.generation_config.max_output_tokens, 6000);
+    assert.equal(request.options.redirect, 'error');
     assert.deepEqual(result.images, [{ data: 'aW1hZ2U=', mimeType: 'image/png' }]);
     assert.equal(result.usage.outputTokens, 0);
     assert.equal(result.usage.imageOutputTokens, 1680);
@@ -247,5 +258,158 @@ test('Gemini image adapter supports reference-image editing without logging cred
       mime_type: 'image/png',
     });
     assert.equal(result.images[0].data, 'ZWRpdA==');
+  });
+});
+
+test('output limits are validated once without silently defaulting or clamping', async () => {
+  assert.equal(normalizeOutputTokenLimit(), 4096);
+  assert.equal(normalizeOutputTokenLimit(1), 1);
+  assert.equal(normalizeOutputTokenLimit(32768), 32768);
+  let calls = 0;
+  for (const value of [0, null, false, '10', -1, 0.5, 32769, NaN, Infinity]) {
+    await assert.rejects(() => executeProvider({
+      provider: 'openai', model: 'gpt-6-sol', prompt: 'hello', maxOutputTokens: value,
+      fetchImpl: async () => { calls += 1; },
+    }), (error) => error.code === 'provider_input_invalid' && !error.chargeUnknown);
+    await assert.rejects(() => executeImageProvider({
+      model: 'gemini-3.1-flash-image', prompt: 'moon', maxOutputTokens: value,
+      fetchImpl: async () => { calls += 1; },
+    }), (error) => error.code === 'provider_input_invalid' && !error.chargeUnknown);
+  }
+  assert.equal(calls, 0);
+});
+
+test('Gemini bills both candidate and thought tokens including thought-only truncation', async () => {
+  await withEnv({ GEMINI_API_KEY: 'test-key' }, async () => {
+    for (const candidateTokens of [6, undefined]) {
+      const output = await executeProvider({
+        provider: 'google', model: 'gemini-3.8-flash', prompt: 'research',
+        fetchImpl: async () => mockResponse({
+          candidates: [],
+          usageMetadata: {
+            promptTokenCount: 10, thoughtsTokenCount: 20,
+            ...(candidateTokens === undefined ? {} : { candidatesTokenCount: candidateTokens }),
+          },
+        }),
+      });
+      assert.equal(output.usage.outputTokens, 20 + (candidateTokens || 0));
+    }
+  });
+});
+
+test('missing or invalid provider usage is an uncertain charge rather than free usage', async () => {
+  await withEnv({ OPENAI_API_KEY: 'o', ANTHROPIC_API_KEY: 'a', GEMINI_API_KEY: 'g' }, async () => {
+    const cases = [
+      ['openai', 'gpt-6-sol', {}],
+      ['openai', 'gpt-6-sol', { usage: {} }],
+      ['openai', 'gpt-6-sol', { usage: { input_tokens: 1, output_tokens: NaN } }],
+      ['openai', 'gpt-6-sol', { usage: { input_tokens: 1, output_tokens: -1 } }],
+      ['openai', 'gpt-6-sol', { usage: { input_tokens: 1, output_tokens: '2' } }],
+      ['openai', 'gpt-6-sol', { usage: { input_tokens: 1, output_tokens: 2,
+        input_tokens_details: { cached_tokens: 2 } } }],
+      ['anthropic', 'claude-sonnet-5', {}],
+      ['anthropic', 'claude-sonnet-5', { usage: { input_tokens: 1, output_tokens: 2,
+        cache_creation_input_tokens: 5, cache_creation: { ephemeral_5m_input_tokens: 3 } } }],
+      ['google', 'gemini-3.8-flash', {}],
+      ['google', 'gemini-3.8-flash', { usageMetadata: { promptTokenCount: 1 } }],
+      ['google', 'gemini-3.8-flash', { usageMetadata: { promptTokenCount: 1,
+        candidatesTokenCount: 2, thoughtsTokenCount: -1 } }],
+    ];
+    for (const [provider, model, body] of cases) {
+      await assert.rejects(() => executeProvider({
+        provider, model, prompt: 'hello', fetchImpl: async () => mockResponse(body),
+      }), (error) => error instanceof ProviderRequestError &&
+        error.code === 'provider_usage_invalid' && error.chargeUnknown);
+    }
+  });
+});
+
+test('provider transport and response errors preserve charge uncertainty and safe error codes', async () => {
+  await withEnv({ OPENAI_API_KEY: 'secret-never-log' }, async () => {
+    const cases = [
+      [async () => { throw new Error('secret-never-log'); }, true, 'provider_network_error'],
+      [async () => { throw Object.assign(new Error('secret-never-log'), { name: 'TimeoutError' }); }, true, 'provider_timeout'],
+      [async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('secret-never-log'); } }), true, 'provider_invalid_response'],
+      [async () => ({ ok: true, status: 200, json: async () => { throw Object.assign(new Error(), { name: 'AbortError' }); } }), true, 'provider_invalid_response'],
+      [async () => mockResponse(null), true, 'provider_invalid_response'],
+      [async () => mockResponse({ error: { code: 'secret-never-log' } }, 503), true, 'provider_http_error'],
+      [async () => mockResponse({ error: { code: 'secret-never-log' } }, 408), true, 'provider_http_error'],
+      [async () => mockResponse({ error: { code: 'secret-never-log' } }, 401), false, 'provider_http_error'],
+      [async () => mockResponse({ error: { code: 'secret-never-log' } }, 429), false, 'provider_http_error'],
+    ];
+    for (const [fetchImpl, chargeUnknown, code] of cases) {
+      await assert.rejects(() => executeProvider({
+        provider: 'openai', model: 'gpt-6-sol', prompt: 'hello', fetchImpl,
+      }), (error) => {
+        assert.equal(error.chargeUnknown, chargeUnknown);
+        assert.equal(error.code, code);
+        assert.equal(JSON.stringify(error).includes('secret-never-log'), false);
+        return true;
+      });
+    }
+  });
+});
+
+test('malformed successful output is still a possibly billed request', async () => {
+  await withEnv({ OPENAI_API_KEY: 'o' }, async () => {
+    await assert.rejects(() => executeProvider({
+      provider: 'openai', model: 'gpt-6-sol', prompt: 'hello',
+      fetchImpl: async () => mockResponse({
+        output: {}, service_tier: 'default', usage: { input_tokens: 1, output_tokens: 2 },
+      }),
+    }), (error) => error.code === 'provider_invalid_response' && error.chargeUnknown);
+  });
+});
+
+test('OpenAI rejects missing or nonstandard reported service tiers as uncertain billing', async () => {
+  await withEnv({ OPENAI_API_KEY: 'test-key' }, async () => {
+    for (const serviceTier of [undefined, null, 'auto', 'priority', 'fast', 'ultrafast', 'flex', 'scale', 'unknown']) {
+      await assert.rejects(() => executeProvider({
+        provider: 'openai', model: 'gpt-6-sol', prompt: 'hello',
+        fetchImpl: async (_url, options) => {
+          assert.equal(JSON.parse(options.body).service_tier, 'default');
+          return mockResponse({
+            output_text: 'OK', usage: { input_tokens: 1, output_tokens: 2 },
+            ...(serviceTier === undefined ? {} : { service_tier: serviceTier }),
+          });
+        },
+      }), (error) => error instanceof ProviderRequestError &&
+        error.code === 'provider_service_tier_unverified' && error.chargeUnknown);
+    }
+  });
+});
+
+test('image usage includes text and thoughts without double-counting image tokens', async () => {
+  await withEnv({ GEMINI_API_KEY: 'g' }, async () => {
+    const result = await executeImageProvider({
+      model: 'gemini-3.1-flash-image', prompt: 'moon',
+      fetchImpl: async () => mockResponse({
+        output_image: { data: 'aW1hZ2U=' },
+        usage: {
+          total_input_tokens: 10, total_output_tokens: 1130, total_thought_tokens: 20,
+          output_tokens_by_modality: [{ modality: 'image', tokens: 1120 }, { modality: 'text', tokens: 10 }],
+        },
+      }),
+    });
+    assert.equal(result.usage.outputTokens, 30);
+    assert.equal(result.usage.imageOutputTokens, 1120);
+  });
+});
+
+test('missing image output or missing and inconsistent usage retains charge uncertainty', async () => {
+  await withEnv({ GEMINI_API_KEY: 'g' }, async () => {
+    for (const body of [
+      {},
+      { output_image: { data: 'aW1hZ2U=' } },
+      { output_image: { data: 'aW1hZ2U=' }, usage: {
+        total_input_tokens: 10, total_output_tokens: 1130,
+        output_tokens_by_modality: [{ modality: 'image', tokens: 1000 }],
+      } },
+    ]) {
+      await assert.rejects(() => executeImageProvider({
+        model: 'gemini-3.1-flash-image', prompt: 'moon',
+        fetchImpl: async () => mockResponse(body),
+      }), (error) => error instanceof ProviderRequestError && error.chargeUnknown);
+    }
   });
 });

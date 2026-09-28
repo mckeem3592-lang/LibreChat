@@ -4,13 +4,43 @@ const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
 const DEFAULT_TIMEOUT_MS = 120000;
 
 export class ProviderRequestError extends Error {
-  constructor(provider, status, code = 'provider_request_failed') {
+  constructor(provider, status, code = 'provider_request_failed', { chargeUnknown = false } = {}) {
     super(code);
     this.name = 'ProviderRequestError';
     this.provider = provider;
     this.status = status;
     this.code = code;
+    this.chargeUnknown = chargeUnknown;
   }
+}
+
+export function normalizeOutputTokenLimit(value = DEFAULT_MAX_OUTPUT_TOKENS) {
+  if (!Number.isInteger(value) || value < 1 || value > 32768) {
+    throw new ProviderRequestError(null, 400, 'provider_input_invalid');
+  }
+  return value;
+}
+
+function invalidUsage(provider) {
+  return new ProviderRequestError(provider, 502, 'provider_usage_invalid', { chargeUnknown: true });
+}
+
+function tokenCount(provider, value, optional = false) {
+  if (optional && value === undefined) return 0;
+  if (!Number.isSafeInteger(value) || value < 0) throw invalidUsage(provider);
+  return value;
+}
+
+function validateInputCache(provider, inputTokens, cachedInputTokens, cacheWriteTokens = 0) {
+  if (cachedInputTokens + cacheWriteTokens > inputTokens) throw invalidUsage(provider);
+}
+
+function responseList(provider, value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new ProviderRequestError(provider, 502, 'provider_invalid_response', { chargeUnknown: true });
+  }
+  return value;
 }
 
 function runtimeProvider(name) {
@@ -26,38 +56,41 @@ async function jsonRequest(provider, url, options, fetchImpl) {
   try {
     response = await fetchImpl(url, {
       ...options,
+      redirect: 'error',
       signal: options.signal || AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
   } catch (error) {
     if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
-      throw new ProviderRequestError(provider, 504, 'provider_timeout');
+      throw new ProviderRequestError(provider, 504, 'provider_timeout', { chargeUnknown: true });
     }
-    throw new ProviderRequestError(provider, 502, 'provider_network_error');
+    throw new ProviderRequestError(provider, 502, 'provider_network_error', { chargeUnknown: true });
   }
 
   let body;
   try {
     body = await response.json();
   } catch {
-    throw new ProviderRequestError(provider, response.status || 502, 'provider_invalid_response');
+    throw new ProviderRequestError(provider, response.status || 502, 'provider_invalid_response', {
+      chargeUnknown: response.ok || response.status >= 500 || response.status === 408,
+    });
   }
 
   if (!response.ok) {
-    const code =
-      body?.error?.code ||
-      body?.error?.type ||
-      body?.error?.status ||
-      'provider_http_error';
-    throw new ProviderRequestError(provider, response.status, String(code));
+    throw new ProviderRequestError(provider, response.status, 'provider_http_error', {
+      chargeUnknown: response.status >= 500 || response.status === 408,
+    });
   }
 
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new ProviderRequestError(provider, 502, 'provider_invalid_response', { chargeUnknown: true });
+  }
   return body;
 }
 
 function openAIText(body) {
   if (typeof body?.output_text === 'string') return body.output_text;
-  return (body?.output || [])
-    .flatMap((item) => item?.content || [])
+  return responseList('openai', body?.output)
+    .flatMap((item) => responseList('openai', item?.content))
     .filter((part) => part?.type === 'output_text' && typeof part.text === 'string')
     .map((part) => part.text)
     .join('');
@@ -79,20 +112,30 @@ async function executeOpenAI({ model, prompt, system, maxOutputTokens, fetchImpl
         input: prompt,
         ...(system ? { instructions: system } : {}),
         max_output_tokens: maxOutputTokens,
+        service_tier: 'default',
       }),
     },
     fetchImpl,
   );
 
+  const inputTokens = tokenCount('openai', body?.usage?.input_tokens);
+  const outputTokens = tokenCount('openai', body?.usage?.output_tokens);
+  const cachedInputTokens = tokenCount('openai', body?.usage?.input_tokens_details?.cached_tokens, true);
+  const cacheWriteTokens = tokenCount('openai', body?.usage?.input_tokens_details?.cache_write_tokens, true);
+  validateInputCache('openai', inputTokens, cachedInputTokens, cacheWriteTokens);
+  if (body.service_tier !== 'default') {
+    throw new ProviderRequestError('openai', 502, 'provider_service_tier_unverified', { chargeUnknown: true });
+  }
   return {
     provider: 'openai',
     model: body?.model || model,
+    serviceTier: body.service_tier,
     text: openAIText(body),
     usage: {
-      inputTokens: Number(body?.usage?.input_tokens || 0),
-      outputTokens: Number(body?.usage?.output_tokens || 0),
-      cachedInputTokens: Number(body?.usage?.input_tokens_details?.cached_tokens || 0),
-      cacheWriteTokens: Number(body?.usage?.input_tokens_details?.cache_write_tokens || 0),
+      inputTokens,
+      outputTokens,
+      cachedInputTokens,
+      cacheWriteTokens,
     },
     requestId: body?.id || null,
   };
@@ -123,20 +166,23 @@ async function executeAnthropic({ model, prompt, system, maxOutputTokens, fetchI
   return {
     provider: 'anthropic',
     model: body?.model || model,
-    text: (body?.content || [])
+    text: responseList('anthropic', body?.content)
       .filter((part) => part?.type === 'text' && typeof part.text === 'string')
       .map((part) => part.text)
       .join(''),
     usage: (() => {
       const cacheCreation = body?.usage?.cache_creation || {};
-      const cacheWrite5mTokens = Number(cacheCreation?.ephemeral_5m_input_tokens || 0);
-      const cacheWrite1hTokens = Number(cacheCreation?.ephemeral_1h_input_tokens || 0);
-      const reportedCacheWriteTokens = Number(body?.usage?.cache_creation_input_tokens || 0);
+      const cacheWrite5mTokens = tokenCount('anthropic', cacheCreation?.ephemeral_5m_input_tokens, true);
+      const cacheWrite1hTokens = tokenCount('anthropic', cacheCreation?.ephemeral_1h_input_tokens, true);
+      const reportedCacheWriteTokens = tokenCount('anthropic', body?.usage?.cache_creation_input_tokens, true);
       const detailedCacheWriteTokens = cacheWrite5mTokens + cacheWrite1hTokens;
+      if (body?.usage?.cache_creation != null &&
+          body?.usage?.cache_creation_input_tokens !== undefined &&
+          detailedCacheWriteTokens !== reportedCacheWriteTokens) throw invalidUsage('anthropic');
       return {
-        inputTokens: Number(body?.usage?.input_tokens || 0),
-        outputTokens: Number(body?.usage?.output_tokens || 0),
-        cachedInputTokens: Number(body?.usage?.cache_read_input_tokens || 0),
+        inputTokens: tokenCount('anthropic', body?.usage?.input_tokens),
+        outputTokens: tokenCount('anthropic', body?.usage?.output_tokens),
+        cachedInputTokens: tokenCount('anthropic', body?.usage?.cache_read_input_tokens, true),
         cacheWriteTokens:
           detailedCacheWriteTokens > 0 ? detailedCacheWriteTokens : reportedCacheWriteTokens,
         cacheWrite5mTokens:
@@ -170,18 +216,25 @@ async function executeGoogle({ model, prompt, system, maxOutputTokens, fetchImpl
     fetchImpl,
   );
 
+  const usage = body?.usageMetadata;
+  const inputTokens = tokenCount('google', usage?.promptTokenCount);
+  const candidateTokens = tokenCount('google', usage?.candidatesTokenCount,
+    usage?.thoughtsTokenCount !== undefined);
+  const thoughtTokens = tokenCount('google', usage?.thoughtsTokenCount, true);
+  const cachedInputTokens = tokenCount('google', usage?.cachedContentTokenCount, true);
+  validateInputCache('google', inputTokens, cachedInputTokens);
   return {
     provider: 'google',
     model,
-    text: (body?.candidates || [])
-      .flatMap((candidate) => candidate?.content?.parts || [])
+    text: responseList('google', body?.candidates)
+      .flatMap((candidate) => responseList('google', candidate?.content?.parts))
       .filter((part) => typeof part?.text === 'string')
       .map((part) => part.text)
       .join(''),
     usage: {
-      inputTokens: Number(body?.usageMetadata?.promptTokenCount || 0),
-      outputTokens: Number(body?.usageMetadata?.candidatesTokenCount || 0),
-      cachedInputTokens: Number(body?.usageMetadata?.cachedContentTokenCount || 0),
+      inputTokens,
+      outputTokens: candidateTokens + thoughtTokens,
+      cachedInputTokens,
       cacheWriteTokens: 0,
     },
     requestId: body?.responseId || null,
@@ -189,52 +242,42 @@ async function executeGoogle({ model, prompt, system, maxOutputTokens, fetchImpl
 }
 
 
-function interactionUsage(body, hasImage) {
+function interactionUsage(body) {
   const usage = body?.usage || {};
-  const details =
-    usage.output_tokens_by_modality ||
-    usage.outputTokensByModality ||
-    usage.candidatesTokensDetails ||
-    [];
-  const modalityCount = (name) =>
-    details
-      .filter((item) => String(item?.modality || '').toLowerCase() === name)
-      .reduce((sum, item) => sum + Number(item?.tokens ?? item?.tokenCount ?? 0), 0);
-
-  const imageOutputTokens = modalityCount('image');
-  const textOutputTokens = modalityCount('text');
-  const totalOutputTokens = Number(
+  const details = responseList('google',
+    usage.output_tokens_by_modality ??
+    usage.outputTokensByModality ??
+    usage.candidatesTokensDetails);
+  let imageOutputTokens = 0;
+  let textOutputTokens = 0;
+  for (const item of details) {
+    const tokens = tokenCount('google', item?.tokens ?? item?.tokenCount);
+    const modality = String(item?.modality || '').toLowerCase();
+    if (modality === 'image') imageOutputTokens += tokens;
+    else if (modality === 'text') textOutputTokens += tokens;
+    else throw invalidUsage('google');
+  }
+  const totalOutputTokens = tokenCount('google',
     usage.total_output_tokens ??
       usage.totalOutputTokens ??
-      usage.candidatesTokenCount ??
-      0,
+      usage.candidatesTokenCount,
   );
-
+  if (details.length && (imageOutputTokens === 0 ||
+      imageOutputTokens + textOutputTokens !== totalOutputTokens)) throw invalidUsage('google');
+  if (!details.length) imageOutputTokens = totalOutputTokens;
+  if (imageOutputTokens === 0) throw invalidUsage('google');
+  const inputTokens = tokenCount('google', usage.total_input_tokens ??
+    usage.totalInputTokens ?? usage.promptTokenCount);
+  const thoughtTokens = tokenCount('google', usage.total_thought_tokens ??
+    usage.totalThoughtTokens ?? usage.thoughtsTokenCount, true);
+  const cachedInputTokens = tokenCount('google', usage.total_cached_tokens ??
+    usage.totalCachedTokens ?? usage.cachedContentTokenCount, true);
+  validateInputCache('google', inputTokens, cachedInputTokens);
   return {
-    inputTokens: Number(
-      usage.total_input_tokens ??
-        usage.totalInputTokens ??
-        usage.promptTokenCount ??
-        0,
-    ),
-    outputTokens:
-      textOutputTokens > 0
-        ? textOutputTokens
-        : hasImage
-          ? 0
-          : totalOutputTokens,
-    imageOutputTokens:
-      imageOutputTokens > 0
-        ? imageOutputTokens
-        : hasImage
-          ? totalOutputTokens
-          : 0,
-    cachedInputTokens: Number(
-      usage.total_cached_tokens ??
-        usage.totalCachedTokens ??
-        usage.cachedContentTokenCount ??
-        0,
-    ),
+    inputTokens,
+    outputTokens: textOutputTokens + thoughtTokens,
+    imageOutputTokens,
+    cachedInputTokens,
     cacheWriteTokens: 0,
   };
 }
@@ -249,13 +292,13 @@ function interactionImages(body) {
   };
 
   push(body?.output_image);
-  for (const step of body?.steps || []) {
-    for (const item of step?.content || []) {
+  for (const step of responseList('google', body?.steps)) {
+    for (const item of responseList('google', step?.content)) {
       if (item?.type === 'image') push(item);
     }
   }
-  for (const candidate of body?.candidates || []) {
-    for (const part of candidate?.content?.parts || []) {
+  for (const candidate of responseList('google', body?.candidates)) {
+    for (const part of responseList('google', candidate?.content?.parts)) {
       if (part?.inlineData) push(part.inlineData);
       if (part?.inline_data) push(part.inline_data);
     }
@@ -271,6 +314,7 @@ export async function executeImageProvider({
   prompt,
   aspectRatio = '1:1',
   imageSize = '1K',
+  maxOutputTokens = DEFAULT_MAX_OUTPUT_TOKENS,
   referenceImage = null,
   fetchImpl = fetch,
 }) {
@@ -280,6 +324,7 @@ export async function executeImageProvider({
   if (!model || !prompt) {
     throw new ProviderRequestError(provider, 400, 'provider_input_invalid');
   }
+  const outputLimit = normalizeOutputTokenLimit(maxOutputTokens);
 
   const allowedRatios = new Set([
     '1:1', '1:4', '4:1', '1:8', '8:1', '2:3', '3:2', '3:4',
@@ -314,6 +359,7 @@ export async function executeImageProvider({
       body: JSON.stringify({
         model,
         input,
+        generation_config: { max_output_tokens: outputLimit },
         response_format: {
           type: 'image',
           aspect_ratio: aspectRatio,
@@ -326,7 +372,7 @@ export async function executeImageProvider({
 
   const images = interactionImages(body);
   if (images.length === 0) {
-    throw new ProviderRequestError(provider, 502, 'image_output_missing');
+    throw new ProviderRequestError(provider, 502, 'image_output_missing', { chargeUnknown: true });
   }
 
   return {
@@ -334,7 +380,7 @@ export async function executeImageProvider({
     model: body?.model || model,
     images,
     text: typeof body?.output_text === 'string' ? body.output_text : '',
-    usage: interactionUsage(body, true),
+    usage: interactionUsage(body),
     requestId: body?.id || body?.responseId || null,
   };
 }
@@ -348,7 +394,7 @@ export async function executeProvider({
   fetchImpl = fetch,
 }) {
   if (!model || !prompt) throw new ProviderRequestError(provider, 400, 'provider_input_invalid');
-  const outputLimit = Math.min(Math.max(Number(maxOutputTokens) || DEFAULT_MAX_OUTPUT_TOKENS, 1), 32768);
+  const outputLimit = normalizeOutputTokenLimit(maxOutputTokens);
   const input = { model, prompt: String(prompt), system: String(system || ''), maxOutputTokens: outputLimit, fetchImpl };
 
   if (provider === 'openai') return executeOpenAI(input);

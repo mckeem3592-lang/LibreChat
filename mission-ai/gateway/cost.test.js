@@ -5,6 +5,7 @@ import {
   maximumTextRequestCost,
   maximumImageRequestCost,
   normalizedBillableUsage,
+  loadPricing,
 } from './cost.js';
 
 const pricing = {
@@ -97,7 +98,7 @@ test('Anthropic cache write TTLs use separate official rates', () => {
   assert.equal(result.totalUsd, 0.0035);
 });
 
-test('preflight uses UTF-8 bytes as a conservative input-token upper bound', () => {
+test('preflight includes UTF-8 bytes, framing allowance, and highest input category rate', () => {
   const cost = maximumTextRequestCost({
     provider: 'openai',
     model: 'gpt-6-sol',
@@ -106,10 +107,10 @@ test('preflight uses UTF-8 bytes as a conservative input-token upper bound', () 
     maxOutputTokens: 1000,
     pricing,
   });
-  assert.equal(cost, 0.010008);
+  assert.ok(Math.abs(cost - 0.01257) < 1e-12);
 });
 
-test('image preflight reserves documented output-token ceiling', () => {
+test('image preflight reserves the enforced total output-token cap at the highest modality rate', () => {
   const imagePricing = {
     models: {
       'gemini-3.1-flash-image': {
@@ -126,7 +127,61 @@ test('image preflight reserves documented output-token ceiling', () => {
     prompt: 'moon',
     imageSize: '2K',
     pricing: imagePricing,
-    maxImages: 4,
+    maxOutputTokens: 4096,
   });
-  assert.ok(cost >= (1680 * 4 / 1_000_000) * 60);
+  assert.equal(cost, ((1024 + 4) / 1_000_000) * 0.5 + (4096 / 1_000_000) * 60);
+});
+
+test('invalid or missing billable prices never silently produce free usage', () => {
+  for (const input of [undefined, NaN, -1, Infinity, '2']) {
+    const invalid = { models: { model: { provider: 'openai', input, output: 1 } } };
+    assert.throws(() => calculateUsageCost('openai', 'model', { inputTokens: 1 }, invalid), /invalid_pricing_rate/);
+    assert.throws(() => maximumTextRequestCost({ provider: 'openai', model: 'model', prompt: 'x', maxOutputTokens: 1, pricing: invalid }), /invalid_pricing_rate/);
+  }
+});
+
+test('invalid usage never silently becomes zero cost', () => {
+  for (const inputTokens of [NaN, -1, Infinity, null, '1']) {
+    assert.throws(() => calculateUsageCost('openai', 'gpt-6-sol', { inputTokens }, pricing), /invalid_input_tokens/);
+  }
+});
+
+test('configured OpenAI long context rates apply to all input categories and output above 272000 tokens', async () => {
+  const catalog = await loadPricing();
+  for (const model of ['gpt-6-luna', 'gpt-6-sol', 'gpt-6-astra']) {
+    const prices = catalog.models[model];
+    for (const inputTokens of [272000, 272001]) {
+      const result = calculateUsageCost('openai', model, {
+        inputTokens, cachedInputTokens: 100000, cacheWriteTokens: 10000, outputTokens: 100,
+      }, catalog);
+      const inputMultiplier = inputTokens === 272000 ? 1 : 2;
+      const outputMultiplier = inputTokens === 272000 ? 1 : 1.5;
+      assert.equal(result.components.inputUsd, ((inputTokens - 110000) / 1e6) * prices.input * inputMultiplier);
+      assert.equal(result.components.cachedInputUsd, (100000 / 1e6) * prices.cachedInput * inputMultiplier);
+      assert.equal(result.components.cacheWriteUsd, (10000 / 1e6) * prices.cacheWrite * inputMultiplier);
+      assert.ok(Math.abs(result.components.outputUsd - (100 / 1e6) * prices.output * outputMultiplier) < 1e-12);
+    }
+  }
+});
+
+test('reservation applies long-context output rate when input allowance crosses the threshold', async () => {
+  const catalog = await loadPricing();
+  for (const inputUpperBound of [272000, 272001]) {
+    const cost = maximumTextRequestCost({
+      provider: 'openai', model: 'gpt-6-sol',
+      prompt: 'a'.repeat(inputUpperBound - 1024), maxOutputTokens: 100, pricing: catalog,
+    });
+    const expected = inputUpperBound === 272000
+      ? (272000 / 1e6) * 2.5 + (100 / 1e6) * 10
+      : (272001 / 1e6) * 5 + (100 / 1e6) * 15;
+    assert.equal(cost, expected);
+  }
+});
+
+test('invalid long-context tiers fail before settlement or reservation', () => {
+  for (const longContext of [null, {}, { aboveInputTokens: 272000, inputMultiplier: 0, outputMultiplier: 1.5 }]) {
+    const catalog = { models: { model: { provider: 'openai', input: 1, output: 1, longContext } } };
+    assert.throws(() => calculateUsageCost('openai', 'model', { inputTokens: 1 }, catalog), /invalid_long_context_pricing/);
+    assert.throws(() => maximumTextRequestCost({ provider: 'openai', model: 'model', prompt: 'a', maxOutputTokens: 1, pricing: catalog }), /invalid_long_context_pricing/);
+  }
 });

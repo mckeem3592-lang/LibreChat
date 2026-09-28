@@ -4,10 +4,11 @@ import { fallbackTargets } from './fallbacks.js';
 import { providerConfig } from './providers.js';
 import { catalogModel } from './model-catalog.js';
 import { modelOverride } from './model-overrides.js';
-import { executeProvider, ProviderRequestError } from './provider-client.js';
+import { executeProvider, normalizeOutputTokenLimit, ProviderRequestError } from './provider-client.js';
 import { queryCostDashboard } from './dashboard.js';
 import { defaultUsageLedger } from './usage-ledger.js';
 import { calculateUsageCost, loadPricing, maximumTextRequestCost } from './cost.js';
+import { requestBudget } from './request-budget.js';
 
 function delegationEnabled(value) {
   if (typeof value === 'boolean') return value;
@@ -23,13 +24,6 @@ function safeAttempt(target, model, status, error, costUsd) {
     ...(error ? { error } : {}),
     ...(Number.isFinite(costUsd) ? { costUsd } : {}),
   };
-}
-
-function uncertainCharge(error) {
-  return (
-    error instanceof ProviderRequestError &&
-    (error.code === 'provider_timeout' || error.code === 'provider_network_error')
-  );
 }
 
 export async function delegateRequest({
@@ -48,6 +42,7 @@ export async function delegateRequest({
 } = {}) {
   if (!delegationEnabled(enabled)) throw new Error('delegation_disabled');
   if (!prompt || typeof prompt !== 'string') throw new Error('delegation_prompt_required');
+  const outputLimit = normalizeOutputTokenLimit(maxOutputTokens);
 
   const conversationRef = conversationId
     ? crypto.createHash('sha256').update(String(conversationId)).digest('hex').slice(0, 16)
@@ -60,18 +55,22 @@ export async function delegateRequest({
     await ledger.reconcileStaleReservations({ now });
   }
   const ledgerSummary = await ledger.summary({ now, timeZone: dashboard.timeZone });
-  const settledSpendUsd = Number(dashboard.spendUsd || 0) + Number(ledgerSummary.settledUsd || 0);
+  const budget = requestBudget(dashboard, ledgerSummary);
 
-  const routeDecision = await configuredRouteRequest({ task, monthSpendUsd: settledSpendUsd });
+  let routeDecision = await configuredRouteRequest({
+    task,
+    monthSpendUsd: budget.projectedUsd,
+    budget: budget.policy,
+  });
   if (!routeDecision.route || routeDecision.mode === 'blocked') {
     throw new Error('monthly_hard_limit');
   }
 
   const pricing = await pricingLoader();
-  const role = routeDecision.routeName || 'primary';
-  const targets = await fallbackTargets(role);
+  let role = routeDecision.routeName || 'primary';
+  let targets = await fallbackTargets(role);
   const attempts = [];
-  const directCapUsd = Math.max(0, Number(dashboard.hardUsd || 175) - Number(dashboard.spendUsd || 0));
+  const directCapUsd = budget.directCapUsd;
 
   for (let index = 0; index < targets.length; index += 1) {
     const target = targets[index];
@@ -91,7 +90,7 @@ export async function delegateRequest({
       model,
       prompt,
       system,
-      maxOutputTokens,
+      maxOutputTokens: outputLimit,
       pricing,
     });
 
@@ -116,7 +115,7 @@ export async function delegateRequest({
         model,
         prompt,
         system,
-        maxOutputTokens,
+        maxOutputTokens: outputLimit,
         fetchImpl,
       });
       const cost = calculateUsageCost(target.provider, model, output.usage, pricing);
@@ -135,6 +134,7 @@ export async function delegateRequest({
         },
       });
       attempts.push(safeAttempt(target, model, 'succeeded', null, cost.totalUsd));
+      const finalSummary = await ledger.summary({ now, timeZone: dashboard.timeZone });
       return {
         ok: true,
         task: String(task || 'chat'),
@@ -145,23 +145,22 @@ export async function delegateRequest({
           role: target.role,
           model,
         },
-        fallbackUsed: index > 0,
+        fallbackUsed: attempts.length > 1,
         attempts,
         cost,
         budget: {
-          libreChatSpendUsd: Number(dashboard.spendUsd || 0),
-          delegatedSpendUsd: Number(ledgerSummary.settledUsd || 0) + cost.totalUsd,
-          hardUsd: Number(dashboard.hardUsd || 175),
+          libreChatSpendUsd: budget.nativeUsd,
+          delegatedSpendUsd: finalSummary.settledUsd,
+          hardUsd: budget.policy.hardUsd,
         },
         output,
       };
     } catch (error) {
       if (!(error instanceof ProviderRequestError)) {
-        await ledger.release({ reservationId: reservation.reservationId, reason: 'internal_error' });
         throw error;
       }
 
-      if (uncertainCharge(error)) {
+      if (error.chargeUnknown) {
         await ledger.settle({
           reservationId: reservation.reservationId,
           actualUsd: reserveUsd,
@@ -183,6 +182,20 @@ export async function delegateRequest({
       }
 
       if (error.code === 'provider_input_invalid') throw error;
+      const refreshedBudget = requestBudget(dashboard, await ledger.summary({ now, timeZone: dashboard.timeZone }));
+      const refreshedRoute = await configuredRouteRequest({
+        task,
+        monthSpendUsd: refreshedBudget.projectedUsd,
+        budget: refreshedBudget.policy,
+      });
+      if (!refreshedRoute.route || refreshedRoute.mode === 'blocked') throw new Error('monthly_hard_limit');
+      if (refreshedRoute.routeName !== routeDecision.routeName) {
+        role = refreshedRoute.routeName || 'primary';
+        targets = (await fallbackTargets(role)).filter((candidate) =>
+          !attempts.some((attempt) => attempt.provider === candidate.provider && attempt.role === candidate.role));
+        index = -1;
+      }
+      routeDecision = refreshedRoute;
     }
   }
 

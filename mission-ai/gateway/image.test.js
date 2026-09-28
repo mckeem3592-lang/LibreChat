@@ -120,3 +120,31 @@ test('hard limit blocks image request before network use', async () => {
     assert.equal(calls, 0);
   });
 });
+
+test('missing image usage keeps the entire possible charge counted', async () => {
+  await env({ GEMINI_API_KEY: 'g' }, async () => {
+    const ledger = createMemoryUsageLedger();
+    await assert.rejects(() => generateImage({
+      prompt: 'moon', enabled: true, dashboardReader: dashboard(), usageLedger: ledger,
+      fetchImpl: async () => response({ output_image: { data: 'aW1hZ2U=', mime_type: 'image/png' } }),
+    }), /provider_usage_invalid/);
+    const summary = await ledger.summary();
+    assert.ok(summary.settledUsd > 0);
+    assert.equal(summary.reservedUsd, 0);
+  });
+});
+
+test('image settlement failure does not release a possibly charged reservation', async () => {
+  await env({ GEMINI_API_KEY: 'g' }, async () => {
+    const ledger = createMemoryUsageLedger();
+    await assert.rejects(() => generateImage({
+      prompt: 'moon', enabled: true, dashboardReader: dashboard(),
+      usageLedger: { ...ledger, settle: async () => { throw new Error('storage_unavailable'); } },
+      fetchImpl: async () => response({
+        output_image: { data: 'aW1hZ2U=', mime_type: 'image/png' },
+        usage: { total_input_tokens: 10, total_output_tokens: 1120, output_tokens_by_modality: [{ modality: 'image', tokens: 1120 }] },
+      }),
+    }), /storage_unavailable/);
+    assert.ok((await ledger.summary()).reservedUsd > 0);
+  });
+});

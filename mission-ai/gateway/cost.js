@@ -14,9 +14,51 @@ export function clearPricingCache() {
 }
 
 function finiteNonnegative(value, name) {
-  const number = Number(value || 0);
-  if (!Number.isFinite(number) || number < 0) throw new Error(`invalid_${name}`);
+  const number = value === undefined ? 0 : value;
+  if (typeof number !== 'number' || !Number.isFinite(number) || number < 0) {
+    throw new Error(`invalid_${name}`);
+  }
   return number;
+}
+
+function rate(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new Error('invalid_pricing_rate');
+  }
+  return value;
+}
+
+function reservationInputTokens(inputTokens, pricing) {
+  const overhead = pricing?.reservation?.inputOverheadTokens ?? 1024;
+  if (!Number.isSafeInteger(overhead) || overhead < 0) throw new Error('invalid_reservation_overhead');
+  return inputTokens + overhead;
+}
+
+function pricingForInput(modelPricing, inputTokens) {
+  const tier = modelPricing.longContext;
+  if (tier === undefined) return modelPricing;
+  if (!Number.isSafeInteger(tier?.aboveInputTokens) || tier.aboveInputTokens < 0 ||
+      typeof tier.inputMultiplier !== 'number' || !Number.isFinite(tier.inputMultiplier) || tier.inputMultiplier < 1 ||
+      typeof tier.outputMultiplier !== 'number' || !Number.isFinite(tier.outputMultiplier) || tier.outputMultiplier < 1) {
+    throw new Error('invalid_long_context_pricing');
+  }
+  if (inputTokens <= tier.aboveInputTokens) return modelPricing;
+  const adjusted = { ...modelPricing };
+  for (const key of ['input', 'cachedInput', 'cacheWrite', 'cacheWrite1h']) {
+    if (modelPricing[key] !== undefined) adjusted[key] = rate(modelPricing[key]) * tier.inputMultiplier;
+  }
+  for (const key of ['output', 'imageOutput']) {
+    if (modelPricing[key] !== undefined) adjusted[key] = rate(modelPricing[key]) * tier.outputMultiplier;
+  }
+  return adjusted;
+}
+
+function inputReservationCost(modelPricing, inputTokens) {
+  const rates = [modelPricing.input];
+  for (const key of ['cachedInput', 'cacheWrite', 'cacheWrite1h']) {
+    if (modelPricing[key] !== undefined) rates.push(modelPricing[key]);
+  }
+  return (inputTokens / 1_000_000) * Math.max(...rates.map(rate));
 }
 
 export function normalizedBillableUsage(provider, usage = {}) {
@@ -59,13 +101,16 @@ export function normalizedBillableUsage(provider, usage = {}) {
 }
 
 export function calculateUsageCost(provider, model, usage, pricing) {
-  const modelPricing = pricing?.models?.[model];
+  let modelPricing = pricing?.models?.[model];
   if (!modelPricing || modelPricing.provider !== provider) {
     throw new Error('pricing_not_configured');
   }
 
   const billable = normalizedBillableUsage(provider, usage);
-  const perMillion = (tokens, rate) => (tokens / 1_000_000) * Number(rate || 0);
+  const totalInputTokens = billable.inputTokens + billable.cachedInputTokens +
+    billable.cacheWrite5mTokens + billable.cacheWrite1hTokens;
+  modelPricing = pricingForInput(modelPricing, totalInputTokens);
+  const perMillion = (tokens, price) => tokens === 0 ? 0 : (tokens / 1_000_000) * rate(price);
   const components = {
     inputUsd: perMillion(billable.inputTokens, modelPricing.input),
     cachedInputUsd: perMillion(billable.cachedInputTokens, modelPricing.cachedInput),
@@ -78,6 +123,7 @@ export function calculateUsageCost(provider, model, usage, pricing) {
     imageOutputUsd: perMillion(billable.imageOutputTokens, modelPricing.imageOutput),
   };
   const totalUsd = Object.values(components).reduce((sum, value) => sum + value, 0);
+  if (!Number.isFinite(totalUsd)) throw new Error('invalid_usage_cost');
 
   return {
     provider,
@@ -97,25 +143,20 @@ export function maximumTextRequestCost({
   maxOutputTokens,
   pricing,
 }) {
-  const modelPricing = pricing?.models?.[model];
+  let modelPricing = pricing?.models?.[model];
   if (!modelPricing || modelPricing.provider !== provider) {
     throw new Error('pricing_not_configured');
   }
 
   const inputBytes = Buffer.byteLength(String(prompt), 'utf8') + Buffer.byteLength(String(system), 'utf8');
+  const inputUpperBound = reservationInputTokens(inputBytes, pricing);
+  modelPricing = pricingForInput(modelPricing, inputUpperBound);
   const outputTokens = finiteNonnegative(maxOutputTokens, 'max_output_tokens');
   return (
-    (inputBytes / 1_000_000) * Number(modelPricing.input || 0) +
-    (outputTokens / 1_000_000) * Number(modelPricing.output || 0)
+    inputReservationCost(modelPricing, inputUpperBound) +
+    (outputTokens / 1_000_000) * rate(modelPricing.output)
   );
 }
-
-const IMAGE_OUTPUT_TOKENS = Object.freeze({
-  '512': 747,
-  '1K': 1120,
-  '2K': 1680,
-  '4K': 2520,
-});
 
 export function maximumImageRequestCost({
   provider,
@@ -123,22 +164,25 @@ export function maximumImageRequestCost({
   prompt = '',
   imageSize = '1K',
   pricing,
-  maxImages = 4,
+  maxOutputTokens = 4096,
   referenceInputTokens = 0,
 }) {
-  const modelPricing = pricing?.models?.[model];
+  let modelPricing = pricing?.models?.[model];
   if (!modelPricing || modelPricing.provider !== provider) {
     throw new Error('pricing_not_configured');
   }
-  const outputTokens = IMAGE_OUTPUT_TOKENS[imageSize];
-  if (!outputTokens) throw new Error('invalid_image_size');
-  const imageRate = Number(modelPricing.imageOutput || 0);
+  if (!['512', '1K', '2K', '4K'].includes(imageSize)) throw new Error('invalid_image_size');
+  const promptBytes = Buffer.byteLength(String(prompt), 'utf8');
+  const inputUpperBound = reservationInputTokens(
+    promptBytes + finiteNonnegative(referenceInputTokens, 'reference_input_tokens'), pricing,
+  );
+  modelPricing = pricingForInput(modelPricing, inputUpperBound);
+  const outputTokens = finiteNonnegative(maxOutputTokens, 'max_output_tokens');
+  const imageRate = rate(modelPricing.imageOutput);
   if (!Number.isFinite(imageRate) || imageRate <= 0) throw new Error('image_pricing_not_configured');
 
-  const promptBytes = Buffer.byteLength(String(prompt), 'utf8');
-  const inputUpperBound = promptBytes + Math.max(0, Number(referenceInputTokens || 0));
   return (
-    (inputUpperBound / 1_000_000) * Number(modelPricing.input || 0) +
-    ((outputTokens * Math.max(1, Number(maxImages) || 1)) / 1_000_000) * imageRate
+    inputReservationCost(modelPricing, inputUpperBound) +
+    (outputTokens / 1_000_000) * Math.max(imageRate, rate(modelPricing.output))
   );
 }

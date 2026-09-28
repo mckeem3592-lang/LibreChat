@@ -62,3 +62,25 @@ This file records concrete development evidence. It is not a production approval
 - The first test-only deploy exposed two fixture/assertion defects: a parser fixture used escaped delimiter text instead of real tab delimiters, and a legacy source-inspection test still expected the close-confirmation guard to live in `companion.js` after it had moved into the helper.
 - The prior known-good development deploy remained live while the failing commits were rejected.
 - Both test defects were corrected on `mission-ai-v1`; final fix-forward pass is required before this incident is closed.
+
+## 2026-09-28
+
+### Dedicated database and provider setup
+
+- The existing LibreChat `transactions` collection is in database `test`.
+- The dedicated reader authenticated with exactly `read@test`; the dedicated ledger user authenticated with exactly `readWrite@MissionAI`. Both users are restricted to cluster `LibreChat-McKee`.
+- The gateway read 12 matching monthly native transactions. Its native monthly total and an independent aggregation agreed at $0.0656398; delegated and reserved totals were zero at the check.
+- A ledger insert/read/update probe completed inside an aborted transaction. The abort and session close were confirmed, no probe document remained, and collection existence was unchanged.
+- Anthropic and Gemini authenticated successfully using model-list requests. These checks did not perform paid generation. This supersedes the provider/database configuration items listed as pending on September 27.
+- The disabled-delegation HTTP guard passed 8 regression tests and was deployed as commit `4832c956d3cdd2a15ae9e03f1095e4bef0f29a89`.
+- Production `My-Workstation-McKee`, its original database login, and conversation data were not changed.
+
+### Accounting acceptance scope
+
+- The development accounting checks now exercise a real, isolated MongoDB replica set, including concurrent budget reservations, atomic rollback, retry/idempotency, period boundaries, and persistence across connections.
+- Provider tests simulate network responses. No unit or integration check spends money or accesses Atlas credentials.
+- Missing usage, uncertain provider outcomes, post-dispatch storage failures, and overruns must retain counted cost; overruns block new paid reservations rather than discarding the actual charge.
+- See [accounting acceptance](acceptance/accounting.md) for repeatable commands, repair requirements, and unresolved promotion boundaries. General paid delegation remains disabled. A live paid check and a shared reservation boundary with native LibreChat remain outstanding.
+- Local verification passed 165 unit tests and 28 isolated MongoDB integration tests, plus JavaScript/shell syntax checks. These include the durable single-use acceptance claim, tier verification, and long-context price boundaries.
+- OpenAI Standard processing is explicit and verified from each response. Long-context prices are applied above 272,000 total input tokens; official model documentation was checked September 28.
+- A dormant, approval-pinned acceptance runner can make one economy OpenAI request with a $0.05 reservation and 128-token output cap while general delegation remains false. It has not been run against a paid provider as part of these local checks.

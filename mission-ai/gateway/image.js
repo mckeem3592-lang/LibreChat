@@ -2,10 +2,11 @@ import crypto from 'node:crypto';
 import { providerConfig } from './providers.js';
 import { catalogModel } from './model-catalog.js';
 import { modelOverride } from './model-overrides.js';
-import { executeImageProvider, ProviderRequestError } from './provider-client.js';
+import { executeImageProvider, normalizeOutputTokenLimit, ProviderRequestError } from './provider-client.js';
 import { queryCostDashboard } from './dashboard.js';
 import { defaultUsageLedger } from './usage-ledger.js';
 import { calculateUsageCost, loadPricing, maximumImageRequestCost } from './cost.js';
+import { requestBudget } from './request-budget.js';
 
 function enabled(value) {
   if (typeof value === 'boolean') return value;
@@ -17,17 +18,11 @@ function conversationHash(value) {
   return crypto.createHash('sha256').update(String(value)).digest('hex').slice(0, 16);
 }
 
-function uncertain(error) {
-  return (
-    error instanceof ProviderRequestError &&
-    (error.code === 'provider_timeout' || error.code === 'provider_network_error')
-  );
-}
-
 export async function generateImage({
   prompt,
   aspectRatio = '1:1',
   imageSize = '1K',
+  maxOutputTokens = 4096,
   referenceImage = null,
   project = 'unassigned',
   conversationId = '',
@@ -40,6 +35,7 @@ export async function generateImage({
 } = {}) {
   if (!enabled(enabledOverride)) throw new Error('delegation_disabled');
   if (!prompt || typeof prompt !== 'string') throw new Error('image_prompt_required');
+  const outputLimit = normalizeOutputTokenLimit(maxOutputTokens);
 
   const google = providerConfig('google');
   if (!google?.hasApiKey) throw new Error('provider_not_configured');
@@ -53,8 +49,7 @@ export async function generateImage({
     await ledger.reconcileStaleReservations({ now });
   }
   const summary = await ledger.summary({ now, timeZone: dashboard.timeZone });
-  const spentUsd = Number(dashboard.spendUsd || 0) + Number(summary.settledUsd || 0);
-  if (spentUsd >= Number(dashboard.hardUsd || 175)) throw new Error('monthly_hard_limit');
+  const budget = requestBudget(dashboard, summary);
 
   const pricing = await pricingLoader();
   const referenceUpperBound = referenceImage?.data
@@ -66,10 +61,10 @@ export async function generateImage({
     prompt,
     imageSize,
     pricing,
-    maxImages: 4,
+    maxOutputTokens: outputLimit,
     referenceInputTokens: referenceUpperBound,
   });
-  const directCapUsd = Math.max(0, Number(dashboard.hardUsd || 175) - Number(dashboard.spendUsd || 0));
+  const directCapUsd = budget.directCapUsd;
   const safeProject = String(project || 'unassigned').slice(0, 200);
   const conversationRef = conversationHash(conversationId);
 
@@ -95,6 +90,7 @@ export async function generateImage({
       prompt,
       aspectRatio,
       imageSize,
+      maxOutputTokens: outputLimit,
       referenceImage,
       fetchImpl,
     });
@@ -113,6 +109,7 @@ export async function generateImage({
         pricingVerifiedOn: cost.pricingVerifiedOn,
       },
     });
+    const finalSummary = await ledger.summary({ now, timeZone: dashboard.timeZone });
     return {
       ok: true,
       provider: 'google',
@@ -122,13 +119,14 @@ export async function generateImage({
       requestId: output.requestId,
       cost,
       budget: {
-        nativeSpendUsd: Number(dashboard.spendUsd || 0),
-        delegatedSpendUsd: Number(summary.settledUsd || 0) + cost.totalUsd,
-        hardUsd: Number(dashboard.hardUsd || 175),
+        nativeSpendUsd: budget.nativeUsd,
+        delegatedSpendUsd: finalSummary.settledUsd,
+        hardUsd: budget.policy.hardUsd,
       },
     };
   } catch (error) {
-    if (uncertain(error)) {
+    if (!(error instanceof ProviderRequestError)) throw error;
+    if (error.chargeUnknown) {
       await ledger.settle({
         reservationId: reservation.reservationId,
         actualUsd: reserveUsd,
@@ -146,7 +144,7 @@ export async function generateImage({
     } else {
       await ledger.release({
         reservationId: reservation.reservationId,
-        reason: error instanceof Error ? error.message : 'image_error',
+        reason: error.code,
       });
     }
     throw error;

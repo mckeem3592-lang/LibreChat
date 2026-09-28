@@ -30,6 +30,7 @@ Access:
 - The gateway uses:
   - `budget_state`
   - `delegated_usage`
+  - `paid_acceptance_claims` (durable, explicitly approved acceptance runs only)
 - Do not grant write access to the LibreChat application database.
 
 Optional:
@@ -54,6 +55,11 @@ After provider readiness, cost telemetry, and ledger readiness all pass, enable
 paid delegation explicitly:
 
 `MISSION_AI_DELEGATION_ENABLED=true`
+
+General enablement also requires the [accounting acceptance checks](acceptance/accounting.md).
+The native LibreChat spend snapshot does not reserve native in-flight requests;
+do not interpret the delegated ledger's cap as an atomic limit across both services.
+Keep delegation disabled until that boundary is resolved and enablement is approved.
 
 ## Mission AI budget
 

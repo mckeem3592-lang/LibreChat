@@ -63,3 +63,21 @@ test('live dashboard reads native and delegated stores without message content',
   assert.equal(result.delegatedSpendUsd, 1);
   assert.equal(JSON.stringify(result).includes('prompt'), false);
 });
+
+test('dashboard reports accounting blocks even with budget remaining', () => {
+  const result = combineDashboard(native, {
+    settledUsd: 1, reservedUsd: 0, accountingBlocked: true, accountingIssue: 'reservation_underestimated',
+  }, {});
+  assert.equal(result.mode, 'blocked');
+  assert.equal(result.projectedMode, 'blocked');
+  assert.equal(result.remainingUsd, 0);
+  assert.equal(result.accountingIssue, 'reservation_underestimated');
+});
+
+test('zero configured limits remain zero on the dashboard', () => {
+  const result = combineDashboard({ ...native, spendUsd: 0, targetUsd: 0, economyUsd: 0, hardUsd: 0 }, {
+    settledUsd: 0, reservedUsd: 0,
+  }, {});
+  assert.equal(result.hardUsd, 0);
+  assert.equal(result.mode, 'blocked');
+});

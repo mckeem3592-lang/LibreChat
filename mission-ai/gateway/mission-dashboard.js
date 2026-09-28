@@ -19,10 +19,13 @@ export function combineDashboard(nativeDashboard, delegatedSummary, delegatedBre
   const reservedUsd = Number(delegatedSummary?.reservedUsd || 0);
   const totalSpendUsd = nativeSpendUsd + delegatedSpendUsd;
   const projectedSpendUsd = totalSpendUsd + reservedUsd;
-  const targetUsd = Number(nativeDashboard?.targetUsd || 100);
-  const economyUsd = Number(nativeDashboard?.economyUsd || 125);
-  const hardUsd = Number(nativeDashboard?.hardUsd || 175);
+  const targetUsd = Number(nativeDashboard?.targetUsd ?? 100);
+  const economyUsd = Number(nativeDashboard?.economyUsd ?? 125);
+  const hardUsd = Number(nativeDashboard?.hardUsd ?? 175);
   const policy = { targetUsd, economyUsd, hardUsd };
+  const accountingBlocked = Boolean(delegatedSummary.accountingBlocked);
+  const mode = budgetDecision(totalSpendUsd, policy);
+  const projectedMode = budgetDecision(projectedSpendUsd, policy);
 
   const nativeTask = nativeSpendUsd > 0
     ? [{ task: 'librechat-native', spendUsd: nativeSpendUsd }]
@@ -40,12 +43,13 @@ export function combineDashboard(nativeDashboard, delegatedSummary, delegatedBre
     },
     spendUsd: totalSpendUsd,
     projectedSpendUsd,
-    remainingUsd: Math.max(0, hardUsd - projectedSpendUsd),
+    remainingUsd: accountingBlocked ? 0 : Math.max(0, hardUsd - projectedSpendUsd),
     reservedUsd,
     nativeSpendUsd,
     delegatedSpendUsd,
-    mode: budgetDecision(totalSpendUsd, policy),
-    projectedMode: budgetDecision(projectedSpendUsd, policy),
+    mode: accountingBlocked ? 'blocked' : mode,
+    projectedMode: accountingBlocked ? 'blocked' : projectedMode,
+    ...(accountingBlocked ? { accountingBlocked: true, accountingIssue: delegatedSummary.accountingIssue } : {}),
     targetUsd,
     economyUsd,
     hardUsd,

@@ -43,13 +43,21 @@ test('released reservations restore capacity', async () => {
   assert.ok(second.reservationId);
 });
 
-test('settlement cannot exceed the conservative reservation', async () => {
+test('an underestimated reservation records the actual charge and blocks new work', async () => {
   const ledger = createMemoryUsageLedger();
-  const reservation = await ledger.reserve({ reserveUsd: 1, directCapUsd: 10 });
+  const now = new Date('2026-09-27T18:00:00Z');
+  const reservation = await ledger.reserve({ reserveUsd: 1, directCapUsd: 10, now });
   await assert.rejects(
     () => ledger.settle({ reservationId: reservation.reservationId, actualUsd: 1.01 }),
     /reservation_underestimated/,
   );
+  assert.deepEqual(await ledger.summary({ now }), {
+    monthStart: reservation.monthStart, settledUsd: 1.01, reservedUsd: 0,
+    accountingBlocked: true, accountingIssue: 'reservation_underestimated',
+  });
+  await assert.rejects(() => ledger.reserve({
+    reserveUsd: 1, directCapUsd: 10, now: new Date('2026-10-02T18:00:00Z'),
+  }), /ledger_accounting_blocked/);
 });
 
 test('ledger reports privacy-safe provider model task and project breakdowns', async () => {
@@ -97,7 +105,7 @@ test('stale reservations are conservatively settled at the reserved amount', asy
 
   await assert.rejects(
     () => ledger.settle({ reservationId: reservation.reservationId, actualUsd: 1 }),
-    /reservation_not_found/,
+    /settlement_conflict/,
   );
 });
 

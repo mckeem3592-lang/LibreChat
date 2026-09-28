@@ -2,27 +2,51 @@
   "verifiedOn": "2026-09-27",
   "currency": "USD",
   "unit": "per_1m_tokens",
+  "reservation": {
+    "inputOverheadTokens": 1024
+  },
   "models": {
     "gpt-6-luna": {
       "provider": "openai",
       "input": 0.1,
       "cachedInput": 0.01,
       "cacheWrite": 0.125,
-      "output": 0.5
+      "output": 0.5,
+      "longContext": {
+        "aboveInputTokens": 272000,
+        "inputMultiplier": 2,
+        "outputMultiplier": 1.5,
+        "verifiedOn": "2026-09-28",
+        "source": "https://developers.openai.com/api/docs/models/gpt-6-luna"
+      }
     },
     "gpt-6-sol": {
       "provider": "openai",
       "input": 2,
       "cachedInput": 0.2,
       "cacheWrite": 2.5,
-      "output": 10
+      "output": 10,
+      "longContext": {
+        "aboveInputTokens": 272000,
+        "inputMultiplier": 2,
+        "outputMultiplier": 1.5,
+        "verifiedOn": "2026-09-28",
+        "source": "https://developers.openai.com/api/docs/models/gpt-6-sol"
+      }
     },
     "gpt-6-astra": {
       "provider": "openai",
       "input": 10,
       "cachedInput": 1,
       "cacheWrite": 12.5,
-      "output": 50
+      "output": 50,
+      "longContext": {
+        "aboveInputTokens": 272000,
+        "inputMultiplier": 2,
+        "outputMultiplier": 1.5,
+        "verifiedOn": "2026-09-28",
+        "source": "https://developers.openai.com/api/docs/models/gpt-6-astra"
+      }
     },
     "claude-sonnet-5": {
       "provider": "anthropic",

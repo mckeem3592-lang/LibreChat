@@ -20,8 +20,8 @@ function resolveModel(route) {
 export async function routeRequest(input = {}) {
   const config = await loadConfig();
   const task = String(input.task || 'chat');
-  const spend = Number(input.monthSpendUsd || 0);
-  const decision = chooseRoute(task, spend, config);
+  const spend = Number(input.monthSpendUsd ?? 0);
+  const decision = chooseRoute(task, spend, { ...config, budget: input.budget ?? config.budget });
 
   if (!decision.route) return decision;
 

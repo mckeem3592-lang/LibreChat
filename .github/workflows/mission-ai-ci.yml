@@ -11,15 +11,24 @@ on:
     paths:
       - 'mission-ai/**'
       - 'plugin/mission-ai-budget/**'
+      - '.github/workflows/mission-ai-ci.yml'
+
+permissions:
+  contents: read
 
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+          cache: npm
+          cache-dependency-path: mission-ai/gateway/package-lock.json
+      - name: Install gateway dependencies
+        run: npm ci --prefix mission-ai/gateway --include=dev --ignore-scripts --no-audit --no-fund
       - name: Check JavaScript syntax
         run: |
           npm run check --prefix mission-ai/gateway
@@ -47,5 +56,14 @@ jobs:
           node -e "JSON.parse(require('fs').readFileSync('mission-ai/chrome-extension/manifest.json','utf8'))"
           node -e "JSON.parse(require('fs').readFileSync('plugin/mission-ai-budget/plugin.json','utf8'))"
           node -e "JSON.parse(require('fs').readFileSync('plugin/mission-ai-budget/ai.librechat/hooks/hooks.json','utf8'))"
-      - name: Test routing policy
-        run: npm test --prefix mission-ai/gateway mission-ai/gateway/route-api.test.js mission-ai/gateway/routing-policy.test.js
+      - name: Test gateway and budget helpers
+        run: npm test --prefix mission-ai/gateway
+      - name: Cache integration-test MongoDB binary
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/mission-ai-mongodb
+          key: mission-ai-mongodb-${{ runner.os }}-${{ runner.arch }}-8.0.17
+      - name: Test accounting with isolated MongoDB
+        env:
+          MONGOMS_DOWNLOAD_DIR: ${{ runner.temp }}/mission-ai-mongodb
+        run: npm run test:integration --prefix mission-ai/gateway

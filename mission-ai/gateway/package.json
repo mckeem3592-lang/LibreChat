@@ -9,6 +9,7 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test *.test.js ../companion/*.test.js ../chrome-extension/*.test.js ../../plugin/mission-ai-budget/scripts/*.test.mjs",
+    "test:integration": "node --test *.integration.mjs",
     "check": "for f in *.js ../companion/*.js ../chrome-extension/*.js; do node --check \"$f\"; done && bash -n ../acceptance/check-macos.sh ../companion/install-macos.sh ../companion/pair-macos.sh ../code-api/build.sh ../code-api/start.sh ../code-worker/install-macos.sh ../code-worker/uninstall-macos.sh",
     "postinstall": "npm run check && npm test"
   },
@@ -20,5 +21,8 @@
     "ws": "^8.18.3",
     "zod": "^4.6.5",
     "@modelcontextprotocol/client": "^2.1.0"
+  },
+  "devDependencies": {
+    "mongodb-memory-server-core": "11.0.1"
   }
 }
