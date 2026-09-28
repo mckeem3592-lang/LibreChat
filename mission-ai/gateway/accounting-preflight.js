@@ -82,6 +82,13 @@ function providerUsage(transactions, catalog) {
     completeRows: 0, incompleteRows: 0, missingFieldRows: 0, invalidFieldRows: 0,
     promptTotalMismatchRows: 0, unsafeTotal: false, usageComplete: true,
     inputTokens: 0, writeTokens: 0, readTokens: 0, outputTokens: 0,
+    promptShapes: {
+      allCategoriesAbsent: 0, partiallyMissingCategories: 0, allCategoriesPresent: 0,
+      rawOnlyPromptTokens: 0, rawOnlyCompleteRows: 0, rawOnlyIncompleteRows: 0,
+      rawOnlyUnsafeTotal: false, structuredInputTokens: 0, structuredWriteTokens: 0,
+      structuredReadTokens: 0, structuredCompleteRows: 0, structuredIncompleteRows: 0,
+      structuredUnsafeTotal: false,
+    },
   }]));
   const promptFields = ['inputTokens', 'writeTokens', 'readTokens'];
   const add = (a, b) => b <= Number.MAX_SAFE_INTEGER - a ? a + b : null;
@@ -111,6 +118,36 @@ function providerUsage(transactions, catalog) {
     if (invalid) bucket.invalidFieldRows += 1;
     if (mismatch) bucket.promptTotalMismatchRows += 1;
     const complete = !missing && !invalid && !mismatch && !unsafe;
+    if (prompt) {
+      const shapes = bucket.promptShapes;
+      const present = promptFields.filter((field) => Object.hasOwn(row, field)).length;
+      if (present === 0) {
+        // Compatible with the legacy standard writer, but not proof that the
+        // provider reported zero cache usage. Never merge into inputTokens.
+        shapes.allCategoriesAbsent += 1;
+        const rawValid = Number.isSafeInteger(row.rawAmount) && row.rawAmount < 0;
+        shapes[rawValid ? 'rawOnlyCompleteRows' : 'rawOnlyIncompleteRows'] += 1;
+        if (!rawValid) shapes.rawOnlyPromptTokens = null;
+        else if (shapes.rawOnlyPromptTokens !== null) {
+          shapes.rawOnlyPromptTokens = add(shapes.rawOnlyPromptTokens, Math.abs(row.rawAmount));
+          shapes.rawOnlyUnsafeTotal ||= shapes.rawOnlyPromptTokens === null;
+        }
+      } else if (present === promptFields.length) {
+        shapes.allCategoriesPresent += 1;
+        shapes[complete ? 'structuredCompleteRows' : 'structuredIncompleteRows'] += 1;
+        shapes.structuredUnsafeTotal ||= unsafe;
+        for (const [field, target] of [
+          ['inputTokens', 'structuredInputTokens'], ['writeTokens', 'structuredWriteTokens'],
+          ['readTokens', 'structuredReadTokens'],
+        ]) {
+          if (!complete) shapes[target] = null;
+          else if (shapes[target] !== null) {
+            shapes[target] = add(shapes[target], Math.abs(row[field]));
+            shapes.structuredUnsafeTotal ||= shapes[target] === null;
+          }
+        }
+      } else shapes.partiallyMissingCategories += 1;
+    }
     bucket[complete ? 'completeRows' : 'incompleteRows'] += 1;
     bucket.unsafeTotal ||= unsafe;
     const outputFields = prompt ? promptFields : ['outputTokens'];

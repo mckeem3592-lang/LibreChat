@@ -104,6 +104,13 @@ test('fixed provider usage reports exact signed token magnitudes with row comple
     completeRows: 2, incompleteRows: 0, missingFieldRows: 0, invalidFieldRows: 0,
     promptTotalMismatchRows: 0, unsafeTotal: false, usageComplete: true,
     inputTokens: i + 10, writeTokens: 3, readTokens: 2, outputTokens: i + 4,
+    promptShapes: {
+      allCategoriesAbsent: 0, partiallyMissingCategories: 0, allCategoriesPresent: 1,
+      rawOnlyPromptTokens: 0, rawOnlyCompleteRows: 0, rawOnlyIncompleteRows: 0,
+      rawOnlyUnsafeTotal: false, structuredInputTokens: i + 10, structuredWriteTokens: 3,
+      structuredReadTokens: 2, structuredCompleteRows: 1, structuredIncompleteRows: 0,
+      structuredUnsafeTotal: false,
+    },
   })));
   assert.equal(f.calls.length, 3);
   assert.deepEqual(f.calls.find((call) => call.name === 'transactions').projection,
@@ -149,8 +156,89 @@ for (const [label, edit, expected] of [
   assert.equal(usage.readTokens, null);
   assert.equal(usage.outputTokens, 4);
   for (const [key, value] of Object.entries(expected)) assert.equal(usage[key], value);
+  const shapes = usage.promptShapes;
+  if (label === 'missing category') {
+    assert.equal(shapes.partiallyMissingCategories, 1);
+    assert.equal(shapes.allCategoriesPresent, 0);
+  } else {
+    assert.equal(shapes.allCategoriesPresent, 1);
+    assert.equal(shapes.structuredIncompleteRows, 1);
+    assert.equal(shapes.structuredInputTokens, null);
+    assert.equal(shapes.structuredWriteTokens, null);
+    assert.equal(shapes.structuredReadTokens, null);
+  }
   assert.equal(JSON.stringify(report).includes(SECRET), false);
 });
+
+test('legacy raw-only and structured prompt evidence stays separate without asserting missing categories are zero', async () => {
+  const f = fixture();
+  const prompt = f.data.transactions[0];
+  f.data.transactions = [
+    { ...prompt, _id: 'raw-1', rawAmount: -12 },
+    { ...prompt, _id: 'raw-2', rawAmount: -30 },
+    { ...prompt, _id: 'structured-1', rawAmount: -15, inputTokens: -10, writeTokens: 3, readTokens: 2 },
+    { ...prompt, _id: 'structured-2', rawAmount: -6, inputTokens: 2, writeTokens: 0, readTokens: -4 },
+    { ...prompt, _id: 'partial', rawAmount: -9, inputTokens: 9 },
+    { ...prompt, _id: 'credit', tokenValue: 1, rawAmount: -900 },
+    { ...prompt, _id: 'zero', tokenValue: 0, rawAmount: -900 },
+    { ...f.data.transactions[1], rawAmount: -4 },
+  ];
+  const before = structuredClone(f.data);
+  const report = await runAccountingPreflight(f.options);
+  const usage = report.native.byProviderUsage[0];
+  assert.equal(usage.promptRows, 5);
+  assert.equal(usage.usageComplete, false);
+  assert.equal(usage.inputTokens, null);
+  assert.equal(usage.writeTokens, null);
+  assert.equal(usage.readTokens, null);
+  assert.equal(usage.outputTokens, 4);
+  assert.deepEqual(usage.promptShapes, {
+    allCategoriesAbsent: 2, partiallyMissingCategories: 1, allCategoriesPresent: 2,
+    rawOnlyPromptTokens: 42, rawOnlyCompleteRows: 2, rawOnlyIncompleteRows: 0,
+    rawOnlyUnsafeTotal: false, structuredInputTokens: 12, structuredWriteTokens: 3,
+    structuredReadTokens: 6, structuredCompleteRows: 2, structuredIncompleteRows: 0,
+    structuredUnsafeTotal: false,
+  });
+  assert.equal(f.calls.length, 3);
+  assert.deepEqual(f.data, before);
+  assert.equal(JSON.stringify(report).includes('structured-1'), false);
+});
+
+test('explicit null categories are present but incomplete, never ordinary raw-only evidence', async () => {
+  const f = fixture();
+  Object.assign(f.data.transactions[0], { rawAmount: -15, inputTokens: null, writeTokens: null, readTokens: null });
+  const shapes = (await runAccountingPreflight(f.options)).native.byProviderUsage[0].promptShapes;
+  assert.equal(shapes.allCategoriesAbsent, 0);
+  assert.equal(shapes.allCategoriesPresent, 1);
+  assert.equal(shapes.structuredIncompleteRows, 1);
+  assert.equal(shapes.structuredInputTokens, null);
+  assert.equal(shapes.rawOnlyPromptTokens, 0);
+});
+
+for (const value of [undefined, null, 0, 2, '-10', -1.5, -Infinity, -Number.MAX_SAFE_INTEGER - 1]) {
+  test(`invalid raw-only debit ${String(value)} cannot produce a legacy prompt total`, async () => {
+    const f = fixture();
+    f.data.transactions[0].rawAmount = value;
+    const shapes = (await runAccountingPreflight(f.options)).native.byProviderUsage[0].promptShapes;
+    assert.equal(shapes.allCategoriesAbsent, 1);
+    assert.equal(shapes.rawOnlyCompleteRows, 0);
+    assert.equal(shapes.rawOnlyIncompleteRows, 1);
+    assert.equal(shapes.rawOnlyPromptTokens, null);
+  });
+}
+
+for (const structured of [false, true]) {
+  test(`overflow in ${structured ? 'structured' : 'raw-only'} prompt evidence stays unknown`, async () => {
+    const f = fixture();
+    const row = { ...f.data.transactions[0], rawAmount: -Number.MAX_SAFE_INTEGER };
+    if (structured) Object.assign(row, { inputTokens: Number.MAX_SAFE_INTEGER, writeTokens: 0, readTokens: 0 });
+    f.data.transactions = [{ ...row, _id: 'large-1' }, { ...row, _id: 'large-2' }];
+    const shapes = (await runAccountingPreflight(f.options)).native.byProviderUsage[0].promptShapes;
+    assert.equal(shapes[structured ? 'structuredInputTokens' : 'rawOnlyPromptTokens'], null);
+    assert.equal(shapes[structured ? 'structuredUnsafeTotal' : 'rawOnlyUnsafeTotal'], true);
+    assert.equal(shapes[structured ? 'structuredCompleteRows' : 'rawOnlyCompleteRows'], 2);
+  });
+}
 
 test('incomplete completion usage does not erase independently complete prompt totals', async () => {
   const f = fixture();
