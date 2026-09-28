@@ -36,14 +36,16 @@ test('direct Chrome tab tools are exposed through gateway and MCP', async () => 
 });
 
 test('direct Chrome tab close requires explicit confirmation locally and over MCP', async () => {
-  const [companion, mcp, openapi] = await Promise.all([
+  const [companion, directTabs, mcp, openapi] = await Promise.all([
     readFile(new URL('../companion/companion.js', root), 'utf8'),
+    readFile(new URL('../companion/direct-tabs.js', root), 'utf8'),
     text('./mcp.js'),
     text('./openapi.yaml'),
   ]);
 
-  assert.ok(companion.includes("args?.confirm !== true"));
-  assert.ok(companion.includes("confirmation_required"));
+  assert.ok(companion.includes("normalizeCloseTabRequest(args)"));
+  assert.ok(directTabs.includes("args?.confirm !== true"));
+  assert.ok(directTabs.includes("confirmation_required"));
   assert.ok(companion.includes("windowId"));
   assert.ok(companion.includes("tabId"));
   assert.ok(companion.includes("expectedUrl"));
