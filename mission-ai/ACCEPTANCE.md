@@ -2,6 +2,10 @@
 
 Mission AI is not production-ready until every required scenario below passes on the development branch and development services.
 
+As of September 28, the separate managed test chat at `8ab89e169e344671e78804b899cc508ed8d5befe` has passed the bounded **no-paid** setup, login/session, public-route, saved-history, and safe-retry checks recorded in [ACCEPTANCE-EVIDENCE.md](ACCEPTANCE-EVIDENCE.md). Its default preset is Economy. A separately approved standalone OpenAI economy request also passed exact accounting; it was not a native LibreChat chat acceptance.
+
+Both gateway paid flags remain false, shared accounting is inactive, and `My-Workstation-McKee` is unchanged. Live native accounting, real-provider cancellation, complete bypass/egress validation, broader platform workflows, and production cutover remain unaccepted. The matrix below is still the required full-platform checklist, not a claim that every row has passed or that the original service has an atomic spending cap.
+
 ## Cloud and provider layer
 
 - Provider-independent routing selects the configured OpenAI, Anthropic, or Google role without exposing credentials.

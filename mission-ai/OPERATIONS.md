@@ -3,6 +3,7 @@
 ## Development services
 
 - Gateway: `mission-ai-gateway-mckee`
+- Separate test chat: `mission-ai-chat-test-mckee` (`MissionAIChatTest` application database)
 - Code API: `mission-ai-code-api-mckee`
 - Code queue store: `mission-ai-code-redis`
 - Source branch: `mission-ai-v1`
@@ -14,6 +15,8 @@ Production LibreChat remains on `main`. The development services must not be use
 The gateway build runs syntax checks followed by the gateway and budget test suite during package installation. A development deploy is considered valid only when the test command exits successfully and Render reports the service live.
 
 The Code API build is pinned by its wrapper script and must report successful worker startup before it is considered usable.
+
+The separate test chat requires the full application build and API workspace typecheck, not just the gateway build. Use its [reviewed launcher and service settings](chat-test/README.md); automatic deployments remain off. Its completed no-paid browser checks are recorded in [acceptance evidence](ACCEPTANCE-EVIDENCE.md). Health alone does not establish login, accounting, or provider readiness.
 
 ## Service checks
 
@@ -30,26 +33,34 @@ For each development release, verify:
 
 ## Cost telemetry database access
 
-Use a dedicated MongoDB Atlas credential scoped to exactly these database roles:
+Use the two separate Atlas accounts required by [SECURE_SETUP.md](SECURE_SETUP.md):
 
-- `read` on the LibreChat database, for settled native transaction aggregation.
-- `readWrite` on the separate `MissionAI` database, for delegated-usage reservations and settlements.
+- `MISSION_AI_MONGO_URI`: dedicated reader with only `read@test`, with `/test` explicit in the connection string. The existing LibreChat `transactions` collection is in `test`.
+- `MISSION_AI_LEDGER_MONGO_URI`: different dedicated writer with only `readWrite@MissionAI`, with `/MissionAI` explicit in the connection string. Set `MISSION_AI_LEDGER_DB=MissionAI`.
 
-A single Atlas credential with those two scoped roles is sufficient. Set `MISSION_AI_MONGO_URI` to a connection string whose default database is LibreChat; the delegated ledger switches to `MissionAI` internally. `MISSION_AI_LEDGER_MONGO_URI` remains optional for deployments that prefer a separate ledger credential.
+Both accounts are restricted to cluster `LibreChat-McKee`. Do not rely on the runtime's compatibility URI fallback or combine these roles on one account for this deployment. Keep both connection strings private on the gateway.
 
-Do not reuse the primary LibreChat application credential unless a temporary development exception is explicitly approved. Do not grant account administration, user administration, schema management, or unrestricted write access to LibreChat.
+The separate test chat instead uses its own `MONGO_URI`, user `mission_ai_chat_test`, and only `readWrite@MissionAIChatTest`. It receives neither gateway database credential. Preserve the original `My-Workstation-McKee` database login; do not reuse it or grant the gateway write access to `test`.
 
-The dashboard reads only the `transactions` collection and returns aggregated usage/cost metadata. It never returns message content, API keys, or raw credentials.
+The native cost reader reads only `transactions`. The combined dashboard also uses the `MissionAI` ledger, including reservations and stale-reservation reconciliation, and returns aggregate cost metadata without message content or credentials. In snapshot mode, original LibreChat spending is settled history rather than an in-flight reservation. After an approved shared activation, the dashboard counts ledger events without adding the native mirror twice.
+
+Keep `MISSION_AI_NATIVE_ENABLED=false` and `MISSION_AI_DELEGATION_ENABLED=false` on the gateway. Shared accounting is not activated. The original service remains outside a platform-wide atomic $175 cap. Activation, draining old callers, and a bounded paid native test require the separate [cutover procedure](NATIVE_BUDGET_CUTOVER.md) and approval; a prior standalone paid test does not satisfy these requirements.
+
+For a read-only accounting observation, run `node accounting-preflight.js` from the gateway directory with its existing private environment. This deployment-scoped diagnostic pins the two account/database identities above, requires both paid flags to be exactly false, and reads native transactions and ledger state/events without reconciliation, index creation, or writes. It emits one bounded JSON summary with a provisional cutoff/digest, source commit, role observations, totals, reservation/block counts, and state/event agreement. It does not persist a plan or authorize activation. A failed or timed-out check reports `incomplete`; its zero exit status exists only so an operator startup prefix cannot prevent the normal server from starting.
+
+If temporarily invoked through Render's start command, use `cd mission-ai/gateway && (node accounting-preflight.js; exec npm start)`, capture the safe receipt, then restore and verify the normal `cd mission-ai/gateway && npm start` command. Its deadline is 35 seconds plus at most 1.5 seconds for cleanup. Do not use the combined dashboard for a read-only audit because that path reconciles stale reservations. A provisional observation while the original service is running does not replace drain evidence, provider reconciliation, or a fresh approved cutover artifact.
 
 ## Free-plan behavior
 
 The current development web services use Render Free instances. They may stop while idle and cold-start on the next request. This is acceptable for development validation but is not the final availability target. A deliberate hosting-plan decision is required before production acceptance of always-on local pairing or long-running cloud work.
 
+September 28 test-chat samples were about 393–403 MiB initially and about 448.5 MiB after disabled-chat retries on a 512 MiB instance. These are light-use observations, not a capacity or concurrency guarantee. Headroom is limited; no paid instance upgrade has been approved by these checks.
+
 ## Development deploy recovery
 
 Mission AI development uses fail-forward recovery and never uses production `main` as a recovery target.
 
-1. If a Render build fails before promotion, leave the prior live development deploy serving traffic. Inspect the failing test/build log, fix the defect on `mission-ai-v1`, and let auto-deploy validate the new commit.
+1. If a Render build fails before promotion, leave the prior live development deploy serving traffic. Inspect the failing test/build log, fix the defect on `mission-ai-v1`, and deploy the reviewed development commit. The separate test chat uses a manual deployment while automatic deployments are off.
 2. If a new development deploy becomes unhealthy after going live, identify the last known-good development commit/deploy, preserve its identifiers in the incident note, then either redeploy that development artifact or commit a fix/revert on `mission-ai-v1`.
 3. Never recover development by writing to production `main`, the production `My-Workstation-McKee` service, production MongoDB data, or the protected backup branch.
 4. After recovery, require the full development test suite, package audit, service health/startup, and device reconnect checks before considering the incident closed.
