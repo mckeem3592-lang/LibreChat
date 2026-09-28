@@ -6,12 +6,18 @@ on:
     paths:
       - 'mission-ai/**'
       - 'packages/api/src/missionBudget/**'
+      - 'packages/api/src/index.ts'
+      - 'api/server/index.js'
+      - 'api/server/routes/agents/index.js'
       - 'plugin/mission-ai-budget/**'
       - '.github/workflows/mission-ai-ci.yml'
   pull_request:
     paths:
       - 'mission-ai/**'
       - 'packages/api/src/missionBudget/**'
+      - 'packages/api/src/index.ts'
+      - 'api/server/index.js'
+      - 'api/server/routes/agents/index.js'
       - 'plugin/mission-ai-budget/**'
       - '.github/workflows/mission-ai-ci.yml'
 
@@ -44,6 +50,10 @@ jobs:
           node --check plugin/mission-ai-budget/scripts/budget-query.mjs
           node --check plugin/mission-ai-budget/scripts/budget-report.mjs
           bash -n mission-ai/bootstrap-macos.sh
+          bash -n mission-ai/chat-test/start.sh
+          node --check mission-ai/chat-test/bootstrap.cjs
+          node --check api/server/index.js
+          node --check api/server/routes/agents/index.js
           bash -n mission-ai/document-tools/install-macos.sh
           bash -n mission-ai/acceptance/check-macos.sh
           python3 -m py_compile mission-ai/document-tools/verify.py
@@ -71,3 +81,42 @@ jobs:
         env:
           MONGOMS_DOWNLOAD_DIR: ${{ runner.temp }}/mission-ai-mongodb
         run: npm run test:integration --prefix mission-ai/gateway
+      - name: Test private owner bootstrap with isolated MongoDB
+        env:
+          MONGOMS_DOWNLOAD_DIR: ${{ runner.temp }}/mission-ai-mongodb
+          MISSION_AI_BOOTSTRAP_MONGO_TESTS: 'true'
+        run: node --test mission-ai/gateway/native-bootstrap.test.js
+
+  managed-chat-build:
+    name: Build and typecheck managed LibreChat
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SCARF_ANALYTICS: 'false'
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.16.0'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install full application dependencies
+        run: npm ci --include=dev --no-audit --no-fund
+      - name: Build application and backend packages
+        run: npm run frontend
+      - name: Typecheck the changed API workspace
+        working-directory: packages/api
+        run: npx tsc --noEmit
+      - name: Audit existing chat loading with simulated database latency
+        env:
+          E2E_CHROMIUM_CHANNEL: chrome
+        run: npm run lighthouse:run
+      - name: Save chat loading audit reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: mission-ai-chat-loading
+          path: .lighthouse/
+          include-hidden-files: true
+          retention-days: 7

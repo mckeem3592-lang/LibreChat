@@ -2,6 +2,7 @@ const express = require('express');
 const {
   reportLocatorTraversalFailure,
   isEnabled,
+  createManagedChatConfigGuard,
   GenerationJobManager,
   TERMINAL_PUBLICATION_RECONNECT_ERROR,
   hasPersistableAbortContent,
@@ -1154,6 +1155,12 @@ const chatRouter = express.Router();
 const useMessageIpLimiter = isEnabled(LIMIT_MESSAGE_IP);
 const useMessageUserLimiter = isEnabled(LIMIT_MESSAGE_USER);
 chatRouter.use(configMiddleware);
+chatRouter.use(createManagedChatConfigGuard({
+  enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
+  gatewayURL: process.env.MISSION_AI_GATEWAY_URL,
+  nativeToken: process.env.MISSION_AI_NATIVE_TOKEN,
+  titleConvo: process.env.TITLE_CONVO,
+}));
 if (useMessageIpLimiter || useMessageUserLimiter) {
   chatRouter.use(
     unless(
