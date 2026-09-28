@@ -16,8 +16,11 @@ This file records concrete development evidence. It is not a production approval
 - Stable-ID behavior still requires a local companion update and end-to-end exercise before this row is fully accepted.
 
 ### Browser extension
-- Browser Bridge 0.2.1 includes an offscreen transport, handshake retries, and phase-specific pairing diagnostics.
-- Page-level extension control is not yet accepted; the revised extension still requires a local reload and connection exercise.
+- Browser Bridge 0.3.0 replaces the failed localhost/offscreen Chrome transport with Chrome Native Messaging.
+- The extension has a deterministic ID and the native host manifest permits only that exact extension origin.
+- The extension no longer fetches or stores the browser credential and has no localhost HTTP/WebSocket host permission.
+- The local native host reads the browser credential from macOS Keychain and relays browser-tool messages to the companion over loopback.
+- Page-level extension control is not yet accepted; the 0.3.0 native-host build still requires one local install/reload and real active-tab interaction exercise.
 
 ### Provider pricing
 - OpenAI, Anthropic, and Google model IDs/pricing catalogs were reviewed against current provider documentation.
