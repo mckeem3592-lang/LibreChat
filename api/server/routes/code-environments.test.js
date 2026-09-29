@@ -2,6 +2,12 @@ const express = require('express');
 const request = require('supertest');
 
 const middlewareCalls = [];
+let mockOwnerDenied = false;
+const mockOwnerGuard = jest.fn((req, res, next) => {
+  if (!req.user) throw new Error('owner guard must follow JWT authentication');
+  if (mockOwnerDenied) return res.status(403).json({ error: 'managed_tools_denied' });
+  next();
+});
 const mockRequireJwtAuth = jest.fn((req, _res, next) => {
   middlewareCalls.push('jwt');
   req.user = { id: '68b2f0c498f24c1e78fa0001', role: 'USER' };
@@ -54,6 +60,7 @@ jest.mock('@librechat/data-schemas', () => ({
 }));
 
 jest.mock('@librechat/api', () => ({
+  createManagedToolOwnerGuard: jest.fn(() => mockOwnerGuard),
   GenerationJobManager: mockGenerationJobManager,
   createCodeEnvironmentRegistry: jest.fn(() => mockRegistry),
   createCodeEnvironmentHttpHandlers: jest.fn((deps) => {
@@ -87,7 +94,15 @@ function createApp() {
 describe('code environment routes', () => {
   beforeEach(() => {
     middlewareCalls.length = 0;
+    mockOwnerDenied = false;
     jest.clearAllMocks();
+  });
+
+  it('stops owner-denied access after authentication and before environment handlers', async () => {
+    mockOwnerDenied = true;
+    await request(createApp()).get('/api/code-environments').expect(403);
+    expect(mockOwnerGuard).toHaveBeenCalledTimes(1);
+    expect(mockHandlers.list).not.toHaveBeenCalled();
   });
 
   it('defers registry initialization until the route is requested', () => {

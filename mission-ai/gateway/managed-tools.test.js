@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { generateKeyPairSync } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createManagedToolAdmission, createManagedToolConfigGuard, createManagedToolOwnerGuard,
@@ -9,15 +10,16 @@ const options = { enabled: true, toolsEnabled: true, ownerEmail: 'owner@syntheti
   toolToken: 'synthetic-tool-token-123456789012345', titleConvo: 'false' };
 function config() {
   const ui = { multiConvo: false, agents: false, schedules: false, skills: false, memories: false,
-    runCode: false, webSearch: false, fileSearch: false, defaultPinnedTools: ['mcp'],
+    runCode: true, webSearch: false, fileSearch: false, defaultPinnedTools: ['mcp'],
     mcpServers: { use: true, create: false, share: false, public: false, toolsRefreshInterval: 0, statusRefreshInterval: 0 } };
   const servers = { 'mission-ai': { title: 'Mission AI', type: 'streamable-http',
     url: '${MISSION_AI_GATEWAY_URL}/mcp', headers: { Authorization: 'Bearer ${MISSION_AI_TOOL_TOKEN}' }, timeout: 120000, chatMenu: true } };
   return { config: { memory: { disabled: true }, summarization: { enabled: false }, interface: structuredClone(ui), mcpServers: structuredClone(servers) },
     memory: { disabled: true }, summarization: { enabled: false }, interfaceConfig: ui, mcpConfig: servers,
     endpoints: { all: { titleConvo: false, activityLabel: false, activityPhaseLabel: false, reasoningLabel: false },
-      agents: { disableBuilder: true, allowedProviders: ['MissionAI'], capabilities: ['tools'], recursionLimit: 8,
-        maxRecursionLimit: 8, modelResponseBodyTimeoutMs: 180000, toolApproval: { enabled: true, mode: 'default', allow: [], ask: ['mcp:mission-ai:*'] } },
+      agents: { disableBuilder: true, allowedProviders: ['MissionAI'], capabilities: ['tools', 'execute_code', 'stateful_code_sessions'],
+        statefulCodeSessions: { allowedEnvironments: ['conversation'], environments: [{ id: 'attached-workers', name: 'Mission AI Mac', type: 'attached', baseURL: 'https://mission-ai-code-api-mckee.onrender.com/v1', owner: 'deployment', default: true, pairing: { workerId: 'mac-primary-code', tokenEnv: 'MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN' } }] }, recursionLimit: 8,
+        maxRecursionLimit: 8, modelResponseBodyTimeoutMs: 180000, toolApproval: { enabled: true, mode: 'default', allow: [], ask: ['*'] } },
       custom: [{ name: 'MissionAI', provider: 'anthropic', apiKey: '${MISSION_AI_NATIVE_TOKEN}',
         baseURL: '${MISSION_AI_GATEWAY_URL}/native/anthropic', titleConvo: false, models: { default: ['claude-sonnet-5-5'], fetch: false },
         dropParams: [...MANAGED_NATIVE_DROPS], addParams: { maxRetries: 0, timeout: 180000 } }] },
@@ -95,11 +97,47 @@ test('startup preflight selects only the reviewed configuration and requires own
   const script = fileURLToPath(new URL('../chat-test/start.sh', import.meta.url));
   const preflight = (extra) => spawnSync('bash', [script, '--check'], { env: { ...env, ...extra }, encoding: 'utf8', timeout: 10000 });
   assert.equal(preflight({}).status, 0);
-  const native = { MISSION_AI_MANAGED_TOOLS: 'true', MISSION_AI_CONTROL_OWNER_EMAIL: options.ownerEmail, MISSION_AI_TOOL_TOKEN: options.toolToken };
+  const key = generateKeyPairSync('ed25519').privateKey.export({ type: 'pkcs8', format: 'pem' });
+  const native = { CODEAPI_AUTH_PROVIDER: 'librechat-jwt', CODEAPI_JWT_PRIVATE_KEY_BASE64: Buffer.from(key).toString('base64'), CODEAPI_JWT_KID: 'synthetic', CODEAPI_JWT_ISSUER: 'synthetic', CODEAPI_JWT_AUDIENCE: 'codeapi', CODEAPI_JWT_SINGLE_TENANT_ID: 'synthetic', MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN: 'synthetic-code-admin-token-1234567890', MISSION_AI_MANAGED_TOOLS: 'true', MISSION_AI_CONTROL_OWNER_EMAIL: options.ownerEmail, MISSION_AI_TOOL_TOKEN: options.toolToken };
   assert.equal(preflight(native).status, 0);
-  for (const extra of [{ ...native, MISSION_AI_CONTROL_OWNER_EMAIL: '' }, { ...native, MISSION_AI_TOOL_TOKEN: '' },
+  for (const extra of [{ ...native, CODEAPI_AUTH_PROVIDER: 'both' }, { ...native, CODEAPI_JWT_PRIVATE_KEY_BASE64: '' }, { ...native, MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN: '' }, { ...native, MISSION_AI_CONTROL_OWNER_EMAIL: '' }, { ...native, MISSION_AI_TOOL_TOKEN: '' },
     { ...native, MISSION_AI_TOOL_TOKEN: options.nativeToken }, { ...native, MISSION_AI_MANAGED_TOOLS: 'automatic' },
     { MISSION_AI_TOOL_TOKEN: options.toolToken }, { ...native, ANTHROPIC_API_KEY: 'synthetic-not-a-real-key' }]) {
     assert.notEqual(preflight(extra).status, 0);
+  }
+});
+
+test('coding admits only one explicit attached workspace and keeps ask authorization through both boundaries', () => {
+  const input = { ...body(), ephemeralAgent: { mcp: ['mission-ai'], execute_code: true },
+    codeEnvironmentMode: 'attached', codeApprovalMode: 'ask', codeWorkspaces: [{ environmentId: 'attached-workers', workspaceId: 'project-a' }] };
+  for (const boundary of [createManagedToolAdmission(options), createManagedToolConfigGuard(options)]) {
+    const result = invoke(boundary, { body: structuredClone(input) }); assert.equal(result.next, 1);
+    assert.deepEqual(result.req.body.codeWorkspaces, input.codeWorkspaces);
+    assert.equal(result.req.body.ephemeralAgent.execute_code, true); assert.equal(result.req.body.codeApprovalMode, 'ask');
+    for (const patch of [{ codeApprovalMode: 'fullAccess' }, { codeApprovalMode: 'acceptEdits' },
+      { codeEnvironmentMode: 'without_attached' }, { codeWorkspaces: [] },
+      { codeWorkspaces: [{ environmentId: 'other', workspaceId: 'project-a' }] },
+      { codeWorkspaces: [{ environmentId: 'attached-workers', workspaceId: '../escape' }] }]) {
+      assert.equal(invoke(boundary, { body: { ...input, ...patch } }).status, 403);
+    }
+  }
+});
+test('coding configuration rejects a substitute service, unmanaged execution or changed worker identity', () => {
+  for (const mutate of [
+    (c) => { c.endpoints.agents.statefulCodeSessions.environments[0].baseURL = 'https://other.invalid/v1'; },
+    (c) => { c.endpoints.agents.statefulCodeSessions.environments[0].type = 'managed'; },
+    (c) => { c.endpoints.agents.statefulCodeSessions.environments[0].pairing.workerId = 'other'; },
+    (c) => { c.endpoints.agents.statefulCodeSessions.allowedEnvironments = ['user']; },
+  ]) { const value = config(); mutate(value); assert.equal(invoke(createManagedToolConfigGuard(options), { config: value }).status, 503); }
+});
+
+test('coding discovery admits only the configured deployment and forbids enrollment or environment changes', () => {
+  const admission = createManagedToolAdmission(options);
+  for (const originalUrl of ['/api/code-environments', '/api/code-environments/attached-workers/status']) {
+    assert.equal(invoke(admission, { method: 'GET', originalUrl }).next, 1);
+  }
+  for (const originalUrl of ['/api/code-environments/other/status', '/api/code-environments?all=true',
+    '/api/code-environments/pairings', '/api/code-environments/attached-workers/settings']) {
+    for (const method of ['GET', 'POST', 'PATCH', 'DELETE']) assert.equal(invoke(admission, { method, originalUrl }).status, 403);
   }
 });

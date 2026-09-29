@@ -9,6 +9,8 @@ export interface ManagedToolOptions extends ManagedChatOptions {
   toolsEnabled?: boolean; ownerEmail?: string; toolToken?: string;
 }
 type Middleware = (req: Request, res: ManagedChatResponse, next: () => unknown) => unknown;
+const WORKSPACE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const CODE_BASE = 'https://mission-ai-code-api-mckee.onrender.com/v1';
 const MCP_READS = new Set(['/api/mcp/tools', '/api/mcp/servers',
   '/api/mcp/servers/mission-ai', '/api/mcp/connection/status', '/api/mcp/connection/status/mission-ai']);
 export const MANAGED_NATIVE_DROPS: readonly string[] = Object.freeze([
@@ -53,11 +55,27 @@ function payload(input: unknown): { compatible: Json; restore(body: unknown): Js
   const agent = original.ephemeralAgent == null ? undefined : object(original.ephemeralAgent);
   const selected = agent?.mcp ?? [];
   if (!Array.isArray(selected) || selected.length > 1 || selected.some((name) => name !== 'mission-ai')) throw new Error();
-  if (agent) compatible.ephemeralAgent = { ...agent, mcp: [] };
+  if (agent?.execute_code != null && typeof agent.execute_code !== 'boolean') throw new Error();
+  const coding = agent?.execute_code === true;
+  const workspaces = original.codeWorkspaces ?? [];
+  if (!Array.isArray(workspaces) || workspaces.length > 1) throw new Error();
+  for (const value of workspaces) {
+    const workspace = object(value); exactKeys(workspace, ['environmentId', 'workspaceId']);
+    if (workspace.environmentId !== 'attached-workers' || typeof workspace.workspaceId !== 'string' ||
+        !WORKSPACE_ID.test(workspace.workspaceId)) throw new Error();
+  }
+  if (coding && (workspaces.length !== 1 || original.codeEnvironmentMode !== 'attached')) throw new Error();
+  if (!coding && workspaces.length) throw new Error();
+  if (original.codeApprovalMode != null && original.codeApprovalMode !== 'ask') throw new Error();
+  if (coding) { compatible.codeWorkspaces = []; compatible.codeEnvironmentMode = 'without_attached'; }
+  if (agent) compatible.ephemeralAgent = { ...agent, mcp: [], execute_code: false };
   return { compatible, restore(value) {
     const body = object(value); const result: Json = { ...body, maxOutputTokens: tokens };
     delete result.max_tokens;
-    if (selected.length) result.ephemeralAgent = { mcp: ['mission-ai'] };
+    if (selected.length || coding) result.ephemeralAgent = {
+      ...(selected.length ? { mcp: ['mission-ai'] } : {}), ...(coding ? { execute_code: true } : {}),
+    };
+    if (coding) { result.codeWorkspaces = workspaces; result.codeEnvironmentMode = 'attached'; result.codeApprovalMode = 'ask'; }
     return result;
   } };
 }
@@ -68,7 +86,8 @@ export function createManagedToolAdmission(options: ManagedToolOptions): Middlew
   if (!options.enabled || !options.toolsEnabled) return legacy;
   return (req, res, next) => {
     const path = req.originalUrl ?? req.url ?? '';
-    if (req.method === 'GET' && MCP_READS.has(path)) return next();
+    if (req.method === 'GET' && (MCP_READS.has(path) || path === '/api/code-environments' ||
+        path === '/api/code-environments/attached-workers/status')) return next();
     if (req.method !== 'POST' || path !== '/api/agents/chat/MissionAI') return legacy(req, res, next);
     try {
       const conversion = payload(req.body);
@@ -96,12 +115,23 @@ function projectConfiguration(value: unknown, options: ManagedToolOptions): Json
   }
   copy.mcpConfig = null; delete raw.mcpServers;
   const endpoints = object(copy.endpoints); const agents = object(endpoints.agents);
-  same(agents.capabilities, ['tools']);
+  same(agents.capabilities, ['tools', 'execute_code', 'stateful_code_sessions']);
+  const sessions = object(agents.statefulCodeSessions);
+  exactKeys(sessions, ['allowedEnvironments', 'environments']); same(sessions.allowedEnvironments, ['conversation']);
+  if (!Array.isArray(sessions.environments) || sessions.environments.length !== 1) throw new Error();
+  const environment = object(sessions.environments[0]);
+  exactKeys(environment, ['id', 'name', 'type', 'baseURL', 'owner', 'pairing', 'default']);
+  if (environment.id !== 'attached-workers' || environment.type !== 'attached' || environment.baseURL !== CODE_BASE ||
+      environment.owner !== 'deployment' || environment.default !== true) throw new Error();
+  const pairing = object(environment.pairing); exactKeys(pairing, ['workerId', 'tokenEnv', 'allowPrincipalWorkers']);
+  if (pairing.workerId !== 'mac-primary-code' || pairing.tokenEnv !== 'MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN' ||
+      (pairing.allowPrincipalWorkers !== undefined && pairing.allowPrincipalWorkers !== false)) throw new Error();
+  delete agents.statefulCodeSessions;
   if (agents.recursionLimit !== 8 || agents.maxRecursionLimit !== 8 || agents.modelResponseBodyTimeoutMs !== 180000) throw new Error();
   const approval = object(agents.toolApproval);
   exactKeys(approval, ['enabled', 'mode', 'allow', 'ask']);
   if (approval.enabled !== true || approval.mode !== 'default') throw new Error();
-  same(approval.allow, []); same(approval.ask, ['mcp:mission-ai:*']);
+  same(approval.allow, []); same(approval.ask, ['*']);
   agents.capabilities = []; delete agents.recursionLimit; delete agents.maxRecursionLimit; delete agents.toolApproval;
   const custom = object((endpoints.custom as unknown[])[0]);
   if (custom.provider !== 'anthropic' ||
@@ -118,7 +148,9 @@ function projectConfiguration(value: unknown, options: ManagedToolOptions): Json
     preset.max_tokens = preset.maxOutputTokens; delete preset.maxOutputTokens;
   }
   for (const view of [copy.interfaceConfig, raw.interface]) {
-    const ui = object(view); same(ui.defaultPinnedTools, ['mcp']); ui.defaultPinnedTools = [];
+    const ui = object(view);
+    if (ui.runCode !== true) throw new Error(); ui.runCode = false;
+    same(ui.defaultPinnedTools, ['mcp']); ui.defaultPinnedTools = [];
     const mcp = object(ui.mcpServers); exactKeys(mcp, ['use', 'create', 'share', 'public',
       'toolsRefreshInterval', 'statusRefreshInterval']);
     if (mcp.use !== true || mcp.create !== false || mcp.share !== false || mcp.public !== false) throw new Error();

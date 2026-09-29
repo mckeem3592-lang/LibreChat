@@ -19,7 +19,7 @@ for variable in $(compgen -e); do
   [[ -n ${!variable} ]] || continue
   case "$variable" in
     MONGO_URI|JWT_SECRET|JWT_REFRESH_SECRET|CREDS_KEY|CREDS_IV|MISSION_AI_NATIVE_TOKEN|MISSION_AI_GATEWAY_URL|\
-    MISSION_AI_MANAGED_CHAT|MISSION_AI_MANAGED_TOOLS|MISSION_AI_TOOL_TOKEN|MISSION_AI_BOOTSTRAP_OWNER|MISSION_AI_OWNER_EMAIL|MISSION_AI_OWNER_PASSWORD|MISSION_AI_CONTROL_OWNER_EMAIL)
+    MISSION_AI_MANAGED_CHAT|MISSION_AI_MANAGED_TOOLS|MISSION_AI_TOOL_TOKEN|MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN|CODEAPI_AUTH_PROVIDER|CODEAPI_JWT_PRIVATE_KEY_BASE64|CODEAPI_JWT_ALGORITHM|CODEAPI_JWT_KID|CODEAPI_JWT_ISSUER|CODEAPI_JWT_AUDIENCE|CODEAPI_JWT_SINGLE_TENANT_ID|MISSION_AI_BOOTSTRAP_OWNER|MISSION_AI_OWNER_EMAIL|MISSION_AI_OWNER_PASSWORD|MISSION_AI_CONTROL_OWNER_EMAIL)
       continue ;;
     OPENAI_*|ANTHROPIC_*|AZURE_*|ASSISTANTS_*|GOOGLE_*|GEMINI_*|BEDROCK_*|AWS_*|VERTEX_*|\
     ANYSCALE_*|APIPIE_*|COHERE_*|DEEPSEEK_*|DATABRICKS_*|FIREWORKS_*|GROQ_*|HUGGINGFACE_*|\
@@ -80,12 +80,33 @@ NODE
 
 case "${MISSION_AI_MANAGED_TOOLS-false}" in
   false) managed_config="$repo_dir/mission-ai/config/librechat.shared-budget.yaml"
-    [[ -z ${MISSION_AI_TOOL_TOKEN-} ]] || fail 'tool credential requires the explicit managed tools gate' ;;
+    [[ -z ${MISSION_AI_TOOL_TOKEN-} && -z ${MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN-} ]] || fail 'tool credentials require the explicit managed tools gate' ;;
   true) managed_config="$repo_dir/mission-ai/config/librechat.tools-budget.yaml"
     [[ -n ${MISSION_AI_CONTROL_OWNER_EMAIL-} ]] || fail 'managed tools require the approved owner binding'
     tool_token="${MISSION_AI_TOOL_TOKEN-}"
     [[ ${#tool_token} -ge 32 && $tool_token != *[[:space:]]* && $tool_token != "$MISSION_AI_NATIVE_TOKEN" ]] ||
-      fail 'managed tools require a separate gateway tool credential' ;;
+      fail 'managed tools require a separate gateway tool credential'
+    code_token="${MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN-}"
+    [[ ${#code_token} -ge 32 && $code_token != *[[:space:]]* && $code_token != "$native_token" && $code_token != "$tool_token" ]] ||
+      fail 'managed coding requires a separate existing Code API pairing credential'
+    [[ ${CODEAPI_AUTH_PROVIDER-} == librechat-jwt ]] || fail 'managed coding requires principal JWT authentication'
+    node <<'CODEJWT'
+const { createPrivateKey } = require('node:crypto');
+try {
+  const key = createPrivateKey(Buffer.from(process.env.CODEAPI_JWT_PRIVATE_KEY_BASE64 || '', 'base64'));
+  const algorithm = process.env.CODEAPI_JWT_ALGORITHM || 'EdDSA';
+  if ((algorithm === 'EdDSA' && key.asymmetricKeyType !== 'ed25519') ||
+      (algorithm === 'RS256' && (key.asymmetricKeyType !== 'rsa' || key.asymmetricKeyDetails.modulusLength < 2048)) ||
+      !['EdDSA', 'RS256'].includes(algorithm)) throw 0;
+  for (const field of ['CODEAPI_JWT_KID', 'CODEAPI_JWT_ISSUER', 'CODEAPI_JWT_AUDIENCE', 'CODEAPI_JWT_SINGLE_TENANT_ID']) {
+    if (!process.env[field] || process.env[field].length > 256) throw 0;
+  }
+} catch {
+  console.error('Mission AI test chat: reviewed Code API JWT signing and identity settings are required');
+  process.exit(1);
+}
+CODEJWT
+    ;;
   *) fail 'MISSION_AI_MANAGED_TOOLS must be explicitly true or false' ;;
 esac
 [[ -f $managed_config ]] || fail 'reviewed managed configuration is missing'

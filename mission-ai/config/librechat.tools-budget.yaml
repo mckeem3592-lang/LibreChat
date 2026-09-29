@@ -20,7 +20,7 @@ interface:
   schedules: false
   skills: false
   memories: false
-  runCode: false
+  runCode: true
   webSearch: false
   fileSearch: false
   marketplace:
@@ -79,7 +79,19 @@ endpoints:
     # An empty allowedProviders array means unrestricted, so name only the
     # managed custom endpoint. Saved-agent access is also disabled above.
     allowedProviders: ['MissionAI']
-    capabilities: [tools]
+    capabilities: [tools, execute_code, stateful_code_sessions]
+    statefulCodeSessions:
+      allowedEnvironments: [conversation]
+      environments:
+        - id: attached-workers
+          name: Mission AI Mac
+          type: attached
+          baseURL: https://mission-ai-code-api-mckee.onrender.com/v1
+          owner: deployment
+          default: true
+          pairing:
+            workerId: mac-primary-code
+            tokenEnv: MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN
     recursionLimit: 8
     maxRecursionLimit: 8
     modelResponseBodyTimeoutMs: 180000
@@ -87,7 +99,7 @@ endpoints:
       enabled: true
       mode: default
       allow: []
-      ask: ['mcp:mission-ai:*']
+      ask: ['*']
   custom:
     - name: 'MissionAI'
       provider: anthropic
@@ -102,14 +114,14 @@ endpoints:
       addParams:
         maxRetries: 0
         timeout: 180000
-      # Force the supported Chat Completions path, including stored settings
+      # Remove incompatible stored sampling and transport settings, including settings
       # that previously selected Responses. Gateway validation remains final.
       dropParams: ['useResponsesApi', 'temperature', 'top_p', 'topP', 'topK', 'frequency_penalty', 'frequencyPenalty', 'presence_penalty', 'presencePenalty', 'seed', 'user', 'verbosity', 'metadata', 'thinking', 'outputConfig', 'output_config', 'promptCache', 'web_search']
 
 modelSpecs:
   enforce: true
   prioritize: true
-  # Capped Anthropic text adapter behind the compatible transport. Keep native
+  # Capped native Anthropic transport with signed tool history. Keep native
   # requests disabled until reviewed deployment and paid acceptance pass.
   list:
     - name: 'mission-ai-sonnet'

@@ -1,6 +1,7 @@
 const express = require('express');
 const {
   GenerationJobManager,
+  createManagedToolOwnerGuard,
   createCodeEnvironmentHttpHandlers,
   codeEnvironmentPairingLimiter,
   codeEnvironmentStatusIpLimiter,
@@ -32,6 +33,11 @@ function getHandlers() {
 const requireCodeEnvironmentManage = requireCapability(SystemCapabilities.MANAGE_CODE_ENVIRONMENTS);
 
 router.use(requireJwtAuth);
+router.use(createManagedToolOwnerGuard({
+  enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
+  toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+  ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
+}));
 router.get('/', (req, res, next) => getHandlers().list(req, res, next));
 router.post('/pairings', codeEnvironmentPairingLimiter, (req, res, next) =>
   getHandlers().pair(req, res, next),
