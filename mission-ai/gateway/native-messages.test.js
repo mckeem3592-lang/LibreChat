@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
-import { createNativeBridge } from './generated/native.js';
+import { createNativeBridge, NativeBridgeError } from './generated/native.js';
 import { createAnthropicHttp } from './generated/anthropicHttp.js';
 import { normalizeAnthropicMessages, anthropicReservationPrompt } from './generated/anthropicMessages.js';
 import { createMemoryUsageLedger } from './usage-ledger.js';
@@ -105,6 +105,43 @@ test('native token, disabled gate and query checks deny without calling a provid
     http.authorize({ get: () => token, query }, res, () => { called++; });
   }
   assert.equal(called, 0);
+});
+
+test('provider HTTP failures expose only status, never retry, and preserve conservative accounting', async () => {
+  for (const status of [401, 429, 408, 500, 529]) {
+    let calls = 0;
+    const f = await fixture(undefined, { fetchImpl: async () => {
+      calls++; return { status, json: async () => { assert.fail('Provider error body must not be read'); } };
+    } });
+    let observed;
+    await assert.rejects(f.bridge.handle(request()), error => {
+      observed = error; return error.code === 'native_provider_rejected' && error.providerHttpStatus === status;
+    });
+    assert.equal(calls, 1);
+    const summary = await f.ledger.summary({ now, timeZone: 'America/Denver' });
+    assert.equal(summary.reservedUsd, 0);
+    const uncertain = status === 408 || status >= 500;
+    assert.equal(summary.settledUsd > 0, uncertain);
+    if (uncertain) {
+      const settled = f.events.find(event => event.type === 'settle').input;
+      assert.equal(settled.usage.estimated, true);
+      assert.equal(settled.usage.providerHttpStatus, status);
+    }
+    const http = createAnthropicHttp({ enabled: () => true, token: 'x'.repeat(32), safeEqual: (a,b) => a === b,
+      bridge: { handle() { throw observed; } } });
+    const res = { status(code) { assert.equal(code, 502); return this; }, json(body) {
+      assert.deepEqual(body, { type: 'error', error: { type: 'mission_budget_error',
+        message: 'native_provider_rejected', provider_http_status: status } });
+    } };
+    await http.complete({ body: request(), get() {} }, res);
+    assert.equal(calls, 1);
+  }
+});
+
+test('invalid provider status cannot enter the public error or accounting metadata', () => {
+  for (const value of [undefined, 0, 600, NaN, '500', 'secret', 500.5]) {
+    assert.equal(new NativeBridgeError('native_provider_rejected', 502, value).providerHttpStatus, undefined);
+  }
 });
 
 const image = { type: 'image', source: { type: 'base64', media_type: 'image/png',

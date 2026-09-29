@@ -121,7 +121,12 @@ blocks, custom tool calls and paired text tool results. It uses the same native
 token, paid-enable gate, atomic ledger, fixed model and output limits. Provider
 server tools, fallback fields, forced tool loops and alternate capacity tiers
 are rejected. Buffered JSON/SSE is delivered only after durable accounting;
-unverified usage retains the conservative reserved charge. The managed chat
+unverified usage retains the conservative reserved charge. The transport
+reports only a bounded numeric provider HTTP status on rejection, and retains that
+status with uncertain accounting. Provider error bodies and headers are never read
+or exposed, and no status enables a retry or fallback. This diagnostic does not
+reconcile a historical estimate without independent provider billing evidence.
+The managed chat
 configuration still uses the restricted text adapter: deploying the native
 transport does not enable chat tools or authorize a local action. The actual
 Anthropic SDK is tested with synthetic responses and no provider calls.

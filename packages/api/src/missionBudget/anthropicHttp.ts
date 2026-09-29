@@ -11,8 +11,9 @@ interface Dependencies {
   enabled: () => boolean; token: string; safeEqual: (left: string, right: string) => boolean;
   bridge: { handle(body: unknown, context?: { projectId?: unknown }): Promise<Json> };
 }
-function error(res: Response, status: number, code: string): unknown {
-  return res.status(status).json({ type: 'error', error: { type: 'mission_budget_error', message: code } });
+function error(res: Response, status: number, code: string, providerHttpStatus?: number): unknown {
+  return res.status(status).json({ type: 'error', error: { type: 'mission_budget_error', message: code,
+    ...(providerHttpStatus !== undefined ? { provider_http_status: providerHttpStatus } : {}) } });
 }
 
 /** Buffered native SSE preserves signed blocks. Nothing is delivered before durable settlement. */
@@ -66,7 +67,7 @@ export function createAnthropicHttp(deps: Dependencies): {
         return res.end();
       } catch (cause) {
         if (res.destroyed || res.writableEnded) return;
-        return cause instanceof NativeBridgeError ? error(res, cause.status, cause.code)
+        return cause instanceof NativeBridgeError ? error(res, cause.status, cause.code, cause.providerHttpStatus)
           : error(res, 503, 'native_accounting_unready');
       }
     },

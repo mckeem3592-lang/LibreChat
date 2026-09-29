@@ -55,9 +55,14 @@ export interface NativeBridgeDependencies {
 }
 
 export class NativeBridgeError extends Error {
-  constructor(public readonly code: string, public readonly status = 400) {
+  readonly providerHttpStatus?: number;
+  constructor(public readonly code: string, public readonly status = 400, providerHttpStatus?: number) {
     super(code);
     this.name = 'NativeBridgeError';
+    // Only a bounded numeric status may leave the provider transport. Never expose its body or headers.
+    if (Number.isSafeInteger(providerHttpStatus) && providerHttpStatus! >= 100 && providerHttpStatus! <= 599) {
+      this.providerHttpStatus = providerHttpStatus;
+    }
   }
 }
 
@@ -404,7 +409,7 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
             });
             if (upstream.status < 200 || upstream.status >= 300) {
               definitiveRejection = upstream.status >= 400 && upstream.status < 500 && upstream.status !== 408;
-              fail('native_provider_rejected', 502);
+              throw new NativeBridgeError('native_provider_rejected', 502, upstream.status);
             }
             const raw = await upstream.json();
             return provider === 'anthropic' ? anthropicUsage(raw, model) : responseUsage(raw, model);
@@ -429,7 +434,8 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
           } else {
             await deps.ledger.settle({
               reservationId: reservation.reservationId, actualUsd: reserveUsd,
-              usage: { ...metadata, estimated: true, error: failure?.code ?? 'native_provider_response_invalid' },
+              usage: { ...metadata, estimated: true, error: failure?.code ?? 'native_provider_response_invalid',
+                ...(failure?.providerHttpStatus !== undefined ? { providerHttpStatus: failure.providerHttpStatus } : {}) },
             });
           }
         } catch (error) {
