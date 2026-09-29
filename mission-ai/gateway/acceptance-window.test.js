@@ -10,11 +10,18 @@ const env = { MISSION_AI_NATIVE_ENABLED: 'false', MISSION_AI_ACCEPTANCE_START: n
 
 test('temporary acceptance expires and never replaces an enabled general gate', () => {
   assert.equal(acceptanceWindow(env, now).ceilingUsd, 0.169074775);
-  for (const change of [{MISSION_AI_NATIVE_ENABLED:'true'}, {MISSION_AI_ACCEPTANCE_ALLOWANCE_USD:'0.11'},
+  for (const change of [{MISSION_AI_NATIVE_ENABLED:'true'}, {MISSION_AI_ACCEPTANCE_ALLOWANCE_USD:'0.131'},
     {MISSION_AI_ACCEPTANCE_END:'2026-09-29T04:31:00Z'}, {MISSION_AI_ACCEPTANCE_BASELINE_USD:'NaN'},
     {MISSION_AI_ACCEPTANCE_START:''}]) assert.equal(acceptanceWindow({...env,...change},now),null);
   assert.equal(acceptanceWindow(env,new Date('2026-09-29T03:59:59Z')),null);
   assert.equal(acceptanceWindow(env,new Date(env.MISSION_AI_ACCEPTANCE_END)),null);
+});
+
+test('the prepared additional allowance preserves the original baseline and cumulative ceiling', () => {
+  const proposed = { ...env, MISSION_AI_ACCEPTANCE_ALLOWANCE_USD: '0.13' };
+  assert.equal(acceptanceWindow(proposed, now).ceilingUsd, 0.199074775);
+  assert.equal(acceptanceWindow(env, now).ceilingUsd, 0.169074775);
+  assert.equal(acceptanceWindow({ ...proposed, MISSION_AI_ACCEPTANCE_ALLOWANCE_USD: '0.14' }, now), null);
 });
 
 test('the ledger refuses concurrent spending above the acceptance ceiling', async () => {

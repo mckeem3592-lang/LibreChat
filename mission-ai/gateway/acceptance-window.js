@@ -11,7 +11,7 @@ export function acceptanceWindow(env, now = new Date()) {
   if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(time) ||
       end <= start || end - start > 30 * 60 * 1000 || time < start || time >= end ||
       !Number.isFinite(baseline) || baseline < 0 || !Number.isFinite(allowance) ||
-      allowance <= 0 || allowance > 0.10) return null;
+      allowance <= 0 || allowance > 0.13) return null;
   if (monthStartFor(new Date(start), 'America/Denver').getTime() !==
       monthStartFor(new Date(end), 'America/Denver').getTime()) return null;
   return { ceilingUsd: baseline + allowance, expiresAt: new Date(end).toISOString() };
