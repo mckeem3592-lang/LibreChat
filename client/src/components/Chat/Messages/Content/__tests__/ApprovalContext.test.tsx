@@ -110,6 +110,37 @@ describe('useResumeSubmit', () => {
     );
   });
 
+  test('reports only a safe status and nested denial code for Mission AI approval failures', () => {
+    const warning = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const missionWrapper = createWrapper(1000, {
+        conversation: { conversationId: 'conversation-1', endpoint: 'MissionAI' },
+      } as React.ContextType<typeof ChatContext>);
+      const { result } = renderHook(
+        () => ({ approval: useApprovalContext(), resume: useResumeSubmit() }),
+        { wrapper: missionWrapper },
+      );
+      act(() => {
+        result.current.approval.registerToolCall('action-1', 'call-1');
+        result.current.approval.setDecision('action-1', 'call-1', {
+          tool_call_id: 'call-1', decision: 'approve',
+        });
+        result.current.resume.submitToolApproval('action-1');
+      });
+      const options = mockApprovalMutate.mock.calls[0][1] as { onError: (error: unknown) => void };
+      act(() => options.onError({ response: {
+        status: 403,
+        data: { error: { code: 'managed_tools_denied', message: 'private detail' } },
+      } }));
+      expect(warning).toHaveBeenCalledWith('Mission AI approval request failed', {
+        status: 403, code: 'managed_tools_denied',
+      });
+      expect(JSON.stringify(warning.mock.calls)).not.toContain('private detail');
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
   test('synchronously deduplicates tool approval submissions and unlocks a retryable error', () => {
     const { result } = renderHook(
       () => ({

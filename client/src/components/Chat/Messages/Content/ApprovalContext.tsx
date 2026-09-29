@@ -138,10 +138,21 @@ const isExpiredError = (error: unknown): boolean => {
 /** Report only bounded protocol fields; error messages and response bodies may contain private data. */
 const logSafeApprovalFailure = (error: unknown): void => {
   const failure = error as
-    | { code?: unknown; response?: { status?: unknown; data?: { code?: unknown } } }
+    | {
+        code?: unknown;
+        response?: {
+          status?: unknown;
+          data?: { code?: unknown; error?: string | { code?: unknown } };
+        };
+      }
     | undefined;
   const rawStatus = failure?.response?.status;
-  const rawCode = failure?.response?.data?.code ?? failure?.code;
+  const data = failure?.response?.data;
+  const nestedError = data?.error;
+  const rawCode =
+    data?.code ??
+    (typeof nestedError === 'object' && nestedError !== null ? nestedError.code : nestedError) ??
+    failure?.code;
   const status =
     typeof rawStatus === 'number' && Number.isInteger(rawStatus) && rawStatus >= 100 && rawStatus <= 599
       ? rawStatus
