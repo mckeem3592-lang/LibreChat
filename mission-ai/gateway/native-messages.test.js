@@ -169,3 +169,28 @@ test('project attribution reaches settlement without entering the provider reque
     assert.deepEqual(rejected.events, []);
   }
 });
+
+
+test('documented direct caller survives tool response and paired continuation', async () => {
+  const raw = answer(); raw.content[1].caller = { type: 'direct' };
+  const f = await fixture(raw);
+  const result = await f.bridge.handle(request());
+  assert.deepEqual(result.content[1].caller, { type: 'direct' });
+  const next = request({ messages: [{ role: 'user', content: 'First.' },
+    { role: 'assistant', content: result.content },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_fixture', content: 'Synthetic result.' }] }] });
+  assert.deepEqual(normalizeAnthropicMessages(next).body.messages[1].content[1].caller, { type: 'direct' });
+});
+test('programmatic or malformed caller remains denied before dispatch on continuation', async () => {
+  for (const caller of [{ type: 'code_execution_20260120', tool_id: 'srvtoolu_fixture' },
+    { type: 'direct', tool_id: 'unexpected' }, null, 'direct']) {
+    const raw = answer(); raw.content[1].caller = caller;
+    const f = await fixture(raw);
+    await assert.rejects(f.bridge.handle(request()), /native_provider_response_invalid/);
+    assert.equal(f.events.at(-1).input.usage.estimated, false);
+    const next = request({ messages: [{ role: 'user', content: 'First.' },
+      { role: 'assistant', content: raw.content },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_fixture', content: 'x' }] }] });
+    assert.throws(() => normalizeAnthropicMessages(next), /native_/);
+  }
+});

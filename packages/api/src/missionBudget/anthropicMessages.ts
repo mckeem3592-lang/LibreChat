@@ -24,6 +24,13 @@ function identifier(value: unknown): string {
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) fail('native_tool_unsupported');
   return name;
 }
+/** Client tools may be called directly only; never admit provider-side execution. */
+function directCaller(value: unknown): void {
+  if (value === undefined) return;
+  const caller = record(value);
+  keys(caller, ['type']);
+  if (caller.type !== 'direct') fail('native_tool_unsupported');
+}
 function json(value: unknown, depth = 0): void {
   if (depth > 32) fail();
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
@@ -137,7 +144,8 @@ export function normalizeAnthropicMessages(value: unknown): {
       } else if (block.type === 'redacted_thinking' && message.role === 'assistant') {
         keys(block, ['type', 'data']); text(block.data);
       } else if (block.type === 'tool_use' && message.role === 'assistant') {
-        keys(block, ['type', 'id', 'name', 'input']);
+        keys(block, ['type', 'id', 'name', 'input', 'caller']);
+        directCaller(block.caller);
         const id = identifier(block.id); identifier(block.name); record(block.input);
         if (seen.has(id)) fail('native_tool_unsupported');
         seen.add(id); nextPending.add(id);
@@ -201,7 +209,8 @@ export function validateAnthropicMessage(response: Json, request: Json): Json {
       } else if (block.type === 'redacted_thinking') {
         keys(block, ['type', 'data']); text(block.data);
       } else if (block.type === 'tool_use') {
-        keys(block, ['type', 'id', 'name', 'input']);
+        keys(block, ['type', 'id', 'name', 'input', 'caller']);
+        directCaller(block.caller);
         const id = identifier(block.id);
         if (ids.has(id) || !names.has(block.name)) fail();
         ids.add(id); record(block.input); json(block.input); hasCall = true;
