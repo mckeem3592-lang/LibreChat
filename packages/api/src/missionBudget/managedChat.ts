@@ -28,7 +28,10 @@ type Middleware = (
   next: () => unknown,
 ) => unknown;
 
-const FREE_BASELINE = process.env.MISSION_AI_FREE_BASELINE === 'true';
+const RUNTIME_ENV = ((globalThis as unknown as {
+  process?: { env?: Record<string, string | undefined> };
+}).process?.env ?? {});
+const FREE_BASELINE = RUNTIME_ENV.MISSION_AI_FREE_BASELINE === 'true';
 const ENDPOINT = 'MissionAI';
 const CHAT_PATH = '/api/agents/chat/MissionAI';
 const SPEC = FREE_BASELINE ? 'mission-ai-free' : 'mission-ai-sonnet';
@@ -338,7 +341,7 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
     ? 'https://generativelanguage.googleapis.com/v1beta/openai'
     : `${gateway.origin}/native/openai/v1`;
   const approvedApiKeys = FREE_BASELINE
-    ? [process.env.GOOGLE_KEY, '${GOOGLE_KEY}']
+    ? [RUNTIME_ENV.GOOGLE_KEY, '${GOOGLE_KEY}']
     : [options.nativeToken, '${MISSION_AI_NATIVE_TOKEN}'];
   const approvedBaseURLs = FREE_BASELINE
     ? [baseURL]
