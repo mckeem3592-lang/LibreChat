@@ -224,6 +224,20 @@ const resumeBody = () => ({ conversationId: 'conversation_fixture', generationCr
   endpoint: 'MissionAI', endpointType: 'custom', model: 'claude-sonnet-5-5', spec: 'mission-ai-sonnet',
   actionId: 'action_fixture', decisions: [{ tool_call_id: 'tool_fixture', decision: 'approve', scope: 'once' }],
   ephemeralAgent: { mcp: [], execute_code: true } });
+test('resume accepts the stock model-spec disabled capability template without enabling it', () => {
+  // useApplyModelSpecAgents adds file_search=false and artifacts='' even when
+  // the owner has enabled only the attached coding workspace.
+  const ephemeralAgent = { mcp: [], web_search: false, file_search: false, execute_code: true, artifacts: '' };
+  const request = { originalUrl: '/api/agents/chat/resume', body: { ...resumeBody(), ephemeralAgent } };
+  assert.equal(invoke(createManagedToolAdmission(options), request).next, 1);
+  assert.equal(invoke(createManagedToolConfigGuard(options), request).next, 1);
+  for (const key of ['web_search', 'file_search', 'skills', 'ask_user_question', 'run_in_background', 'describe_intent', 'artifacts']) {
+    assert.equal(invoke(createManagedToolAdmission(options), { ...request,
+      body: { ...request.body, ephemeralAgent: { ...ephemeralAgent, [key]: true } } }).status, 403);
+  }
+  assert.equal(invoke(createManagedToolAdmission(options), { ...request,
+    body: { ...request.body, ephemeralAgent: { ...ephemeralAgent, unknown: false } } }).status, 403);
+});
 test('exact one-action resume is admitted then owner/config checked without trusting client graph', () => {
   const request = { originalUrl: '/api/agents/chat/resume', body: resumeBody() };
   assert.equal(invoke(createManagedToolAdmission(options), request).next, 1);

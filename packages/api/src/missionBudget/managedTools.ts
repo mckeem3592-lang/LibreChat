@@ -60,10 +60,16 @@ function resumeEnvelope(input: unknown): Json {
   if (body.promptPrefix != null && (typeof body.promptPrefix !== 'string' || body.promptPrefix.length > 1_000_000)) throw new Error();
   if (body.isTemporary != null && typeof body.isTemporary !== 'boolean') throw new Error();
   if (body.ephemeralAgent != null) {
-    const agent = object(body.ephemeralAgent); exactKeys(agent, ['mcp', 'execute_code', 'memory', 'web_search']);
+    const agent = object(body.ephemeralAgent); exactKeys(agent, ['mcp', 'execute_code', 'memory', 'web_search',
+      'file_search', 'artifacts', 'skills', 'ask_user_question', 'run_in_background', 'describe_intent']);
     if (agent.mcp != null && (!Array.isArray(agent.mcp) || agent.mcp.length > 1 || agent.mcp.some(x => x !== 'mission-ai'))) throw new Error();
     for (const key of ['execute_code', 'memory']) if (agent[key] != null && typeof agent[key] !== 'boolean') throw new Error();
-    if (agent.web_search != null && agent.web_search !== false) throw new Error();
+    // The stock model-spec template sends disabled capabilities on every resume.
+    // Admit their inert wire representation without granting those capabilities.
+    for (const key of ['web_search', 'file_search', 'skills', 'ask_user_question', 'run_in_background', 'describe_intent']) {
+      if (agent[key] != null && agent[key] !== false) throw new Error();
+    }
+    if (agent.artifacts != null && agent.artifacts !== false && agent.artifacts !== '') throw new Error();
   }
   if (!Array.isArray(body.decisions) || !body.decisions.length || body.decisions.length > 32) throw new Error();
   const ids = new Set();
