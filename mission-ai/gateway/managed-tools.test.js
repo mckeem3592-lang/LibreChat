@@ -4,7 +4,7 @@ import { generateKeyPairSync } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createManagedToolAdmission, createManagedToolConfigGuard, createManagedResumeConfigGuard, createManagedToolOwnerGuard,
-  MANAGED_NATIVE_DROPS, createManagedProjectGuard } from './generated/managedTools.js';
+  MANAGED_NATIVE_DROPS, createManagedProjectGuard, projectManagedResumeParameters } from './generated/managedTools.js';
 const options = { enabled: true, toolsEnabled: true, ownerEmail: 'owner@synthetic.invalid',
   gatewayURL: 'https://synthetic.invalid', nativeToken: 'synthetic-native-token-1234567890123',
   toolToken: 'synthetic-tool-token-123456789012345', titleConvo: 'false' };
@@ -264,6 +264,25 @@ test('server-restored resume retains decisions and revalidates pinned model, wor
     { codeEnvironmentMode: 'without_attached' }, { ephemeralAgent: { mcp: ['other'] } }]) {
     assert.equal(invoke(guard, { originalUrl: '/api/agents/chat/resume', body: { ...restored, ...patch } }).status, 403);
   }
+});
+test('resolved SDK parameters cannot leak transport overrides into managed resume', () => {
+  const captured = { model: 'claude-sonnet-5-5', stream: true, maxTokens: 4096, maxRetries: 0,
+    timeout: 180000, modelKwargs: {}, maxOutputTokens: 4096, effort: 'low', thinking: true, promptCache: false,
+    apiKey: 'synthetic', baseURL: 'https://other.invalid', headers: { arbitrary: 'synthetic' } };
+  const parameters = projectManagedResumeParameters(captured);
+  assert.deepEqual(parameters, { maxOutputTokens: 4096, effort: 'low', thinking: true, promptCache: false });
+  const restored = { ...resumeBody(), ...parameters,
+    codeWorkspaces: [{ environmentId: 'attached-workers', workspaceId: 'primary' }],
+    codeEnvironmentMode: 'attached', codeApprovalMode: 'ask' };
+  const checked = invoke(createManagedResumeConfigGuard(options), { originalUrl: '/api/agents/chat/resume', body: restored });
+  assert.equal(checked.next, 1); assert.equal(checked.req.body.maxOutputTokens, 4096);
+  assert.deepEqual(checked.req.body.decisions, restored.decisions);
+  for (const patch of [{ maxOutputTokens: 32769 }, { effort: 'high' }, { thinking: false }, { promptCache: true }]) {
+    const body = { ...restored, ...projectManagedResumeParameters({ ...captured, ...patch }) };
+    assert.equal(invoke(createManagedResumeConfigGuard(options), { originalUrl: '/api/agents/chat/resume', body }).status, 403);
+  }
+  assert.equal(projectManagedResumeParameters(undefined), undefined);
+  assert.throws(() => projectManagedResumeParameters([]));
 });
 
 test('the fixed generated inline agent can resume without admitting a saved or alternate agent', () => {

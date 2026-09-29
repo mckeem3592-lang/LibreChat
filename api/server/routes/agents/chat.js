@@ -2,6 +2,7 @@ const express = require('express');
 const { logger } = require('@librechat/data-schemas');
 const {
   createManagedResumeConfigGuard,
+  projectManagedResumeParameters,
   createManagedProjectGuard,
   createMessageFilterPii,
   reportLocatorTraversalFailure,
@@ -72,7 +73,10 @@ const restoreResumeContext = async (req, res, next) => {
       // spread), not part of the RESUME_CONTEXT_KEYS allowlist, so merge them back here.
       // Generation params are authoritative, but routing, graph identity, and resume-action
       // fields remain owned by the restored context/request envelope.
-      applyResumeModelParameters(req.body, resumeContext?.model_parameters);
+      const managed = process.env.MISSION_AI_MANAGED_CHAT === 'true' && process.env.MISSION_AI_MANAGED_TOOLS === 'true';
+      applyResumeModelParameters(req.body, managed
+        ? projectManagedResumeParameters(resumeContext?.model_parameters)
+        : resumeContext?.model_parameters);
     }
   } catch (err) {
     logger.warn('[agents/chat] Failed to restore resume context', getSafeErrorMetadata(err));

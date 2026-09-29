@@ -44,6 +44,21 @@ function owner(req: Request, options: ManagedToolOptions): boolean {
 }
 const RESUME_PATH = '/api/agents/chat/resume';
 const INLINE_AGENT_ID = 'MissionAI__claude-sonnet-5-5___Mission AI — Claude Sonnet 5.5 (offline)';
+/** Replay only UI-form generation settings from the owner-scoped paused context.
+ * Resolved SDK transport aliases (stream, maxTokens, maxRetries, modelKwargs)
+ * are re-derived from the pinned server configuration, never request inputs.
+ * captureResumeModelParameters preserves the original admitted UI fields.
+ */
+export function projectManagedResumeParameters(input: unknown): Json | undefined {
+  if (input == null) return undefined;
+  const params = object(input); const output: Json = {};
+  for (const key of ['maxOutputTokens', 'effort', 'thinking', 'promptCache', 'promptCacheTtl',
+    'maxContextTokens', 'stop', 'reasoning_effort', 'verbosity', 'disableStreaming',
+    'temperature', 'top_p', 'frequency_penalty', 'presence_penalty']) {
+    if (params[key] !== undefined) output[key] = params[key];
+  }
+  return output;
+}
 const RESUME_FIELDS = ['conversationId', 'generationCreatedAt', 'endpoint', 'endpointType',
   'agent_id', 'model', 'spec', 'promptPrefix', 'ephemeralAgent', 'isTemporary', 'actionId', 'decisions', 'generationProtocolVersion'];
 function resumeEnvelope(input: unknown): Json {
