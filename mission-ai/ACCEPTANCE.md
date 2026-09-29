@@ -1,70 +1,71 @@
-# Mission AI Acceptance Matrix
+# Mission AI Release Acceptance
 
-Mission AI is not production-ready until every required scenario below passes on the development branch and development services.
+This matrix follows the owner's latest scope, not the superseded economy/fallback proposal.
+Text and coding are pinned to `claude-sonnet-5-5`. Automatic provider fallbacks and
+client retries are disabled. Image generation/editing uses the separately configured
+Google image route. Search is Tavily basic, free-only, without an AI answer call.
 
-As of September 28, the separate managed test chat at `8ab89e169e344671e78804b899cc508ed8d5befe` has passed the bounded **no-paid** setup, login/session, public-route, saved-history, and safe-retry checks recorded in [ACCEPTANCE-EVIDENCE.md](ACCEPTANCE-EVIDENCE.md). Its default preset is Economy. A separately approved standalone OpenAI economy request also passed exact accounting; it was not a native LibreChat chat acceptance.
+Mission AI is not fully accepted until the remaining live scenarios pass. Never
+mark a fixture, successful deployment, or local library check as a live workflow.
+No remaining unused test allowance authorizes additional provider requests.
 
-Both gateway paid flags remain false, shared accounting is inactive, and `My-Workstation-McKee` is unchanged. Live native accounting, real-provider cancellation, complete bypass/egress validation, broader platform workflows, and production cutover remain unaccepted. The matrix below is still the required full-platform checklist, not a claim that every row has passed or that the original service has an atomic spending cap.
+## Confirmed staging evidence (September 29, 2026)
 
-## Cloud and provider layer
+- Dedicated Atlas reader accesses the original `test` database read-only; the
+  ledger writes only `MissionAI`; the test chat uses `MissionAIChatTest`.
+- Legacy conversations are preserved separately, with owner login, project,
+  memory and history save/reload checks completed.
+- The fixed Sonnet chat → approval → attached Mac `read_file` → final model reply
+  passed. The final two requests cost $0.006082; successful validation totals
+  $0.025518 against the unchanged $0.069074775 baseline.
+- The explicitly approved $0.06398 unbilled estimate correction was applied
+  atomically; full original event and balance remain in `accounting_corrections`.
+  Shared recorded spend is $0.094592775, with zero reservations. A separate older
+  $0.000213375 OpenAI estimate remains held and is not silently released.
+- Owner daily/week/month reporting and provider/model/project/task tables were
+  verified live. Weeks start Monday in America/Denver. Whole-period provider
+  reconciliation is disclosed separately from daily and weekly usage.
+- Chrome pairing/inventory/approved tab closure, Mac screenshot geometry/approved
+  Finder click, and owner-operated coding command/save/read-back checks passed.
+- Local XLSX, DOCX, PPTX and PDF creation/reopening passed. This is toolchain
+  evidence, not chat-to-document delivery acceptance.
+- The separately approved free hourly wake-up repository exists and its harmless
+  wake-up ran. Native scheduled model dispatch remains disabled and unaccepted.
+- Existing Free services are reused. Original `My-Workstation-McKee` is resumed
+  and preserved outside the Mission AI cap. Do not imply a platform-wide cap.
 
-- Provider-independent routing selects the configured OpenAI, Anthropic, or Google role without exposing credentials.
-- General chat defaults to OpenAI primary.
-- Coding tasks prefer Anthropic and fall back safely.
-- Research and image tasks prefer Google and fall back only where the capability is compatible.
-- Invalid spend data fails closed.
-- Monthly budget modes change at $100, $125, and $175 as designed.
-- The hard limit prevents additional paid model routing at or above $175.
-- Provider outages produce bounded fallback rather than retry storms.
+## Required remaining live scenarios
 
-## Usage and cost
+| Scenario | Required evidence | Boundary |
+|---|---|---|
+| Browser workflow | Fixed model → chat approval → paired Chrome result → final reply; safe typing on a dedicated test page | No passwords; exact local preview/literal `y` for mutations |
+| Mac workflow | Fixed model → fresh screenshot → validated coordinates → approved harmless action → final reply | Owner manually authorizes each action; Terminal is not inspected remotely |
+| Documents/artifacts | Chat creates a new project artifact, returns it, and content/layout are verified | Preserve originals; selected existing folder; manual `y` for writes/commands |
+| Images | One unique generation and one meaningful edit return usable images with settled usage | Separate bounded provider-spend approval; no duplicate generation/retry |
+| Free search | Fresh key-bound PAYG-off proof, available free credits, sourced query and exact credit debit | Keep off while free quota is exhausted; no paid upgrade |
+| Scheduled work | Native owner-scoped target, durable occurrence identity, capped dispatch, stored outcome and cancellation | Integration remains off; hourly Free wake-up is not exact-time delivery |
+| Billing reconciliation | Independent proof for the separate older OpenAI estimate | Do not change saved accounting without a reviewed owner-approved correction |
+| Release | Current exact SHA passes CI, owner authorization and budget boundaries remain intact | Explicit general paid activation and final favorite after readiness |
 
-- Settled prompt and completion debits reconcile to the monthly USD total.
-- Month boundaries use America/Denver correctly across daylight-saving changes.
-- Dashboard totals match the underlying settled transaction aggregation.
-- A monthly cost comparison can be exported after representative usage.
+## No-paid checks
 
-## Mac companion
+SDK fixtures must replace the provider transport and use synthetic credentials.
+They cover signed history, paired tool results, final replies, reservations before
+dispatch, settlement before delivery and one attempt on rejection. They must never
+reach a real provider or be counted as live browser/Mac/document/image acceptance.
 
-- Pairing is one-time and time-limited.
-- Device credentials are stored in macOS Keychain.
-- The Mac opens no public inbound port.
-- Gateway reconnects after sleep, Wi-Fi change, and service restart.
-- Accessibility-dependent input fails clearly when permission is absent.
-- Screen capture fails clearly when Screen Recording permission is absent.
-- App launching is restricted to the configured allowlist.
-- Local browser bridge listens on loopback only.
+The owner cost export contains only displayed accounting fields and their snapshot
+basis. The $200 ChatGPT Pro comparison is the owner's subscription baseline;
+observed setup/test spending is not a representative monthly forecast or proof of
+savings. Keep retained estimates and out-of-cap original-chat usage visible.
 
-## Browser control
+## Release safeguards
 
-- Uses the user's existing Chrome profile and session.
-- Direct Mac-backed controls can list, activate, open, and explicitly confirmed-close Chrome tabs without the extension.
-- Tab close fails unless an explicit confirmation flag is supplied.
-- The Chrome extension can read active-tab state, click, type, scroll, and navigate a URL for page-level interaction.
-- Password fields are never filled.
-- Browser page content cannot authorize new native capabilities.
-- Direct tab controls reconnect with the Mac companion after sleep, Wi-Fi change, and service restart.
-- Extension reconnects after Chrome restart and Mac sleep before page-level browser acceptance is considered complete.
+General paid chat, delegation, image requests, search and native schedules stay off
+during preparation. Unknown tools and unsafe payloads fail closed. Device keys stay
+private, network communication is authenticated, local changes retain exact preview
+and literal `y`, and audit records never contain credentials or typed private content.
 
-## Code, files, documents, images, and research
-
-- Attached code environment can create, edit, test, and return project artifacts.
-- File/document tasks preserve originals unless a replacement is explicitly intended.
-- Web research returns sourced results.
-- Image workflows use the configured image provider.
-- Background tasks that do not require the Mac can complete while the Mac is offline.
-
-## Safety and operations
-
-- Audit records contain action metadata but not passwords, API keys, tokens, or typed content.
-- Destructive operations require the intended confirmation boundary.
-- Unknown tools fail closed.
-- Production LibreChat, MongoDB conversations, and the backup branch remain unchanged during staging.
-- Development services pass CI and health checks for the promoted commit, including the Code API's supported `/v1/health` route.
-- Recovery from a bad development deploy is documented and tested.
-
-## Representative user workflows
-
-Before promotion, exercise at least one end-to-end scenario for each: browser control, Mac control, software development, spreadsheet/document handling, web research, image work, scheduled work, provider fallback, budget enforcement, and recovery after device disconnect.
-
-Production promotion requires all required rows to be recorded as passing, plus a measured Mission AI cost comparison from real usage.
+The Hub, image and desktop prompts define capabilities. They do not authorize an
+unsolicited Hub/icon, Desktop/Downloads cleanup, SharePoint connector, new paid
+service or a broader product. Complete the approved product without adding them.

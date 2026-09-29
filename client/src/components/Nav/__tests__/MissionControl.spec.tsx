@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Provider } from 'jotai';
 import { request } from 'librechat-data-provider';
-import MissionControl from '../MissionControl';
+import MissionControl, { missionCostReport } from '../MissionControl';
 
 let mockMissionAvailable = true;
 jest.mock('~/data-provider/Endpoints/queries', () => ({ useGetEndpointsQuery: () => ({
@@ -73,4 +73,18 @@ it('shows calendar spend and monthly categories without hiding estimates or trig
   expect(screen.getByRole('table', { name: 'Cost by provider' })).toBeInTheDocument();
   expect(screen.getByText('No recorded costs.')).toBeInTheDocument();
   expect(request.post).not.toHaveBeenCalled();
+});
+
+it('exports observed costs without private payloads, monthly savings claims or extra requests', () => {
+  const report = missionCostReport({ ...status,
+    byProject: [{ project: 'owner project', spendUsd: .025518 }],
+    privateToken: 'must-not-export', conversation: 'must-not-export',
+  } as typeof status, '2026-09-29T16:00:00.000Z');
+  expect(report.recordedSpendUsd).toBe(status.budget.spendUsd);
+  expect(report.pendingReservationsUsd).toBe(0);
+  expect(report.monthlyBreakdowns.project).toEqual([{ category: 'owner project', spendUsd: .025518 }]);
+  expect(report.representativeWorkloadComplete).toBe(false);
+  expect(JSON.stringify(report)).not.toContain('must-not-export');
+  expect(JSON.stringify(report)).not.toContain('annualized');
+  expect(request.get).not.toHaveBeenCalled(); expect(request.post).not.toHaveBeenCalled();
 });

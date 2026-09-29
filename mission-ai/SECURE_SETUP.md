@@ -245,3 +245,17 @@ Marked estimates stay in recorded totals and are shown separately. Whole-period
 provider reconciliation adjustments remain in monthly totals but are disclosed as
 unallocated to an individual day/week. Original resumed chat remains outside this
 Mission AI ledger. Older gateway responses without calendar fields remain usable.
+
+## Current acceptance and observed cost export
+
+Use [ACCEPTANCE.md](ACCEPTANCE.md) for the current owner-approved scope. Earlier
+"pending" notes in this file describe the boundary when each capability was added;
+they are not a current deployment status. Text/coding remain fixed Sonnet 5.5,
+automatic fallback and client retries remain off, and shared accounting is active
+while general paid gates remain off.
+
+The cost-panel export downloads the already-loaded owner accounting snapshot as
+JSON, without a new server/provider request. It excludes chat history and
+credentials, preserves displayed retained estimates and calendar basis, and labels
+the owner's $200/month subscription comparison as a baseline rather than a measured
+monthly forecast. Exporting a report does not enable a capability or change spend.

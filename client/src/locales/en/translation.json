@@ -11,6 +11,7 @@
   "com_mission_by_model": "Cost by model",
   "com_mission_by_project": "Cost by project",
   "com_mission_by_task": "Cost by task",
+  "com_mission_export_costs": "Download cost report",
   "com_mission_control": "Mission AI controls",
   "com_mission_legacy_boundary": "This budget covers Mission AI. Your original chat remains separate and outside this cap.",
   "com_mission_loading": "Loading your spending…",

@@ -36,7 +36,14 @@ test('actual YAML schema and AppConfig views satisfy the native tool configurati
   assert.equal(admitted, true); assert.equal(req.body.maxOutputTokens, 4096);
 });
 
-for (const rejected of [false, true]) test(`real LibreChat native model client uses one capped transport (rejected=${rejected})`, async (t) => {
+const workflows = [
+  { tool: 'browser_list_tabs', result: 'Synthetic owned Chrome tab inventory.', rejected: false },
+  { tool: 'mac_screenshot', result: 'Synthetic approved display geometry.', image: true, rejected: false },
+  { tool: 'read_file', result: 'Synthetic document artifact verification.', rejected: false },
+  { tool: 'browser_list_tabs', result: '', rejected: true },
+];
+for (const workflow of workflows) test(`real LibreChat capped tool round trip: ${workflow.tool}, rejected=${workflow.rejected}`, async (t) => {
+  const { rejected } = workflow;
   const selected = config.endpoints.custom[0]; const preset = config.modelSpecs.list[0].preset;
   const { llmConfig } = getLLMConfig(token, { modelOptions: { model: preset.model, maxOutputTokens: preset.maxOutputTokens,
     effort: preset.effort, thinking: preset.thinking, promptCache: preset.promptCache },
@@ -54,9 +61,9 @@ for (const rejected of [false, true]) test(`real LibreChat native model client u
       assert(!JSON.stringify(init).includes('0123456789abcdef01234567'));
       sent.push(JSON.parse(init.body));
       return { status: rejected ? 400 : 200, json: async () => ({ type: 'message', id: 'msg_synthetic', role: 'assistant', model: preset.model,
-        content: [{ type: 'thinking', thinking: '', signature: 'synthetic-preserved-signature' },
-          { type: 'tool_use', id: 'toolu_synthetic', name: 'browser_list_tabs', input: {} }],
-        stop_reason: 'tool_use', stop_sequence: null, usage: { input_tokens: 20, output_tokens: 10, service_tier: 'standard' } }) };
+        content: sent.length === 1 ? [{ type: 'thinking', thinking: '', signature: 'synthetic-preserved-signature' },
+          { type: 'tool_use', id: 'toolu_synthetic', name: workflow.tool, input: {} }] : [{ type: 'text', text: 'Synthetic workflow completed.' }],
+        stop_reason: sent.length === 1 ? 'tool_use' : 'end_turn', stop_sequence: null, usage: { input_tokens: 20, output_tokens: 10, service_tier: 'standard' } }) };
     } });
   const http = createAnthropicHttp({ enabled: () => true, token, safeEqual: (a, b) => a === b, bridge });
   const fetch = async (url, init) => {
@@ -78,7 +85,7 @@ for (const rejected of [false, true]) test(`real LibreChat native model client u
   const projectId = '0123456789abcdef01234567';
   attachManagedProjectCost(llmConfig, { enabled: true, gatewayURL: options.gatewayURL, projectId });
   const client = new Chat({ ...llmConfig, clientOptions: { ...llmConfig.clientOptions, fetch } }).bindTools([
-    { type: 'function', function: { name: 'browser_list_tabs', description: 'Synthetic local tool.', parameters: { type: 'object', properties: {} } } },
+    { type: 'function', function: { name: workflow.tool, description: 'Synthetic local tool.', parameters: { type: 'object', properties: {} } } },
   ]);
   if (rejected) {
     await assert.rejects(client.invoke([new HumanMessage('Synthetic request.')]));
@@ -89,14 +96,19 @@ for (const rejected of [false, true]) test(`real LibreChat native model client u
   assert.equal(sent[0].max_tokens, 4096); assert.equal(sent[0].metadata, undefined);
   assert.equal(sent[0].service_tier, 'standard_only');
   assert.deepEqual(sent[0].thinking, { type: 'between_tools' });
-  await client.invoke([new HumanMessage('Synthetic request.'), first,
+  assert.equal(first.tool_calls[0].name, workflow.tool);
+  const final = await client.invoke([new HumanMessage('Synthetic request.'), first,
     new ToolMessage({ tool_call_id: 'toolu_synthetic', content: [
-      { type: 'text', text: 'Synthetic screenshot.' },
-      { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC' } },
+      { type: 'text', text: workflow.result },
+      ...(workflow.image ? [{ type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC' } }] : []),
     ] })]);
+  assert.equal(final.content, 'Synthetic workflow completed.');
+  assert.equal(final.tool_calls?.length ?? 0, 0);
   assert.equal(settled, 2); assert.equal(clientCalls, 2);
   const assistant = sent[1].messages.find((message) => message.role === 'assistant');
   assert.equal(assistant.content.find((block) => block.type === 'thinking').signature, 'synthetic-preserved-signature');
   const result = sent[1].messages.flatMap((message) => Array.isArray(message.content) ? message.content : []).find((block) => block.type === 'tool_result');
-  assert.equal(result.content.find((block) => block.type === 'image').source.media_type, 'image/png');
+  assert.equal(result.content.find((block) => block.type === 'text').text, workflow.result);
+  if (workflow.image) assert.equal(result.content.find((block) => block.type === 'image').source.media_type, 'image/png');
+  else assert.equal(result.content.some((block) => block.type === 'image'), false);
 });

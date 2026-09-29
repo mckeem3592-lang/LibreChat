@@ -16,7 +16,7 @@ interface Status {
   flags: { paidText: boolean; delegation: boolean; images: boolean; freeSearch: boolean };
   accountingBlocked: boolean;
   periods?: { todayUsd: number; weekUsd: number; todayEstimatedUsd: number;
-    weekEstimatedUsd: number; monthUnallocatedUsd: number; timeZone: string };
+    weekEstimatedUsd: number; monthUnallocatedUsd: number; timeZone: string; asOf?: string; monthStart?: string };
   byProvider?: { provider: string; spendUsd: number }[];
   byModel?: { model: string; spendUsd: number }[];
   byProject?: { project: string; spendUsd: number }[];
@@ -31,6 +31,39 @@ const endpoint = (path: string) => `${apiBaseUrl()}/api/mission-ai/${path}`;
 const dollars = (value: number) => new Intl.NumberFormat(undefined, {
   style: 'currency', currency: 'USD', maximumFractionDigits: 7,
 }).format(value);
+
+/** Export only displayed accounting fields; no chat history, credentials or provider calls. */
+export function missionCostReport(data: Status, exportedAt = new Date().toISOString()) {
+  const groups: [string, { category: string; spendUsd: number }[] | undefined][] = [
+    ['provider', data.byProvider?.map(({ provider, spendUsd }) => ({ category: provider, spendUsd }))],
+    ['model', data.byModel?.map(({ model, spendUsd }) => ({ category: model, spendUsd }))],
+    ['project', data.byProject?.map(({ project, spendUsd }) => ({ category: project, spendUsd }))],
+    ['task', data.byTask?.map(({ task, spendUsd }) => ({ category: task, spendUsd }))],
+  ];
+  return {
+    version: 1, exportedAt, scope: 'Mission AI only; original chat is outside this cap',
+    observed: true, representativeWorkloadComplete: false, snapshotAsOf: data.periods?.asOf ?? null,
+    accountingMonthStart: data.periods?.monthStart ?? null,
+    recordedSpendUsd: data.budget.spendUsd, pendingReservationsUsd: data.budget.reservedUsd,
+    subscriptionComparison: { baselineMonthlyUsd: 200, currency: 'USD',
+      basis: 'Owner-provided ChatGPT Pro subscription price; observed API spend is not a monthly forecast' },
+    ...(data.periods ? { periods: {
+      todayUsd: data.periods.todayUsd, weekUsd: data.periods.weekUsd,
+      todayEstimatedUsd: data.periods.todayEstimatedUsd, weekEstimatedUsd: data.periods.weekEstimatedUsd,
+      monthUnallocatedUsd: data.periods.monthUnallocatedUsd, timeZone: data.periods.timeZone,
+    } } : {}),
+    monthlyBreakdowns: Object.fromEntries(groups.filter(([, rows]) => rows !== undefined)),
+  };
+}
+
+function downloadCostReport(data: Status): void {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(missionCostReport(data), null, 2) + '\n'],
+    { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url; link.download = 'mission-ai-cost-report.json';
+  try { document.body.appendChild(link); link.click(); }
+  finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+}
 
 function SpendingTable({ title, rows }: { title: string; rows: { name: string; spendUsd: number }[] }) {
   const localize = useLocalize();
@@ -140,6 +173,8 @@ export default function MissionControl({ side = 'right' }: { side?: 'right' | 'b
                 </article>
               ))}
             </div>
+            {data && <Button variant="outline" className="mr-3 mt-5"
+              onClick={() => downloadCostReport(data)}>{localize('com_mission_export_costs')}</Button>}
             <Button variant="outline" className="mt-5" disabled={status.isFetching}
               onClick={() => status.refetch()}>{localize('com_mission_refresh')}</Button>
           </DialogPanel>
