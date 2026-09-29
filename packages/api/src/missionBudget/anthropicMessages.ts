@@ -36,11 +36,22 @@ function cache(value: unknown): void {
   if (control.type !== 'ephemeral' ||
       (control.ttl !== undefined && !['5m', '1h'].includes(String(control.ttl)))) fail();
 }
-function textBlocks(value: unknown, allowEmpty = false): void {
+function imageBlock(block: Json): void {
+  keys(block, ['type', 'source', 'cache_control']);
+  const source = record(block.source);
+  keys(source, ['type', 'media_type', 'data']);
+  if (source.type !== 'base64' ||
+      !['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(String(source.media_type))) fail('native_content_unsupported');
+  const data = text(source.data);
+  if (data.length % 4 !== 0 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data)) fail();
+  cache(block.cache_control);
+}
+function textBlocks(value: unknown, allowEmpty = false, allowImages = false): void {
   if (typeof value === 'string') { text(value, MAX_BYTES, allowEmpty); return; }
   if (!Array.isArray(value) || (!allowEmpty && !value.length) || value.length > 256) fail();
   for (const part of value) {
     const block = record(part);
+    if (block.type === 'image' && allowImages) { imageBlock(block); continue; }
     keys(block, ['type', 'text', 'cache_control']);
     if (block.type !== 'text') fail('native_content_unsupported');
     text(block.text, MAX_BYTES, allowEmpty); cache(block.cache_control);
@@ -49,7 +60,7 @@ function textBlocks(value: unknown, allowEmpty = false): void {
 
 /** Native blocks retain signatures and tool IDs. Provider-hosted paid tools are forbidden. */
 export function normalizeAnthropicMessages(value: unknown): {
-  body: Json; model: string; outputLimit: number;
+  body: Json; model: string; outputLimit: number; imageInputTokens: number;
 } {
   json(value);
   const serialized = JSON.stringify(value);
@@ -101,6 +112,7 @@ export function normalizeAnthropicMessages(value: unknown): {
     }
   }
   if (!Array.isArray(body.messages) || !body.messages.length || body.messages.length > 256) fail();
+  let imageCount = 0;
   const seen = new Set<string>();
   let pending = new Set<string>();
   for (const value of body.messages) {
@@ -116,6 +128,8 @@ export function normalizeAnthropicMessages(value: unknown): {
       const block = record(value);
       if (block.type === 'text') {
         keys(block, ['type', 'text', 'cache_control']); text(block.text); cache(block.cache_control);
+      } else if (block.type === 'image' && message.role === 'user') {
+        imageBlock(block); imageCount++;
       } else if (block.type === 'thinking' && message.role === 'assistant') {
         keys(block, ['type', 'thinking', 'signature']); text(block.thinking, MAX_BYTES, true); text(block.signature);
       } else if (block.type === 'redacted_thinking' && message.role === 'assistant') {
@@ -130,7 +144,8 @@ export function normalizeAnthropicMessages(value: unknown): {
         const id = identifier(block.tool_use_id);
         if (!pending.delete(id)) fail('native_tool_unsupported');
         if (block.is_error !== undefined && typeof block.is_error !== 'boolean') fail();
-        textBlocks(block.content, true); cache(block.cache_control);
+        textBlocks(block.content, true, true); cache(block.cache_control);
+        if (Array.isArray(block.content)) imageCount += block.content.filter((part) => record(part).type === 'image').length;
       } else fail('native_content_unsupported');
     }
     if (pending.size) fail('native_tool_unsupported');
@@ -142,7 +157,9 @@ export function normalizeAnthropicMessages(value: unknown): {
   body.service_tier = 'standard_only';
   body.thinking = { type: 'between_tools' };
   body.output_config = { effort: 'low' };
-  return { body, model: 'claude-sonnet-5-5', outputLimit };
+  // Reserve the documented Sonnet 5.5 maximum visual tokens even for tiny compressed images.
+  if (imageCount > 20) fail('native_request_too_large', 413);
+  return { body, model: 'claude-sonnet-5-5', outputLimit, imageInputTokens: imageCount * 4784 };
 }
 
 /** Check presentation only after known provider billing has been settled. */

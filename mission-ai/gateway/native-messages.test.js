@@ -106,3 +106,44 @@ test('native token, disabled gate and query checks deny without calling a provid
   }
   assert.equal(called, 0);
 });
+
+const image = { type: 'image', source: { type: 'base64', media_type: 'image/png',
+  data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC' } };
+test('user images and screenshot tool results retain typed bytes with visual-token reservations', async () => {
+  for (const messages of [
+    [{ role: 'user', content: [image, { type: 'text', text: 'Describe.' }] }],
+    [{ role: 'user', content: 'First.' }, { role: 'assistant', content: answer().content },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_fixture', content: [image] }] }],
+  ]) {
+    const input = request({ messages });
+    assert.equal(normalizeAnthropicMessages(input).imageInputTokens, 4784);
+    let reservedInput;
+    const f = await fixture(answer(), { estimateCost: (value) => { reservedInput = value; return maximumTextRequestCost(value); } });
+    await f.bridge.handle(input);
+    const fetchEvent = f.events.find((event) => event.type === 'fetch');
+    assert.deepEqual(JSON.parse(fetchEvent.init.body).messages, messages);
+    const expected = maximumTextRequestCost({ provider: 'anthropic', model,
+      prompt: fetchEvent.init.body, maxOutputTokens: 128, imageInputTokens: 4784,
+      pricing: { models: { [model]: { provider: 'anthropic', input: 2, output: 10 } } } });
+    const summary = await f.ledger.summary({ now, timeZone: 'America/Denver' });
+    assert(summary.settledUsd > 0);
+    assert(expected > .009568);
+    assert.equal(reservedInput.imageInputTokens, 4784);
+    assert.equal(maximumTextRequestCost(reservedInput), expected);
+  }
+});
+test('external image sources, invalid encoding, assistant images and excess images are rejected before billing', async () => {
+  for (const content of [
+    [{ ...image, source: { type: 'url', url: 'https://example.invalid/image' } }],
+    [{ ...image, source: { ...image.source, data: 'not base64!' } }],
+    Array.from({ length: 21 }, () => image),
+  ]) {
+    const f = await fixture();
+    await assert.rejects(f.bridge.handle(request({ messages: [{ role: 'user', content }] })), /native_/);
+    assert.deepEqual(f.events, []);
+  }
+  assert.throws(() => normalizeAnthropicMessages(request({ messages: [
+    { role: 'user', content: 'First.' }, { role: 'assistant', content: [image] },
+    { role: 'user', content: 'Next.' },
+  ] })), /native_content_unsupported/);
+});

@@ -85,8 +85,13 @@ for (const rejected of [false, true]) test(`real LibreChat native model client u
   assert.equal(sent[0].service_tier, 'standard_only');
   assert.deepEqual(sent[0].thinking, { type: 'between_tools' });
   await client.invoke([new HumanMessage('Synthetic request.'), first,
-    new ToolMessage({ tool_call_id: 'toolu_synthetic', content: 'Synthetic result.' })]);
+    new ToolMessage({ tool_call_id: 'toolu_synthetic', content: [
+      { type: 'text', text: 'Synthetic screenshot.' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC' } },
+    ] })]);
   assert.equal(settled, 2); assert.equal(clientCalls, 2);
   const assistant = sent[1].messages.find((message) => message.role === 'assistant');
   assert.equal(assistant.content.find((block) => block.type === 'thinking').signature, 'synthetic-preserved-signature');
+  const result = sent[1].messages.flatMap((message) => Array.isArray(message.content) ? message.content : []).find((block) => block.type === 'tool_result');
+  assert.equal(result.content.find((block) => block.type === 'image').source.media_type, 'image/png');
 });

@@ -36,6 +36,7 @@ export interface NativeBridgeDependencies {
     system: string;
     maxOutputTokens: number;
     pricing: unknown;
+    imageInputTokens?: number;
   }) => number;
   calculateCost: (
     provider: string,
@@ -331,7 +332,9 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
       if (deps.protocol !== undefined && !['openai', 'anthropic-messages'].includes(deps.protocol)) {
         fail('native_provider_unready', 503);
       }
-      const { body, model, outputLimit } = nativeMessages ? normalizeAnthropicMessages(input) : normalizeBody(input);
+      const normalized = nativeMessages ? normalizeAnthropicMessages(input) : normalizeBody(input);
+      const { body, model, outputLimit } = normalized;
+      const imageInputTokens = 'imageInputTokens' in normalized && typeof normalized.imageInputTokens === 'number' ? normalized.imageInputTokens : 0;
       const upstreamBody = provider === 'anthropic' && !nativeMessages ? anthropicRequest(body) : body;
       const serialized = JSON.stringify(upstreamBody);
       if (new TextEncoder().encode(serialized).length > MAX_BODY_BYTES) fail('native_request_too_large', 413);
@@ -360,7 +363,7 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
             amount(budget.directCapUsd) > policy.hardUsd) fail('shared_budget_unready', 503);
         pricing = await deps.pricingLoader();
         reserveUsd = amount(deps.estimateCost({
-          provider, model, prompt: serialized, system: '', maxOutputTokens: outputLimit, pricing,
+          provider, model, prompt: serialized, system: '', maxOutputTokens: outputLimit, pricing, imageInputTokens,
         }), true);
         const reservationId = deps.randomId();
         if (typeof reservationId !== 'string' || !reservationId || reservationId.length > 200) fail('native_accounting_invalid', 503);

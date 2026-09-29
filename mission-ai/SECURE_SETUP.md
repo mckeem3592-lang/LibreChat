@@ -163,3 +163,9 @@ zsh ~/.local/share/mission-ai/source/mission-ai/acceptance/check-macos.sh
 Do not merge `mission-ai-v1` to `main` and do not alter the production
 `My-Workstation-McKee` Render service until the acceptance matrix is complete
 and the user explicitly approves promotion.
+
+## Bounded native vision transport
+
+The native Sonnet route accepts base64 JPEG, PNG, GIF and WebP images in user messages and paired tool results. External URL/file sources and assistant image blocks are refused. The existing one-megabyte request ceiling and a twenty-image ceiling remain in force. Each image adds a conservative 4,784 visual-token allowance to the existing byte/framing reservation, using the highest applicable input/cache price and long-context tier. Provider-reported usage settles the actual cost; ambiguous responses retain the reservation. This support does not enable paid requests, grant device permissions, or constitute live image-workflow acceptance.
+
+Reference: https://platform.claude.com/docs/en/build-with-claude/vision

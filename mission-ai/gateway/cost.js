@@ -142,6 +142,7 @@ export function maximumTextRequestCost({
   system = '',
   maxOutputTokens,
   pricing,
+  imageInputTokens = 0,
 }) {
   let modelPricing = pricing?.models?.[model];
   if (!modelPricing || modelPricing.provider !== provider) {
@@ -149,7 +150,9 @@ export function maximumTextRequestCost({
   }
 
   const inputBytes = Buffer.byteLength(String(prompt), 'utf8') + Buffer.byteLength(String(system), 'utf8');
-  const inputUpperBound = reservationInputTokens(inputBytes, pricing);
+  const inputUpperBound = reservationInputTokens(
+    inputBytes + finiteNonnegative(imageInputTokens, 'image_input_tokens'), pricing,
+  );
   modelPricing = pricingForInput(modelPricing, inputUpperBound);
   const outputTokens = finiteNonnegative(maxOutputTokens, 'max_output_tokens');
   return (
