@@ -153,6 +153,10 @@ jobs:
         run: npm ci --include=dev --no-audit --no-fund
       - name: Build application and backend packages
         run: npm run frontend
+      - name: Verify signed tool transport with the locked Anthropic SDK
+        run: |
+          npx tsc -p mission-ai/gateway/tsconfig.native.json
+          node --test mission-ai/gateway/native-messages.sdk.mjs
       - name: Typecheck the changed API workspace
         working-directory: packages/api
         run: npx tsc --noEmit

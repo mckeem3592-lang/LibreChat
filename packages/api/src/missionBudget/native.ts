@@ -1,4 +1,5 @@
 import { anthropicRequest, anthropicUsage, anthropicCompletion } from './anthropicNative.js';
+import { normalizeAnthropicMessages, validateAnthropicMessage } from './anthropicMessages.js';
 
 /** Restricted, non-streaming upstream transport. The host owns HTTP authentication and SSE. */
 type JsonObject = Record<string, unknown>;
@@ -45,6 +46,7 @@ export interface NativeBridgeDependencies {
   fetchImpl: (url: string, init: RequestInit) => Promise<Pick<Response, 'status' | 'json'>>;
   providerKey: string;
   provider?: 'openai' | 'anthropic';
+  protocol?: 'openai' | 'anthropic-messages';
   modelAllowed: (model: string) => Awaitable<boolean>;
   now: () => Date;
   randomId: () => string;
@@ -322,10 +324,15 @@ function safeFailure(error: unknown, fallback: string): NativeBridgeError {
 export function createNativeBridge(deps: NativeBridgeDependencies): { handle(body: unknown): Promise<JsonObject> } {
   return {
     async handle(input) {
-      const { body, model, outputLimit } = normalizeBody(input);
       const provider = deps.provider ?? 'openai';
       if (!['openai', 'anthropic'].includes(provider)) fail('native_provider_unready', 503);
-      const upstreamBody = provider === 'anthropic' ? anthropicRequest(body) : body;
+      const nativeMessages = deps.protocol === 'anthropic-messages';
+      if (nativeMessages && provider !== 'anthropic') fail('native_provider_unready', 503);
+      if (deps.protocol !== undefined && !['openai', 'anthropic-messages'].includes(deps.protocol)) {
+        fail('native_provider_unready', 503);
+      }
+      const { body, model, outputLimit } = nativeMessages ? normalizeAnthropicMessages(input) : normalizeBody(input);
+      const upstreamBody = provider === 'anthropic' && !nativeMessages ? anthropicRequest(body) : body;
       const serialized = JSON.stringify(upstreamBody);
       if (new TextEncoder().encode(serialized).length > MAX_BODY_BYTES) fail('native_request_too_large', 413);
       try {
@@ -429,10 +436,11 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
         });
         if (actualUsd > reserveUsd + 1e-9) fail('reservation_underestimated', 503);
         // Valid billable usage survives malformed presentation/protocol fields.
+        if (response.usage.outputTokens > outputLimit) fail('native_output_limit_exceeded', 502);
+        if (nativeMessages) return validateAnthropicMessage(response.response, upstreamBody);
         const completion = provider === 'anthropic'
           ? anthropicCompletion(response.response, response.usage, now) : response.response;
         validateCompletionResponse(completion);
-        if (response.usage.outputTokens > outputLimit) fail('native_output_limit_exceeded', 502);
         return completion;
       } catch (error) {
         // A provider response exists: never release on pricing/database/internal failures.

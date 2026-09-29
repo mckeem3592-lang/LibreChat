@@ -15,6 +15,7 @@ import { generateImage } from './image.js';
 import { createPaidHttpHandlers } from './paid-http.js';
 import { createNativeBridge } from './generated/native.js';
 import { createNativeHttp } from './generated/http.js';
+import { createAnthropicHttp } from './generated/anthropicHttp.js';
 import { createFreeSearch, FreeSearchError } from './generated/freeSearch.js';
 import { createFreeCreditStore } from './generated/freeCredits.js';
 import { createMissionControlHttp } from './generated/control.js';
@@ -94,13 +95,7 @@ async function nativeModels() {
   return [...new Set((process.env.MISSION_AI_NATIVE_MODELS || '').split(',').map((s) => s.trim()))]
     .filter((model) => model === 'claude-sonnet-5-5' && pricing.models?.[model]?.provider === 'anthropic');
 }
-const nativeHttp = createNativeHttp({
-  enabled: () => process.env.MISSION_AI_NATIVE_ENABLED === 'true',
-  token: [TOOL_TOKEN, DEVICE_TOKEN].includes(process.env.MISSION_AI_NATIVE_TOKEN)
-    ? '' : process.env.MISSION_AI_NATIVE_TOKEN || '',
-  safeEqual,
-  models: nativeModels,
-  bridge: createNativeBridge({
+const nativeDependencies = {
     ledger: nativeLedger,
     budgetReader: async ({ now }) => {
       const shared = await nativeLedger.sharedBudget();
@@ -117,7 +112,19 @@ const nativeHttp = createNativeHttp({
     modelAllowed: async (model) => (await nativeModels()).includes(model),
     now: () => new Date(),
     randomId: () => crypto.randomUUID(),
-  }),
+
+};
+const nativeToken = [TOOL_TOKEN, DEVICE_TOKEN].includes(process.env.MISSION_AI_NATIVE_TOKEN)
+  ? '' : process.env.MISSION_AI_NATIVE_TOKEN || '';
+const nativeHttp = createNativeHttp({
+  enabled: () => process.env.MISSION_AI_NATIVE_ENABLED === 'true',
+  token: nativeToken, safeEqual, models: nativeModels,
+  bridge: createNativeBridge(nativeDependencies),
+});
+const anthropicHttp = createAnthropicHttp({
+  enabled: () => process.env.MISSION_AI_NATIVE_ENABLED === 'true',
+  token: nativeToken, safeEqual,
+  bridge: createNativeBridge({ ...nativeDependencies, protocol: 'anthropic-messages' }),
 });
 
 function getDevice(deviceId) {
@@ -275,6 +282,9 @@ app.use('/native/openai/v1', nativeHttp.authorize, express.json({ limit: '1mb' }
 app.get('/native/openai/v1/models', nativeHttp.models);
 app.post('/native/openai/v1/chat/completions', nativeHttp.complete);
 app.use('/native/openai/v1', nativeHttp.unsupported);
+app.use('/native/anthropic/v1', anthropicHttp.authorize, express.json({ limit: '1mb' }));
+app.post('/native/anthropic/v1/messages', anthropicHttp.complete);
+app.use('/native/anthropic/v1', anthropicHttp.unsupported);
 
 const controlHttp = createMissionControlHttp({
   token: [TOOL_TOKEN, DEVICE_TOKEN].includes(process.env.MISSION_AI_NATIVE_TOKEN)

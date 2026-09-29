@@ -88,8 +88,17 @@ a platform-wide cap. Keep both paid gates false during preparation.
 
 The production text bridge is pinned to Anthropic `claude-sonnet-5-5`, with
 standard-only capacity and no retry/fallback. The managed model client also has
-`maxRetries: 0`; only text is supported by the compatible adapter. Native tools
-require a later reviewed transport that preserves thinking signatures.
+`maxRetries: 0`; only text is supported by the compatible adapter.
+
+The native `/native/anthropic/v1/messages` transport preserves signed thinking
+blocks, custom tool calls and paired text tool results. It uses the same native
+token, paid-enable gate, atomic ledger, fixed model and output limits. Provider
+server tools, fallback fields, forced tool loops and alternate capacity tiers
+are rejected. Buffered JSON/SSE is delivered only after durable accounting;
+unverified usage retains the conservative reserved charge. The managed chat
+configuration still uses the restricted text adapter: deploying the native
+transport does not enable chat tools or authorize a local action. The actual
+Anthropic SDK is tested with synthetic responses and no provider calls.
 
 Keep `MISSION_AI_SEARCH_ENABLED=false` until search acceptance. The gateway's
 only search path is Tavily basic, with no model answer or alternate provider.
