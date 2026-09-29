@@ -97,6 +97,11 @@ export function createManagedToolAdmission(options: ManagedToolOptions): Middlew
     try { if (admitManagedData(req.method, path, req.body)) return next(); } catch { return reject(res); }
     if (req.method === 'GET' && (MCP_READS.has(path) || path === '/api/code-environments' ||
         path === '/api/code-environments/attached-workers/status')) return next();
+    // Reconnect only the fixed, approved server. The MCP router authenticates
+    // the request and checks the owner before resolving its stored settings.
+    if (req.method === 'POST' && path === '/api/mcp/mission-ai/reinitialize' &&
+        (req.body === undefined || req.body != null && typeof req.body === 'object' &&
+        !Array.isArray(req.body) && Object.keys(req.body).length === 0)) return next();
     if (req.method !== 'POST' || path !== '/api/agents/chat/MissionAI') return legacy(req, res, next);
     try {
       const conversion = payload(req.body);

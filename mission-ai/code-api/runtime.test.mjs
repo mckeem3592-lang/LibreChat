@@ -11,6 +11,18 @@ import { dependencyReview, requireSupportedNode } from './apply-dependency-patch
 const service = path.resolve(process.env.MISSION_AI_CODE_API_TEST_SERVICE || '.mission-ai-code-api/service');
 const requireService = createRequire(path.join(service, 'package.json'));
 
+test('compiled JWT verifier applies the fixed owner gate before returning a principal', async () => {
+  const { missionAiOwnerMatches } = requireService(path.join(service, '.build-service/src/auth/mission-ai-owner-scope.js'));
+  const owner='0123456789abcdef01234567';
+  const settings={MISSION_AI_CODE_OWNER_ID:owner,CODEAPI_JWT_SINGLE_TENANT_ID:'mission-ai-chat-test'};
+  assert.equal(missionAiOwnerMatches(owner,'mission-ai-chat-test',settings),true);
+  assert.equal(missionAiOwnerMatches('000000000000000000000000','mission-ai-chat-test',settings),false);
+  assert.equal(missionAiOwnerMatches(owner,'other',settings),false);
+  const verifier=await readFile(path.join(service,'.build-service/src/auth/librechat-jwt.js'),'utf8');
+  assert.ok(verifier.includes('missionAiOwnerMatches'));
+  assert.ok(verifier.includes('owner_denied'));
+});
+
 test('installed lock and upstream direct declarations match the reviewed source and retained graph', async () => {
   requireSupportedNode();
   const manifestBytes = await readFile(path.join(service, 'package.json'));

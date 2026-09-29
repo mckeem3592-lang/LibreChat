@@ -67,7 +67,7 @@ jobs:
           bash -n mission-ai/code-api/build.sh
           bash -n mission-ai/code-api/start.sh
       - name: Test locked dependency installation safeguards
-        run: node --test mission-ai/code-api/build.test.mjs mission-ai/code-api/dependency-patches.test.mjs
+        run: node --test mission-ai/code-api/build.test.mjs mission-ai/code-api/dependency-patches.test.mjs mission-ai/code-api/owner-scope.test.mjs
       - name: Build Code API from reviewed dependency lock
         run: bash mission-ai/code-api/build.sh
       - name: Smoke-test installed Code API dependencies

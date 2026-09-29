@@ -71,6 +71,20 @@ test('injected servers, builtin paid tools, sampling overrides and excessive out
     assert.equal(invoke(admission, { body: { ...body(), ...patch } }).status, 403);
   }
 });
+test('owner reconnect admits only the fixed server with an empty body and retains owner checks', () => {
+  const admission = createManagedToolAdmission(options);
+  const request = { method: 'POST', originalUrl: '/api/mcp/mission-ai/reinitialize', body: {} };
+  assert.equal(invoke(admission, request).next, 1);
+  assert.equal(invoke(admission, { ...request, body: undefined }).next, 1);
+  for (const body of [{ url: 'https://other.invalid' }, { auth: 'injected' }, [], null]) {
+    assert.equal(invoke(admission, { ...request, body }).status, 403);
+  }
+  for (const originalUrl of ['/api/mcp/other/reinitialize', '/api/mcp/mission-ai/reinitialize?other=1', '/api/mcp/mission-ai//reinitialize']) {
+    assert.equal(invoke(admission, { ...request, originalUrl }).status, 403);
+  }
+  assert.equal(invoke(createManagedToolAdmission({ ...options, toolsEnabled: false }), request).status, 403);
+  assert.equal(invoke(createManagedToolOwnerGuard(options), { ...request, user: { email: 'different@synthetic.invalid' } }).status, 403);
+});
 test('configuration drift cannot weaken model, ownership, retry, loop, endpoint or approval boundaries', () => {
   const mutations = [(c) => { c.mcpConfig['mission-ai'].url = 'https://other.invalid/mcp'; },
     (c) => { c.config.mcpServers['mission-ai'].headers.Authorization = 'Bearer wrong'; },

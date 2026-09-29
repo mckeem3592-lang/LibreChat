@@ -69,6 +69,20 @@ export async function patchDependencies(service, review = dependencyReview) {
   return pending.length;
 }
 
+export async function patchOwnerScope(service) {
+  const target = path.join(service, 'src/auth/librechat-jwt.ts');
+  const original = await regularFile(target);
+  const upstreamHash = '4cfd1175bcf7c77b4691ecb0d770879876e7769a641f090fe79b5c207968e6ba';
+  assert.equal(sha256(original), upstreamHash, 'Unexpected pinned JWT verifier source');
+  const marker = '  assertAudience(claims.aud, config.audience);';
+  assert.equal(original.split(marker).length, 2, 'JWT owner patch location changed');
+  const patched = "import { missionAiOwnerMatches } from './mission-ai-owner-scope';\n" +
+    original.replace(marker, marker + "\n  if (!missionAiOwnerMatches(userId, tenantId, process.env)) {\n    throw new CodeApiJwtAuthError('owner_denied', 'Mission AI owner authorization denied');\n  }");
+  await writeFile(path.join(service, 'src/auth/mission-ai-owner-scope.ts'),
+    await regularFile(new URL('owner-scope.ts', import.meta.url)));
+  await writeFile(target, patched);
+}
+
 if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
   requireSupportedNode();
   const [command, service] = process.argv.slice(2);
@@ -78,6 +92,7 @@ if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
     await prepareManifest(path.resolve(service));
   } else if (service && process.argv.length === 4 && command === 'patch-minio') {
     await patchDependencies(path.resolve(service));
+    await patchOwnerScope(path.resolve(service));
   } else {
     throw new Error('Expected check-runtime, prepare-manifest <service>, or patch-minio <service>');
   }
