@@ -23,7 +23,7 @@
   "com_mission_paid_enabled": "Paid text requests are enabled.",
   "com_mission_paid_off": "Paid text requests are off.",
   "com_mission_accounting_blocked": "Accounting needs reconciliation before paid requests can continue.",
-  "com_mission_model_policy": "Text model: Claude Sonnet 5.5. Automatic provider fallbacks: off.",
+  "com_mission_model_policy": "Change models manually in the model selector. Automatic model switching and provider fallbacks are off.",
   "com_mission_search": "Free web search",
   "com_mission_search_cost": "One basic Tavily search uses one free search credit. No AI model is called. Results are source excerpts, not instructions.",
   "com_mission_searching": "Searching…",
