@@ -28,10 +28,13 @@ type Middleware = (
   next: () => unknown,
 ) => unknown;
 
+const FREE_BASELINE = process.env.MISSION_AI_FREE_BASELINE === 'true';
 const ENDPOINT = 'MissionAI';
 const CHAT_PATH = '/api/agents/chat/MissionAI';
+const SPEC = FREE_BASELINE ? 'mission-ai-free' : 'mission-ai-sonnet';
+const MODEL = FREE_BASELINE ? 'gemini-3.5-flash-lite' : 'claude-sonnet-5-5';
 const SPEC_MODELS: Readonly<Record<string, string>> = Object.freeze({
-  'mission-ai-sonnet': 'claude-sonnet-5-5',
+  [SPEC]: MODEL,
 });
 const IDENTIFIER = /^[A-Za-z0-9_-]{1,256}$/;
 const ID_FIELDS = new Set([
@@ -285,7 +288,12 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
   const gateway = new URL(options.gatewayURL ?? '');
   if (gateway.protocol !== 'https:' || gateway.username || gateway.password || gateway.search ||
       gateway.hash || gateway.pathname !== '/') throw new Error();
-  const baseURL = `${gateway.origin}/native/openai/v1`;
+  const baseURL = FREE_BASELINE
+    ? 'https://generativelanguage.googleapis.com/v1beta/openai'
+    : `${gateway.origin}/native/openai/v1`;
+  const approvedApiKeys = FREE_BASELINE
+    ? [process.env.GOOGLE_KEY, '${GOOGLE_KEY}']
+    : [options.nativeToken, '${MISSION_AI_NATIVE_TOKEN}'];
   const config = object(value);
   const endpoints = object(config.endpoints);
   keys(endpoints, new Set(['all', 'agents', 'custom']));
@@ -305,7 +313,7 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
   keys(custom, new Set(['name', 'apiKey', 'baseURL', 'models', 'modelDisplayLabel', 'titleConvo',
     'dropParams', 'addParams', 'iconURL', 'streamRate']));
   if (custom.name !== ENDPOINT || custom.titleConvo !== false ||
-      ![options.nativeToken, '${MISSION_AI_NATIVE_TOKEN}'].includes(custom.apiKey as string) ||
+      !approvedApiKeys.includes(custom.apiKey as string) ||
       ![baseURL, '${MISSION_AI_GATEWAY_URL}/native/openai/v1'].includes(custom.baseURL as string)) {
     throw new Error();
   }
