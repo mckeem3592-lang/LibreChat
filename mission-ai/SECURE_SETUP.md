@@ -187,3 +187,5 @@ The default-off managed-tools configuration reuses LibreChat projects and memory
 Cloud scheduling is not enabled in this batch. The current repository is public with default branch `main`; GitHub scheduled workflows require the default branch, so placing a workflow only on `mission-ai-v1` cannot provide an active wake-up. Preserve the original deployment: a separately approved small public wake-up repository is the proposed free runner option. Without an external wake-up, Free Render scheduling is limited to times the service is awake. No repository, cron service or paid runtime has been created for this proposal.
 
 Sources: https://docs.github.com/en/billing/concepts/product-billing/github-actions and https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule
+
+Native chat cost attribution uses a server-derived project header after project ownership validation. The gateway records the bounded project identifier in private accounting metadata and removes it from upstream provider requests. No project context is automatically added to prompts for accounting. Live project cost acceptance remains pending.

@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { createManagedToolConfigGuard } from './generated/managedTools.js';
 import { createNativeBridge } from './generated/native.js';
 import { createAnthropicHttp } from './generated/anthropicHttp.js';
+import { attachManagedProjectCost } from './generated/projectCost.js';
 import { maximumTextRequestCost, calculateUsageCost } from './cost.js';
 
 const require = createRequire(new URL('../../package.json', import.meta.url));
@@ -47,9 +48,10 @@ for (const rejected of [false, true]) test(`real LibreChat native model client u
     budgetReader: () => ({ mode: 'shared', policy: { targetUsd: 100, economyUsd: 125, hardUsd: 175 }, timeZone: 'America/Denver', directCapUsd: 175 }),
     pricingLoader: () => ({ verifiedOn: '2026-09-28', models: { [preset.model]: { provider: 'anthropic', input: 2, output: 10 } } }),
     estimateCost: maximumTextRequestCost, calculateCost: calculateUsageCost,
-    ledger: { reserve: async ({ reservationId, reserveUsd }) => ({ reservationId, reservedUsd: reserveUsd }),
-      settle: async () => { settled++; }, release: async () => {} },
+    ledger: { reserve: async ({ reservationId, reserveUsd, metadata }) => { assert.equal(metadata.project, '0123456789abcdef01234567'); return { reservationId, reservedUsd: reserveUsd }; },
+      settle: async ({ usage }) => { assert.equal(usage.project, '0123456789abcdef01234567'); settled++; }, release: async () => {} },
     fetchImpl: async (_url, init) => {
+      assert(!JSON.stringify(init).includes('0123456789abcdef01234567'));
       sent.push(JSON.parse(init.body));
       return { status: rejected ? 400 : 200, json: async () => ({ type: 'message', id: 'msg_synthetic', role: 'assistant', model: preset.model,
         content: [{ type: 'thinking', thinking: '', signature: 'synthetic-preserved-signature' },
@@ -60,6 +62,7 @@ for (const rejected of [false, true]) test(`real LibreChat native model client u
   const fetch = async (url, init) => {
     assert.equal(new URL(typeof url === 'string' ? url : url.url).origin, options.gatewayURL);
     clientCalls++; const headers = new Headers(init.headers);
+    assert.equal(headers.get('x-mission-ai-project'), '0123456789abcdef01234567');
     const req = { body: JSON.parse(init.body), query: {}, get: (key) => headers.get(key) };
     let status = 200; let content = ''; let admitted = false; const responseHeaders = new Headers();
     const res = { status(code) { status = code; return this; },
@@ -72,6 +75,8 @@ for (const rejected of [false, true]) test(`real LibreChat native model client u
   globalThis.fetch = fetch;
   t.after(() => { globalThis.fetch = previousFetch; });
   const Chat = getChatModelClass(Providers.ANTHROPIC);
+  const projectId = '0123456789abcdef01234567';
+  attachManagedProjectCost(llmConfig, { enabled: true, gatewayURL: options.gatewayURL, projectId });
   const client = new Chat({ ...llmConfig, clientOptions: { ...llmConfig.clientOptions, fetch } }).bindTools([
     { type: 'function', function: { name: 'browser_list_tabs', description: 'Synthetic local tool.', parameters: { type: 'object', properties: {} } } },
   ]);

@@ -182,3 +182,17 @@ test('project and personal memory APIs are bounded, while agent partitions and u
     ['PUT', '/api/projects/conversations/conversation-1', { projectId: '../other' }],
   ]) assert.equal(invoke(admit, { method, originalUrl, body: value }).status, 403);
 });
+
+test('project cost header is server-derived, bounded and confined to the native gateway', async () => {
+  const { attachManagedProjectCost } = await import('./generated/projectCost.js');
+  const config = { clientOptions: { baseURL: 'https://synthetic.invalid/native/anthropic', defaultHeaders: { 'X-Mission-AI-Project': 'spoofed', keep: 'header' } } };
+  const id = '0123456789abcdef01234567';
+  attachManagedProjectCost(config, { enabled: true, gatewayURL: 'https://synthetic.invalid', projectId: id });
+  assert.deepEqual(config.clientOptions.defaultHeaders, { keep: 'header', 'x-mission-ai-project': id });
+  attachManagedProjectCost(config, { enabled: true, gatewayURL: 'https://synthetic.invalid' });
+  assert.deepEqual(config.clientOptions.defaultHeaders, { keep: 'header' });
+  assert.throws(() => attachManagedProjectCost(config, { enabled: true, gatewayURL: 'https://synthetic.invalid', projectId: '../bad' }));
+  assert.throws(() => attachManagedProjectCost({ clientOptions: { baseURL: 'https://other.invalid' } }, { enabled: true, gatewayURL: 'https://synthetic.invalid' }));
+  const original = { unchanged: true }; attachManagedProjectCost(original, { enabled: false });
+  assert.deepEqual(original, { unchanged: true });
+});

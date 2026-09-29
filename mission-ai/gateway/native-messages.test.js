@@ -86,7 +86,7 @@ test('buffered Messages SSE reconstructs signature and tool arguments only after
   const res = { setHeader() {}, write(value) {
     assert.equal(f.events[f.events.length - 1].type, 'settle'); output += value;
   }, end() {}, status() { return this; }, json() { assert.fail('SSE expected'); } };
-  await http.complete({ body: request({ stream: true }) }, res);
+  await http.complete({ body: request({ stream: true }), get() { return undefined; } }, res);
   const frames = output.trim().split('\n\n').map((value) => JSON.parse(value.split('\ndata: ')[1]));
   assert.equal(frames[0].type, 'message_start');
   assert.equal(frames.find((frame) => frame.delta?.type === 'signature_delta').delta.signature, 'synthetic-signed-block');
@@ -154,4 +154,18 @@ test('multi-step screenshot history fits the bounded image transport without est
   assert.equal(value.imageInputTokens, 5 * 4784);
   assert(anthropicReservationPrompt(value.body).length < 2000);
   assert.throws(() => normalizeAnthropicMessages(request({ messages: [{ role: 'user', content: 'x'.repeat(1048576) }] })), /native_request_too_large/);
+});
+
+test('project attribution reaches settlement without entering the provider request', async () => {
+  const id = '0123456789abcdef01234567';
+  const f = await fixture();
+  const http = createAnthropicHttp({ enabled: () => true, token: 'x'.repeat(32), safeEqual: (a,b) => a === b, bridge: f.bridge });
+  await http.complete({ body: request(), get: () => id }, { json() {}, status() { return this; } });
+  assert.equal(f.events.at(-1).input.usage.project, id);
+  assert(!JSON.stringify(f.events.find(e => e.type === 'fetch').init).includes(id));
+  for (const projectId of ['', '../other', null, 42]) {
+    const rejected = await fixture();
+    await assert.rejects(rejected.bridge.handle(request(), { projectId }), /native_project_invalid/);
+    assert.deepEqual(rejected.events, []);
+  }
 });

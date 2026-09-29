@@ -1,5 +1,6 @@
 import { Providers } from '@librechat/agents';
 import { logger } from '@librechat/data-schemas';
+import { attachManagedProjectCost } from '../missionBudget/projectCost';
 import {
   Tools,
   Constants,
@@ -1321,6 +1322,11 @@ export async function initializeAgent(
   });
 
   const llmConfig = options.llmConfig as Record<string, unknown>;
+  attachManagedProjectCost(llmConfig, {
+    enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true' && process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+    gatewayURL: process.env.MISSION_AI_GATEWAY_URL,
+    projectId: runtime.requestBody.chatProjectId,
+  });
   const webSearchDenied =
     hasProviderWebSearch(options.tools, llmConfig) &&
     !(await resolveWebSearchGrant({

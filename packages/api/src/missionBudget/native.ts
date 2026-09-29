@@ -322,9 +322,11 @@ function safeFailure(error: unknown, fallback: string): NativeBridgeError {
   return new NativeBridgeError(SAFE_FAILURES.has(message) ? message : fallback, 503);
 }
 
-export function createNativeBridge(deps: NativeBridgeDependencies): { handle(body: unknown): Promise<JsonObject> } {
+export function createNativeBridge(deps: NativeBridgeDependencies): { handle(body: unknown, context?: { projectId?: unknown }): Promise<JsonObject> } {
   return {
-    async handle(input) {
+    async handle(input, context) {
+      const projectId = context?.projectId;
+      if (projectId !== undefined && (typeof projectId !== 'string' || !/^[a-fA-F0-9]{24}$/.test(projectId))) fail('native_project_invalid');
       const provider = deps.provider ?? 'openai';
       if (!['openai', 'anthropic'].includes(provider)) fail('native_provider_unready', 503);
       const nativeMessages = deps.protocol === 'anthropic-messages';
@@ -350,7 +352,7 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
       let pricing;
       let reserveUsd;
       let reservation;
-      const metadata = { source: 'native', provider, model, task: 'native_chat', project: 'native' };
+      const metadata = { source: 'native', provider, model, task: 'native_chat', project: projectId ?? 'native' };
       try {
         budget = await deps.budgetReader({ now });
         if (budget.mode !== 'shared' || typeof budget.timeZone !== 'string' || !budget.timeZone) {

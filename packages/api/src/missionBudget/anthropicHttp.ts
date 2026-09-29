@@ -9,7 +9,7 @@ interface Response {
 }
 interface Dependencies {
   enabled: () => boolean; token: string; safeEqual: (left: string, right: string) => boolean;
-  bridge: { handle(body: unknown): Promise<Json> };
+  bridge: { handle(body: unknown, context?: { projectId?: unknown }): Promise<Json> };
 }
 function error(res: Response, status: number, code: string): unknown {
   return res.status(status).json({ type: 'error', error: { type: 'mission_budget_error', message: code } });
@@ -31,7 +31,7 @@ export function createAnthropicHttp(deps: Dependencies): {
     },
     async complete(req, res) {
       try {
-        const message = await deps.bridge.handle(req.body);
+        const message = await deps.bridge.handle(req.body, { projectId: req.get('x-mission-ai-project') ?? undefined });
         if (res.destroyed || res.writableEnded) return;
         if ((req.body as Json).stream !== true) return res.json(message);
         res.setHeader('Content-Type', 'text/event-stream');
