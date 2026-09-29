@@ -56,3 +56,21 @@ it('renders free-search sources as text and opens external links securely', asyn
   expect(screen.getByText('<script>not executable</script>')).toBeInTheDocument();
   expect(request.post).toHaveBeenCalledTimes(1);
 });
+
+it('shows calendar spend and monthly categories without hiding estimates or triggering model calls', async () => {
+  const detail = { ...status, periods: { todayUsd: .1, weekUsd: .3,
+    todayEstimatedUsd: .05, weekEstimatedUsd: .05, monthUnallocatedUsd: .003144, timeZone: 'America/Denver' },
+    byProvider: [{ provider: 'anthropic', spendUsd: .1 }],
+    byModel: [{ model: 'fixture-model', spendUsd: .1 }],
+    byProject: [{ project: '<script>owner project</script>', spendUsd: .1 }],
+    byTask: [] };
+  (request.get as jest.Mock).mockImplementation((url: string) => Promise.resolve(url.endsWith('capabilities') ? { enabled: true } : detail));
+  mount(); await userEvent.click(await screen.findByRole('button', { name: 'Mission AI controls' }));
+  expect(await screen.findByText('Today, recorded spend')).toBeInTheDocument();
+  expect(screen.getByText('This week, recorded spend')).toBeInTheDocument();
+  expect(screen.getByText(/^This week includes retained estimates of/)).toBeInTheDocument();
+  expect(screen.getByText('<script>owner project</script>')).toBeInTheDocument();
+  expect(screen.getByRole('table', { name: 'Cost by provider' })).toBeInTheDocument();
+  expect(screen.getByText('No recorded costs.')).toBeInTheDocument();
+  expect(request.post).not.toHaveBeenCalled();
+});

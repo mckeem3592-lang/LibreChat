@@ -91,6 +91,41 @@ interface ControlHttp {
   search(req: Request, res: Response): Promise<unknown>;
   unsupported(req: Request, res: Response): unknown;
 }
+function reportDetails(dashboard: Json): Json {
+  const detail: Json = {};
+  for (const [group, name] of [['byProvider', 'provider'], ['byModel', 'model'],
+    ['byProject', 'project'], ['byTask', 'task']]) {
+    const rows = dashboard[group];
+    if (rows === undefined) continue; // Previous gateway versions remain compatible.
+    if (!Array.isArray(rows) || rows.length > 200) throw new Error();
+    detail[group] = rows.map((row) => {
+      const item = object(row);
+      if (typeof item[name] !== 'string' || !item[name] || item[name].length > 200 ||
+          typeof item.spendUsd !== 'number' || !Number.isFinite(item.spendUsd) || item.spendUsd < 0) throw new Error();
+      return { [name]: item[name], spendUsd: item.spendUsd };
+    });
+  }
+  if (dashboard.periods === undefined) return detail;
+  const source = object(dashboard.periods);
+  const periods: Json = {};
+  for (const key of ['todayUsd', 'weekUsd', 'todayEstimatedUsd', 'weekEstimatedUsd', 'monthUnallocatedUsd']) {
+    const value = source[key];
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new Error();
+    periods[key] = value;
+  }
+  for (const key of ['asOf', 'dayStart', 'weekStart', 'monthStart']) {
+    const value = source[key];
+    if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) throw new Error();
+    periods[key] = value;
+  }
+  if (typeof source.timeZone !== 'string' || source.timeZone.length > 100 || source.weekStartsOn !== 'Monday' ||
+      Number(source.todayEstimatedUsd) > Number(source.todayUsd) + 1e-9 ||
+      Number(source.weekEstimatedUsd) > Number(source.weekUsd) + 1e-9 ||
+      Number(source.todayUsd) > Number(source.weekUsd) + 1e-9) throw new Error();
+  new Intl.DateTimeFormat('en-US', { timeZone: source.timeZone });
+  detail.periods = { ...periods, timeZone: source.timeZone, weekStartsOn: 'Monday' };
+  return detail;
+}
 /** Read accounting and run basic free search; no paid or local-control operations. */
 export function createMissionControlHttp(deps: ControlDependencies): ControlHttp {
   return {
@@ -111,7 +146,8 @@ export function createMissionControlHttp(deps: ControlDependencies): ControlHttp
           budget[key] = value;
         }
         return res.json({ enabled: true, model: 'claude-sonnet-5-5', automaticFallbacks: false,
-          legacyIncluded: false, budget, flags: deps.flags(), accountingBlocked: dashboard.accountingBlocked === true });
+          legacyIncluded: false, budget, ...reportDetails(dashboard), flags: deps.flags(),
+          accountingBlocked: dashboard.accountingBlocked === true });
       } catch { return error(res, 503, 'control_unavailable'); }
     },
     async search(req: Request, res: Response) {

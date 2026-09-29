@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { spendingWindows, summarizeSpendingPeriods } from './generated/periods.js';
 import { normalizeReconciliations } from './generated/reconciliation.js';
 import mongoose from 'mongoose';
 import { isDeepStrictEqual } from 'node:util';
@@ -238,6 +239,10 @@ export function createMemoryUsageLedger() {
         ...(control ? { sharedMode: true, ...sourceTotals([...events.values()].filter((event) => event.monthStart === key)) } : {}),
       };
     },
+    async spendingPeriods({ now = new Date(), timeZone = 'America/Denver' } = {}) {
+      return summarizeSpendingPeriods([...events.values()], now, timeZone);
+    },
+
     async breakdown({ now = new Date(), timeZone = 'America/Denver' } = {}) {
       const key = monthKey(now, timeZone);
       const groups = {
@@ -624,6 +629,17 @@ export function createMongoUsageLedger({
       } finally {
         await session.endSession();
       }
+    },
+
+    async spendingPeriods({ now = new Date(), timeZone = 'America/Denver' } = {}) {
+      const windows = spendingWindows(now, timeZone);
+      const earliest = [windows.weekStart, windows.monthStart].sort()[0];
+      const rows = await (await db()).collection(EVENT_COLLECTION).find({
+        status: 'settled', $or: [{ createdAt: { $gte: new Date(earliest), $lte: now } },
+          { source: 'provider-reconciliation', monthStart: windows.monthStart }],
+      }, { projection: { _id: 0, status: 1, source: 1, createdAt: 1,
+        monthStart: 1, actualUsd: 1, 'usage.estimated': 1 } }).toArray();
+      return summarizeSpendingPeriods(rows, now, timeZone);
     },
 
     async breakdown({ now = new Date(), timeZone = 'America/Denver' } = {}) {

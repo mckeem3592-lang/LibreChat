@@ -84,3 +84,24 @@ test('free search exhaustion remains a 429 with no paid operation or fallback', 
   assert.equal(calls, 1); assert.equal(res.code, 429);
   assert.deepEqual(res.body, { error: { code: 'search_free_credits_exhausted' } });
 });
+
+test('cost-report response retains only bounded reporting fields, including estimates and unallocated corrections', async () => {
+  const periods = { asOf: '2026-10-01T18:00:00Z', dayStart: '2026-10-01T06:00:00Z',
+    weekStart: '2026-09-28T06:00:00Z', monthStart: '2026-10-01T06:00:00Z',
+    timeZone: 'America/Denver', weekStartsOn: 'Monday', todayUsd: .1, weekUsd: .3,
+    todayEstimatedUsd: .1, weekEstimatedUsd: .1, monthUnallocatedUsd: .04, privateDetail: token };
+  const base = { spendUsd: .1, reservedUsd: 0, projectedSpendUsd: .1, targetUsd: 100, economyUsd: 125, hardUsd: 175 };
+  let report = { ...base, periods, byProvider: [{ provider: 'anthropic', spendUsd: .1, privateDetail: token }] };
+  const http = createMissionControlHttp({ token, safeEqual: (a, b) => a === b,
+    dashboard: async () => report, flags: () => ({}), search: async () => assert.fail() });
+  const res = response(); await http.status({}, res);
+  assert.equal(res.code, 200); assert.equal(res.body.periods.weekUsd, .3);
+  assert.deepEqual(res.body.byProvider, [{ provider: 'anthropic', spendUsd: .1 }]);
+  assert.ok(!JSON.stringify(res.body).includes(token));
+  for (const change of [{ todayUsd: NaN }, { weekEstimatedUsd: .4 }, { timeZone: 'invalid' }]) {
+    report = { ...base, periods: { ...periods, ...change } };
+    const denied = response(); await http.status({}, denied); assert.equal(denied.code, 503);
+  }
+  report = { ...base, byProvider: [{ provider: 'bad', spendUsd: -1 }] };
+  const denied = response(); await http.status({}, denied); assert.equal(denied.code, 503);
+});

@@ -89,6 +89,7 @@ export async function queryMissionDashboard({
   now = new Date(),
   nativeReader = queryCostDashboard,
   usageLedger,
+  includePeriods = false,
 } = {}) {
   const ledger = usageLedger || defaultUsageLedger();
   const shared = typeof ledger.sharedBudget === 'function' ? await ledger.sharedBudget() : null;
@@ -99,10 +100,13 @@ export async function queryMissionDashboard({
     await ledger.reconcileStaleReservations({ now });
   }
   const options = { now, timeZone: nativeDashboard.timeZone };
-  const [delegatedSummary, delegatedBreakdown] = await Promise.all([
+  const [delegatedSummary, delegatedBreakdown, periods] = await Promise.all([
     ledger.summary(options),
     ledger.breakdown(options),
+    shared && includePeriods && typeof ledger.spendingPeriods === 'function'
+      ? ledger.spendingPeriods(options) : null,
   ]);
   if (shared) nativeDashboard.monthStart = delegatedSummary.monthStart;
-  return combineDashboard(nativeDashboard, delegatedSummary, delegatedBreakdown);
+  return { ...combineDashboard(nativeDashboard, delegatedSummary, delegatedBreakdown),
+    ...(periods ? { periods } : {}) };
 }

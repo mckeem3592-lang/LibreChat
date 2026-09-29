@@ -341,3 +341,22 @@ test('accounting quarantine remains global across months despite valid current-m
     now: new Date('2026-10-02T18:00:00Z'), source: 'native',
   }), /ledger_accounting_blocked/);
 });
+
+test('calendar reporting reads previous-month week events, retains estimates and leaves durable balances unchanged', async (t) => {
+  const f = await fixture(t);
+  await f.ledger.activateSharedBudget({ ...activation(),
+    history: [{ id: 'week-history', at: '2026-09-28T12:00:00Z', usd: .2 }],
+    cutoverAt: '2026-09-29T12:00:00Z' });
+  const reportNow = new Date('2026-10-01T18:00:00Z');
+  const hold = await f.ledger.reserve({ now: reportNow, timeZone, source: 'native', reserveUsd: .1 });
+  await f.ledger.settle({ reservationId: hold.reservationId, actualUsd: .1, usage: { estimated: true } });
+  const before = await f.db.collection('budget_state').find({}).toArray();
+  const eventsBefore = await f.db.collection('delegated_usage').find({}).toArray();
+  const periods = await f.open().spendingPeriods({ now: reportNow, timeZone });
+  assert.equal(periods.todayUsd, .1);
+  assert.ok(Math.abs(periods.weekUsd - .3) < 1e-9);
+  assert.equal(periods.weekEstimatedUsd, .1);
+  assert.equal(periods.monthUnallocatedUsd, 0);
+  assert.deepEqual(await f.db.collection('budget_state').find({}).toArray(), before);
+  assert.deepEqual(await f.db.collection('delegated_usage').find({}).toArray(), eventsBefore);
+});

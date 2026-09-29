@@ -15,6 +15,12 @@ interface Status {
     targetUsd: number; economyUsd: number; hardUsd: number };
   flags: { paidText: boolean; delegation: boolean; images: boolean; freeSearch: boolean };
   accountingBlocked: boolean;
+  periods?: { todayUsd: number; weekUsd: number; todayEstimatedUsd: number;
+    weekEstimatedUsd: number; monthUnallocatedUsd: number; timeZone: string };
+  byProvider?: { provider: string; spendUsd: number }[];
+  byModel?: { model: string; spendUsd: number }[];
+  byProject?: { project: string; spendUsd: number }[];
+  byTask?: { task: string; spendUsd: number }[];
 }
 interface SearchResults {
   credits: number;
@@ -25,6 +31,22 @@ const endpoint = (path: string) => `${apiBaseUrl()}/api/mission-ai/${path}`;
 const dollars = (value: number) => new Intl.NumberFormat(undefined, {
   style: 'currency', currency: 'USD', maximumFractionDigits: 7,
 }).format(value);
+
+function SpendingTable({ title, rows }: { title: string; rows: { name: string; spendUsd: number }[] }) {
+  const localize = useLocalize();
+  return <div className="overflow-x-auto rounded-lg border border-border-light">
+    <table className="w-full text-left text-sm">
+      <caption className="p-3 text-left font-semibold">{title}</caption>
+      <thead><tr><th scope="col" className="px-3 py-2">{localize('com_mission_category')}</th>
+        <th scope="col" className="px-3 py-2 text-right">{localize('com_mission_month_recorded')}</th></tr></thead>
+      <tbody>{rows.map((row) => <tr key={row.name} className="border-t border-border-light">
+        <th scope="row" className="break-words px-3 py-2 font-normal">{row.name}</th>
+        <td className="px-3 py-2 text-right tabular-nums">{dollars(row.spendUsd)}</td>
+      </tr>)}</tbody>
+    </table>
+    {rows.length === 0 && <p className="p-3 text-text-secondary">{localize('com_mission_no_costs')}</p>}
+  </div>;
+}
 
 /** Same owner login, server-held credentials, no background model calls. */
 export default function MissionControl({ side = 'right' }: { side?: 'right' | 'bottom' }) {
@@ -77,6 +99,23 @@ export default function MissionControl({ side = 'right' }: { side?: 'right' | 'b
                 <div><dt>{localize('com_mission_target')}</dt><dd>{dollars(data.budget.targetUsd)}</dd></div>
                 <div><dt>{localize('com_mission_hard_limit')}</dt><dd>{dollars(data.budget.hardUsd)}</dd></div>
               </dl>
+              {data.periods && <>
+                <dl className="mt-4 grid grid-cols-2 gap-4 rounded-lg border border-border-light p-4">
+                  <div><dt>{localize('com_mission_today')}</dt><dd className="text-xl font-semibold">{dollars(data.periods.todayUsd)}</dd></div>
+                  <div><dt>{localize('com_mission_week')}</dt><dd className="text-xl font-semibold">{dollars(data.periods.weekUsd)}</dd></div>
+                </dl>
+                <p className="mt-2 text-sm text-text-secondary">{localize('com_mission_period_basis')} {data.periods.timeZone}</p>
+                {(data.periods.todayEstimatedUsd > 0 || data.periods.weekEstimatedUsd > 0) &&
+                  <p className="mt-2 text-sm text-text-secondary">{localize('com_mission_period_estimates')} {dollars(data.periods.weekEstimatedUsd)}</p>}
+                {data.periods.monthUnallocatedUsd > 0 && <p className="mt-2 text-sm text-text-secondary">
+                  {localize('com_mission_unallocated')} {dollars(data.periods.monthUnallocatedUsd)}</p>}
+              </>}
+              <div className="mt-4 space-y-4">
+                {data.byProvider && <SpendingTable title={localize('com_mission_by_provider')} rows={data.byProvider.map((row) => ({ name: row.provider, spendUsd: row.spendUsd }))} />}
+                {data.byModel && <SpendingTable title={localize('com_mission_by_model')} rows={data.byModel.map((row) => ({ name: row.model, spendUsd: row.spendUsd }))} />}
+                {data.byProject && <SpendingTable title={localize('com_mission_by_project')} rows={data.byProject.map((row) => ({ name: row.project, spendUsd: row.spendUsd }))} />}
+                {data.byTask && <SpendingTable title={localize('com_mission_by_task')} rows={data.byTask.map((row) => ({ name: row.task, spendUsd: row.spendUsd }))} />}
+              </div>
               <p className="mt-4 text-sm">{localize(data.flags.paidText ? 'com_mission_paid_enabled' : 'com_mission_paid_off')}</p>
               {data.accountingBlocked && <p role="alert">{localize('com_mission_accounting_blocked')}</p>}
               <p className="mt-2 text-sm text-text-secondary">{localize('com_mission_model_policy')}</p>

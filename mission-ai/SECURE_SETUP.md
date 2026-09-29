@@ -8,7 +8,7 @@ For the subsequent owner-approved chat/tool acceptance, a temporary native windo
 can be configured with `MISSION_AI_ACCEPTANCE_START`, `MISSION_AI_ACCEPTANCE_END`,
 `MISSION_AI_ACCEPTANCE_BASELINE_USD`, and `MISSION_AI_ACCEPTANCE_ALLOWANCE_USD`.
 It requires the ordinary native gate to remain false, expires within 30 minutes,
-cannot cross a Denver accounting-month boundary, and accepts at most $0.10 of
+cannot cross a Denver accounting-month boundary, and accepts at most $0.13 of
 additional spending. Native reservations use the lower of the normal shared cap
 and baseline plus allowance, so concurrent requests cannot exceed the test ceiling.
 Missing, malformed, expired or oversized settings deny the temporary path.
@@ -224,7 +224,7 @@ The companion captures only the primary display, compresses each JPEG to at most
 
 The default-off managed-tools configuration reuses LibreChat projects and memory in the separate test database. Project context IDs are validated and checked against the authenticated owner before endpoint construction can send a paid request. Project and personal-memory management routes remain authenticated and owner-only, with bounded payloads; other agent partitions and route aliases are refused. Inline memory uses the existing capped Sonnet turn and its approval policy. Dedicated memory-agent personalization stays disabled, so this configuration does not create a second AI call to summarize or save memory. The memory pool is bounded to 2,000 tokens and each entry to 10,000 characters. Existing opt-out and deletion controls remain available. Live persistence and UI acceptance remain pending owner activation.
 
-Cloud scheduling is not enabled in this batch. The current repository is public with default branch `main`; GitHub scheduled workflows require the default branch, so placing a workflow only on `mission-ai-v1` cannot provide an active wake-up. Preserve the original deployment: a separately approved small public wake-up repository is the proposed free runner option. Without an external wake-up, Free Render scheduling is limited to times the service is awake. No repository, cron service or paid runtime has been created for this proposal.
+Cloud scheduling is not enabled in this batch. The current repository is public with default branch `main`; GitHub scheduled workflows require the default branch, so placing a workflow only on `mission-ai-v1` cannot provide an active wake-up. Preserve the original deployment: a separately approved small public wake-up repository is the proposed free runner option. Without an external wake-up, Free Render scheduling is limited to times the service is awake. The separately approved mission-ai-wakeup repository was subsequently created and its harmless wake-up run passed. Native owner-agent scheduling remains off; no paid runtime was created.
 
 Sources: https://docs.github.com/en/billing/concepts/product-billing/github-actions and https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule
 
@@ -233,3 +233,15 @@ Native chat cost attribution uses a server-derived project header after project 
 ## Inline coding workspace selection
 
 When the owner enables Run Code on the managed MissionAI model, the composer requires an explicit selection of the existing Mac's primary workspace. The ephemeral agent loader binds that same selection to the attached Code API and conversation scope. Text-only turns receive no workspace binding. Missing selections, cloud opt-outs, different workspaces, other owners and relaxed approval modes fail before model execution. Named file/command tools do not require dynamic workspace provisioning, which remains refused by the local approval guard. Paid requests remain off during this configuration and acceptance.
+
+## Read-only calendar cost panel
+
+The owner controls display today's recorded spend, the current Monday-start week,
+and monthly provider/model/project/task breakdowns. Calendar boundaries use the
+stored accounting time zone, including daylight-saving changes. A week can span
+months; the monthly admission cap continues to use its existing monthly state.
+Reports do not write ledger events, reset approval baselines or call a provider.
+Marked estimates stay in recorded totals and are shown separately. Whole-period
+provider reconciliation adjustments remain in monthly totals but are disclosed as
+unallocated to an individual day/week. Original resumed chat remains outside this
+Mission AI ledger. Older gateway responses without calendar fields remain usable.

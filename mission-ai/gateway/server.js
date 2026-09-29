@@ -294,7 +294,7 @@ const controlHttp = createMissionControlHttp({
   token: [TOOL_TOKEN, DEVICE_TOKEN].includes(process.env.MISSION_AI_NATIVE_TOKEN)
     ? '' : process.env.MISSION_AI_NATIVE_TOKEN || '',
   safeEqual,
-  dashboard: queryMissionDashboard,
+  dashboard: () => queryMissionDashboard({ includePeriods: true }),
   flags: () => ({
     paidText: process.env.MISSION_AI_NATIVE_ENABLED === 'true',
     delegation: process.env.MISSION_AI_DELEGATION_ENABLED === 'true',
