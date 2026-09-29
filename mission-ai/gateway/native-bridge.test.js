@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
-import { createNativeBridge } from './generated/native.js';
+import { createNativeBridge, NativeBridgeError } from './generated/native.js';
+import { createNativeHttp } from './generated/http.js';
 import { createMemoryUsageLedger } from './usage-ledger.js';
 import { calculateUsageCost, maximumTextRequestCost } from './cost.js';
 
@@ -197,6 +198,27 @@ test('definitive provider rejection releases reservation, without parsing or ret
   assert.deepEqual(f.events.map((entry) => entry.type), ['reserve', 'release']);
   assert.equal((await f.summary()).reservedUsd, 0);
   assert.equal((await f.summary()).settledUsd, 0);
+});
+
+test('native HTTP exposes only the bounded upstream status for provider rejection diagnosis', async () => {
+  const http = createNativeHttp({ enabled: () => true, token: 'x'.repeat(32),
+    safeEqual: (a, b) => a === b, models: async () => [],
+    bridge: { handle: async () => { throw new NativeBridgeError('native_provider_rejected', 502, 404); } } });
+  let status;
+  let payload;
+  const response = { status(value) { status = value; return this; }, json(value) { payload = value; return value; } };
+  const originalWarn = console.warn;
+  const warnings = [];
+  console.warn = (...args) => warnings.push(args);
+  try {
+    await http.complete({ body: { stream: false } }, response);
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.equal(status, 502);
+  assert.deepEqual(payload, { error: { message: 'native_provider_rejected',
+    type: 'mission_budget_error', code: 'native_provider_rejected', provider_http_status: 404 } });
+  assert.deepEqual(warnings, [['Mission AI native provider rejected request', { providerHttpStatus: 404 }]]);
 });
 
 test('network, timeout HTTP status, 5xx and invalid success each conservatively settle full reservation once', async () => {

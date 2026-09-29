@@ -23,8 +23,9 @@ interface Dependencies {
   bridge: { handle(body: unknown): Promise<Json> };
 }
 
-function error(res: Response, status: number, code: string): unknown {
-  return res.status(status).json({ error: { message: code, type: 'mission_budget_error', code } });
+function error(res: Response, status: number, code: string, providerHttpStatus?: number): unknown {
+  return res.status(status).json({ error: { message: code, type: 'mission_budget_error', code,
+    ...(providerHttpStatus !== undefined ? { provider_http_status: providerHttpStatus } : {}) } });
 }
 
 /** Only chat completions and model discovery are exposed. Accounting completes before delivery. */
@@ -76,9 +77,13 @@ export function createNativeHttp(deps: Dependencies) {
         return res.end();
       } catch (cause) {
         if (res.destroyed || res.writableEnded) return;
-        return cause instanceof NativeBridgeError
-          ? error(res, cause.status, cause.code)
-          : error(res, 503, 'native_accounting_unready');
+        if (cause instanceof NativeBridgeError) {
+          if (cause.providerHttpStatus !== undefined) {
+            console.warn('Mission AI native provider rejected request', { providerHttpStatus: cause.providerHttpStatus });
+          }
+          return error(res, cause.status, cause.code, cause.providerHttpStatus);
+        }
+        return error(res, 503, 'native_accounting_unready');
       }
     },
     unsupported(_req: Request, res: Response): unknown {
