@@ -17,7 +17,9 @@ function sum(...values: number[]): number { return count(values.reduce((a, b) =>
 
 /** Text-only compatibility adapter. Never silently discard tool history or thinking signatures. */
 export function anthropicRequest(body: Json): Json {
-  if (body.model !== 'claude-sonnet-5-5') fail('native_model_unsupported');
+  if (!['claude-haiku-4-5', 'claude-sonnet-5-5', 'claude-opus-5-5'].includes(String(body.model))) {
+    fail('native_model_unsupported');
+  }
   for (const key of ['tools', 'tool_choice', 'parallel_tool_calls', 'temperature', 'top_p',
     'seed', 'verbosity', 'user']) {
     if (body[key] !== undefined) fail('native_field_unsupported');
@@ -25,7 +27,8 @@ export function anthropicRequest(body: Json): Json {
   for (const key of ['frequency_penalty', 'presence_penalty']) {
     if (body[key] !== undefined && body[key] !== 0) fail('native_field_unsupported');
   }
-  if (body.reasoning_effort !== undefined && body.reasoning_effort !== 'low') fail('native_field_unsupported');
+  if (body.reasoning_effort !== undefined &&
+      (body.model === 'claude-haiku-4-5' || body.reasoning_effort !== 'low')) fail('native_field_unsupported');
   const system: Json[] = [];
   const messages: Json[] = [];
   for (const message of body.messages as Json[]) {
@@ -53,7 +56,11 @@ export function anthropicRequest(body: Json): Json {
   return {
     model: body.model, messages, ...(system.length ? { system } : {}),
     max_tokens: body.max_completion_tokens, stream: false, service_tier: 'standard_only',
-    thinking: { type: 'between_tools' }, output_config: { effort: 'low' },
+    ...(body.model === 'claude-sonnet-5-5'
+      ? { thinking: { type: 'between_tools' }, output_config: { effort: 'low' } }
+      : body.model === 'claude-opus-5-5'
+        ? { thinking: { type: 'adaptive' }, output_config: { effort: 'low' } }
+        : {}),
     ...(body.stop !== undefined ? { stop_sequences: typeof body.stop === 'string' ? [body.stop] : body.stop } : {}),
   };
 }
@@ -61,7 +68,11 @@ export function anthropicRequest(body: Json): Json {
 /** Verify billable fields independently of presentation, so malformed text cannot hide a known charge. */
 export function anthropicUsage(value: unknown, model: string): { response: Json; usage: Usage; billable: boolean } {
   const response = object(value);
-  if (response.model !== model) fail('native_model_unverified', 502);
+  // Haiku's documented alias resolves to this fixed snapshot; do not accept arbitrary dated IDs.
+  if (response.model !== model &&
+      !(model === 'claude-haiku-4-5' && response.model === 'claude-haiku-4-5-20251001')) {
+    fail('native_model_unverified', 502);
+  }
   const raw = object(response.usage);
   const allowed = new Set(['input_tokens', 'output_tokens', 'cache_read_input_tokens',
     'cache_creation_input_tokens', 'cache_creation', 'service_tier', 'server_tool_use',

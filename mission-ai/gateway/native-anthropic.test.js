@@ -10,19 +10,7 @@ import { calculateUsageCost, maximumTextRequestCost } from './cost.js';
 const MODEL = 'claude-sonnet-5-5';
 const NOW = new Date('2026-09-28T12:00:00Z');
 
-const pricing = {
-  verifiedOn: '2026-09-28',
-  models: {
-    [MODEL]: {
-      provider: 'anthropic',
-      input: 2,
-      output: 10,
-      cachedInput: 0.2,
-      cacheWrite: 2.5,
-      cacheWrite1h: 4,
-    },
-  },
-};
+const pricing = JSON.parse(readFileSync(new URL('../config/pricing.json', import.meta.url), 'utf8'));
 
 const request = (extra = {}) => ({
   model: MODEL,
@@ -70,7 +58,7 @@ const response = (extra = {}) => ({
   ...extra,
 });
 
-async function fixture(overrides = {}) {
+async function fixture(overrides = {}, model = MODEL) {
   const events = [];
   const realLedger = createMemoryUsageLedger();
 
@@ -90,7 +78,7 @@ async function fixture(overrides = {}) {
   const deps = {
     provider: 'anthropic',
     providerKey: 'synthetic-key',
-    modelAllowed: (model) => model === MODEL,
+    modelAllowed: (requestedModel) => requestedModel === model,
 
     pricingLoader: () => pricing,
     estimateCost: maximumTextRequestCost,
@@ -144,7 +132,7 @@ async function fixture(overrides = {}) {
 
       return {
         status: 200,
-        json: async () => response(),
+        json: async () => response({ model }),
       };
     },
 
@@ -158,6 +146,104 @@ async function fixture(overrides = {}) {
     bridge: createNativeBridge(deps),
   };
 }
+
+for (const [model, thinking, actualUsd] of [
+  ['claude-haiku-4-5', undefined, 0.00008265],
+  ['claude-sonnet-5-5', { type: 'between_tools' }, 0.0001653],
+  ['claude-opus-5-5', { type: 'adaptive' }, 0.0003298],
+]) {
+  test(`${model} text dispatch uses supported options and settles actual usage before returning`, async () => {
+    const f = await fixture({}, model);
+    const result = await f.bridge.handle(request({ model }));
+
+    assert.deepEqual(f.events.map((event) => event.type), ['reserve', 'fetch', 'settle']);
+    const [reservation, dispatched, settled] = f.events;
+    const payload = JSON.parse(dispatched.init.body);
+    assert.equal(dispatched.url, 'https://api.anthropic.com/v1/messages');
+    assert.equal(dispatched.init.headers['x-api-key'], 'synthetic-key');
+    assert.equal(dispatched.init.headers.Authorization, undefined);
+    assert.equal(payload.model, model);
+    assert.equal(payload.max_tokens, 128);
+    assert.equal(payload.service_tier, 'standard_only');
+    assert.equal(payload.stream, false);
+    assert.deepEqual(payload.thinking, thinking);
+    assert.deepEqual(payload.output_config, thinking ? { effort: 'low' } : undefined);
+    assert.equal(reservation.input.metadata.model, model);
+    assert.equal(reservation.input.reserveUsd, maximumTextRequestCost({
+      provider: 'anthropic', model, prompt: dispatched.init.body, maxOutputTokens: 128, pricing,
+    }));
+    assert.equal(settled.input.usage.model, model);
+    assert.equal(settled.input.usage.estimated, false);
+    assert(Math.abs(settled.input.actualUsd - actualUsd) < 1e-12);
+    assert.equal(result.model, model);
+    assert.equal(result.choices[0].message.content, 'Synthetic answer.');
+    assert.equal(result.usage.total_tokens, 42);
+    const summary = await f.realLedger.summary({ now: NOW, timeZone: 'America/Denver' });
+    assert.equal(summary.reservedUsd, 0);
+    assert.equal(summary.settledUsd, settled.input.actualUsd);
+  });
+
+  test(`${model} cannot bypass configured admission or unsupported reasoning options`, async () => {
+    const disabled = await fixture({ modelAllowed: () => false }, model);
+    await assert.rejects(disabled.bridge.handle(request({ model })), { code: 'native_model_unsupported' });
+    assert.deepEqual(disabled.events, []);
+
+    for (const reasoning_effort of model === 'claude-haiku-4-5' ? ['low', 'high'] : ['high']) {
+      const f = await fixture({}, model);
+      await assert.rejects(f.bridge.handle(request({ model, reasoning_effort })), { code: 'native_field_unsupported' });
+      assert.deepEqual(f.events, []);
+    }
+  });
+}
+
+test('Anthropic text adapter rejects unapproved and cross-provider models before reservation or dispatch', async () => {
+  for (const model of ['gpt-6-luna', 'gpt-6-sol', 'gpt-6-astra', 'claude-sonnet-5', 'claude-opus-5']) {
+    const f = await fixture({ modelAllowed: () => true });
+    await assert.rejects(f.bridge.handle(request({ model })), { code: 'native_model_unsupported' });
+    assert.deepEqual(f.events, []);
+  }
+});
+
+test('Haiku response identity accepts only the requested alias and its documented fixed snapshot', async () => {
+  const model = 'claude-haiku-4-5';
+  for (const responseModel of [model, 'claude-haiku-4-5-20251001']) {
+    let attempts = 0;
+    const f = await fixture({
+      fetchImpl: async () => {
+        attempts++;
+        return { status: 200, json: async () => response({ model: responseModel }) };
+      },
+    }, model);
+    const result = await f.bridge.handle(request({ model }));
+    assert.equal(attempts, 1);
+    assert.equal(result.model, responseModel);
+    const settlement = f.events.at(-1).input;
+    assert.equal(settlement.usage.model, model);
+    assert.equal(settlement.usage.estimated, false);
+    assert(Math.abs(settlement.actualUsd - 0.00008265) < 1e-12);
+  }
+
+  for (const [requestedModel, responseModel] of [
+    [model, 'claude-haiku-4-5-20251002'],
+    [model, 'claude-haiku-4-5-latest'],
+    [model, 'claude-sonnet-5-5'],
+    ['claude-sonnet-5-5', 'claude-haiku-4-5-20251001'],
+    ['claude-opus-5-5', 'claude-opus-5-5-20260929'],
+  ]) {
+    let attempts = 0;
+    const f = await fixture({
+      fetchImpl: async () => {
+        attempts++;
+        return { status: 200, json: async () => response({ model: responseModel }) };
+      },
+    }, requestedModel);
+    await assert.rejects(f.bridge.handle(request({ model: requestedModel })), { code: 'native_model_unverified' });
+    assert.equal(attempts, 1);
+    const settlement = f.events.at(-1).input;
+    assert.equal(settlement.usage.estimated, true);
+    assert.equal(settlement.actualUsd, f.events[0].input.reserveUsd);
+  }
+});
 
 test(
   'documented unbilled refusals settle zero, retain token telemetry and do not retry',
