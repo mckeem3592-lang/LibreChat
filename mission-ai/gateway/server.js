@@ -22,6 +22,8 @@ import { createMissionControlHttp } from './generated/control.js';
 import { defaultUsageLedger } from './usage-ledger.js';
 import { loadPricing, maximumTextRequestCost, calculateUsageCost } from './cost.js';
 import { acceptanceWindow } from './acceptance-window.js';
+import { createAcceptanceImage } from './acceptance-image.js';
+import { createMongoAcceptanceStore } from './paid-acceptance.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const DEVICE_TOKEN = process.env.MISSION_AI_DEVICE_TOKEN || '';
@@ -36,8 +38,19 @@ if (!DEVICE_TOKEN || !TOOL_TOKEN) {
   throw new Error('MISSION_AI_DEVICE_TOKEN and MISSION_AI_TOOL_TOKEN are required');
 }
 
-const paidHttp = createPaidHttpHandlers({ delegateRequest, generateImage });
 const nativeLedger = defaultUsageLedger();
+let acceptanceStore;
+const getAcceptanceStore = () => acceptanceStore ??= createMongoAcceptanceStore({
+  uri: process.env.MISSION_AI_LEDGER_MONGO_URI, dbName: 'MissionAI',
+});
+const approvedImage = createAcceptanceImage({ env: process.env, ledger: nativeLedger, generateImage,
+  store: { claim: (record) => getAcceptanceStore().claim(record),
+    readClaim: (id) => getAcceptanceStore().readClaim(id),
+    markDispatch: (id, reservationId) => getAcceptanceStore().markDispatch(id, reservationId),
+    complete: (id, result) => getAcceptanceStore().complete(id, result) },
+});
+const paidHttp = createPaidHttpHandlers({ delegateRequest, generateImage: approvedImage,
+  imageAcceptanceEnabled: () => acceptanceWindow(process.env)?.scope === 'final-workflows' });
 const tavilyKey = process.env.TAVILY_API_KEY || '';
 const freeSearch = createFreeSearch({
   enabled: () => process.env.MISSION_AI_SEARCH_ENABLED === 'true',
@@ -104,7 +117,7 @@ const nativeDependencies = {
       await nativeLedger.reconcileStaleReservations({ now });
       const acceptance = acceptanceWindow(process.env, now);
       if (process.env.MISSION_AI_NATIVE_ENABLED !== 'true' && !acceptance) throw new Error('native_disabled');
-      return { ...shared, ...(acceptance ? { maxOutputTokens: 256, allowedToolNames: ['read_file'] } : {}), directCapUsd: acceptance
+      return { ...shared, ...(acceptance ? { maxOutputTokens: acceptance.maxOutputTokens, allowedToolNames: acceptance.allowedToolNames } : {}), directCapUsd: acceptance
         ? Math.min(shared.policy.hardUsd, acceptance.ceilingUsd) : shared.policy.hardUsd };
     },
     pricingLoader: loadPricing,
@@ -274,7 +287,7 @@ const missionMcp = createMissionMcpNodeHandler({
   fallback: fallbackPlan,
   delegate: delegateRequest,
   getCostComparison: async () => buildCostComparison(await queryMissionDashboard()),
-  generateImage,
+  generateImage: approvedImage,
   search: freeSearch.search,
   getSearchStatus: freeSearch.status,
 });

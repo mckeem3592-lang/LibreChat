@@ -119,3 +119,16 @@ test('provider or accounting errors retain the existing route error handling', a
   await assert.rejects(() => handlers.image({ prompt: 'test' }), (error) => error === failure);
 });
 
+
+test('explicit image acceptance admits only the image handler and does not trust body overrides', async () => {
+ let imageCalls=0;let delegateCalls=0;let admitted=true;let received;
+ const handlers=createPaidHttpHandlers({env:{MISSION_AI_DELEGATION_ENABLED:'false'},
+  imageAcceptanceEnabled:()=>admitted,
+  generateImage:async(input)=>{received=input;imageCalls++;},delegateRequest:async()=>{delegateCalls++;}});
+ await handlers.image({prompt:'Unique test',enabled:true,usageLedger:{},maxOutputTokens:99999});
+ assert.deepEqual(received,{prompt:'Unique test'});assert.equal(imageCalls,1);
+ await assert.rejects(handlers.delegate({task:'coding',prompt:'x'}),/delegation_disabled/);
+ assert.equal(delegateCalls,0);admitted=false;
+ await assert.rejects(handlers.image({prompt:'x',enabled:true}),/delegation_disabled/);
+ assert.equal(imageCalls,1);
+});

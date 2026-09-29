@@ -10,9 +10,10 @@ export function createPaidHttpHandlers({
   delegateRequest,
   generateImage,
   env = process.env,
+  imageAcceptanceEnabled = () => false,
 }) {
-  async function invoke(operation, body, fields) {
-    if (String(env.MISSION_AI_DELEGATION_ENABLED || '').toLowerCase() !== 'true') {
+  async function invoke(operation, body, fields, image = false) {
+    if (String(env.MISSION_AI_DELEGATION_ENABLED || '').toLowerCase() !== 'true' && !(image && imageAcceptanceEnabled() === true)) {
       throw new Error('delegation_disabled');
     }
 
@@ -25,7 +26,7 @@ export function createPaidHttpHandlers({
 
   return {
     delegate: (body) => invoke(delegateRequest, body, DELEGATE_FIELDS),
-    image: (body) => invoke(generateImage, body, IMAGE_FIELDS),
+    image: (body) => invoke(generateImage, body, IMAGE_FIELDS, true),
   };
 }
 

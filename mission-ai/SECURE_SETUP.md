@@ -259,3 +259,30 @@ JSON, without a new server/provider request. It excludes chat history and
 credentials, preserves displayed retained estimates and calendar basis, and labels
 the owner's $200/month subscription comparison as a baseline rather than a measured
 monthly forecast. Exporting a report does not enable a capability or change spend.
+
+
+## Separately approved final workflow window
+
+The owner approved at most $0.50 of additional charges for the remaining named
+browser-inventory, Mac-screenshot, document and image cases. Do not reuse the old
+coding-read approval. `MISSION_AI_ACCEPTANCE_SCOPE=final-workflows` requires a
+fresh UUID `MISSION_AI_ACCEPTANCE_RUN_ID`, both general paid flags exactly false,
+a drained fresh ledger baseline, and the same at-most-30-minute, single-month
+window. Its shared native/delegated ceiling is baseline plus at most $0.50.
+This security profile is fixed rather than an arbitrary tool/limit override.
+Missing or other scopes retain the original coding-read profile and $0.13 maximum.
+
+The final profile exposes only code file/command tools and the existing Mission AI
+browser inventory, screenshot and image tools to the native model, with a real
+256-token upstream output limit. All local mutations still require the owner’s
+literal `y`. It does not enable search, text delegation, other providers or schedules.
+
+Image acceptance uses exactly one 512-size square generation and one edit of that
+same returned image, with 2,048 output tokens maximum and a 400,000-character
+reference ceiling. Durable per-run claims prevent replay after restart or an
+uncertain outcome. Only one image is accepted per response; an unchanged edit is
+rejected. Image bytes are not saved in claims. The same ledger enforces the overall
+ceiling before every dispatch. Expiry/settings changes deny new reservations;
+provably unsent failures release only their own reservation. Ambiguous provider
+charges remain conservatively held. Remove every temporary setting afterward;
+these limits do not authorize leaving general paid requests enabled.

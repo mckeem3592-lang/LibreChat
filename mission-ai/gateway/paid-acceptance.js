@@ -68,6 +68,11 @@ export function createMongoAcceptanceStore({ uri, dbName }) {
         throw failure(error?.code === 11000 ? 'acceptance_already_claimed' : 'acceptance_claim_uncertain');
       }
     },
+    async readClaim(runId) {
+      return (await db()).collection('paid_acceptance_claims').findOne(
+        { _id: runId }, { projection: { _id: 1, stage: 1, result: 1 }, maxTimeMS: 5000 },
+      );
+    },
     async markDispatch(runId, reservationId) {
       try {
         const result = await (await db()).collection('paid_acceptance_claims').updateOne(
