@@ -96,7 +96,10 @@ endpoints:
 
 modelSpecs:
   enforce: true
-  prioritize: true
+  prioritize: false
+  addedEndpoints:
+    - google
+    - anthropic
   # Capped Anthropic text adapter behind the compatible transport. Keep native
   # requests disabled until reviewed deployment and paid acceptance pass.
   list:
