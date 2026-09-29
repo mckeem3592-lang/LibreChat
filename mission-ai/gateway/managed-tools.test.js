@@ -253,6 +253,18 @@ test('exact one-action resume is admitted then owner/config checked without trus
     assert.equal(invoke(createManagedToolAdmission(options), { ...request, originalUrl }).status, 403);
   }
 });
+test('approval resume admits only the saved attached coding selection sent by the client', () => {
+  const saved = { ...resumeBody(), codeApprovalMode: 'ask', codeEnvironmentMode: 'attached',
+    codeWorkspaces: [{ environmentId: 'attached-workers', workspaceId: 'primary' }] };
+  const request = { originalUrl: '/api/agents/chat/resume', body: saved };
+  assert.equal(invoke(createManagedToolAdmission(options), request).next, 1);
+  assert.equal(invoke(createManagedToolConfigGuard(options), request).next, 1);
+  for (const patch of [{ codeApprovalMode: 'fullAccess' }, { codeEnvironmentMode: 'without_attached' },
+    { codeWorkspaces: [] }, { codeWorkspaces: [{ environmentId: 'other', workspaceId: 'primary' }] },
+    { codeWorkspaces: [{ environmentId: 'attached-workers', workspaceId: '../escape' }] }]) {
+    assert.equal(invoke(createManagedToolAdmission(options), { ...request, body: { ...saved, ...patch } }).status, 403);
+  }
+});
 test('server-restored resume retains decisions and revalidates pinned model, workspace and ask mode', () => {
   const guard = createManagedResumeConfigGuard(options);
   const restored = { ...body(), ...resumeBody(), codeWorkspaces: [{ environmentId: 'attached-workers', workspaceId: 'primary' }],

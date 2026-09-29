@@ -60,7 +60,8 @@ export function projectManagedResumeParameters(input: unknown): Json | undefined
   return output;
 }
 const RESUME_FIELDS = ['conversationId', 'generationCreatedAt', 'endpoint', 'endpointType',
-  'agent_id', 'model', 'spec', 'promptPrefix', 'ephemeralAgent', 'isTemporary', 'actionId', 'decisions', 'generationProtocolVersion'];
+  'agent_id', 'model', 'spec', 'promptPrefix', 'ephemeralAgent', 'isTemporary', 'actionId', 'decisions',
+  'generationProtocolVersion', 'codeApprovalMode', 'codeEnvironmentMode', 'codeWorkspaces'];
 function resumeEnvelope(input: unknown): Json {
   const body = object(input); exactKeys(body, RESUME_FIELDS);
   for (const key of ['conversationId', 'actionId']) {
@@ -86,6 +87,23 @@ function resumeEnvelope(input: unknown): Json {
     }
     if (agent.artifacts != null && agent.artifacts !== false && agent.artifacts !== '') throw new Error();
   }
+  // The approval UI re-sends the coding selection saved with the paused
+  // conversation. Accept only the same owner-reviewed attached/ask shape.
+  if (body.codeApprovalMode != null && body.codeApprovalMode !== 'ask') throw new Error();
+  const workspaces = body.codeWorkspaces;
+  if (workspaces != null) {
+    if (!Array.isArray(workspaces) || workspaces.length > 1) throw new Error();
+    for (const value of workspaces) {
+      const workspace = object(value); exactKeys(workspace, ['environmentId', 'workspaceId']);
+      if (workspace.environmentId !== 'attached-workers' || typeof workspace.workspaceId !== 'string' ||
+          !WORKSPACE_ID.test(workspace.workspaceId)) throw new Error();
+    }
+  }
+  const coding = body.ephemeralAgent != null && object(body.ephemeralAgent).execute_code === true;
+  if (coding && body.codeEnvironmentMode != null && body.codeEnvironmentMode !== 'attached') throw new Error();
+  if (!coding && body.codeEnvironmentMode != null && body.codeEnvironmentMode !== 'without_attached') throw new Error();
+  if (coding && workspaces != null && workspaces.length !== 1) throw new Error();
+  if (!coding && workspaces != null && workspaces.length !== 0) throw new Error();
   if (!Array.isArray(body.decisions) || !body.decisions.length || body.decisions.length > 32) throw new Error();
   const ids = new Set();
   for (const item of body.decisions) {
