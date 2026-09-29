@@ -82,8 +82,8 @@ export function createEndpointsConfigService(deps: EndpointsConfigDeps): {
 
     const managedInline = process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
       process.env.MISSION_AI_MANAGED_TOOLS === 'true' &&
-      !!process.env.MISSION_AI_OWNER_EMAIL &&
-      req.user?.email?.toLowerCase() === process.env.MISSION_AI_OWNER_EMAIL.toLowerCase() &&
+      !!process.env.MISSION_AI_CONTROL_OWNER_EMAIL &&
+      req.user?.email?.toLowerCase() === process.env.MISSION_AI_CONTROL_OWNER_EMAIL.toLowerCase() &&
       !!mergedConfig.MissionAI;
     if ((mergedConfig[EModelEndpoint.agents] || managedInline) && appConfig?.endpoints?.[EModelEndpoint.agents]) {
       const {

@@ -82,7 +82,7 @@ describe('createEndpointsConfigService', () => {
     it('advertises owner inline workspace metadata without enabling the agents endpoint', async () => {
       const previous = { ...process.env };
       try {
-        Object.assign(process.env, { MISSION_AI_MANAGED_CHAT: 'true', MISSION_AI_MANAGED_TOOLS: 'true', MISSION_AI_OWNER_EMAIL: 'owner@example.invalid' });
+        Object.assign(process.env, { MISSION_AI_MANAGED_CHAT: 'true', MISSION_AI_MANAGED_TOOLS: 'true', MISSION_AI_CONTROL_OWNER_EMAIL: 'owner@example.invalid' });
         const deps = createMockDeps({
           getAppConfig: jest.fn().mockResolvedValue(appConfig({ endpoints: { agents: {
             capabilities: ['execute_code', 'stateful_code_sessions'],
