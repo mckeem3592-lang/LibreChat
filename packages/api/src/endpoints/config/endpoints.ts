@@ -80,7 +80,12 @@ export function createEndpointsConfigService(deps: EndpointsConfigDeps): {
       };
     }
 
-    if (mergedConfig[EModelEndpoint.agents] && appConfig?.endpoints?.[EModelEndpoint.agents]) {
+    const managedInline = process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
+      process.env.MISSION_AI_MANAGED_TOOLS === 'true' &&
+      !!process.env.MISSION_AI_OWNER_EMAIL &&
+      req.user?.email?.toLowerCase() === process.env.MISSION_AI_OWNER_EMAIL.toLowerCase() &&
+      !!mergedConfig.MissionAI;
+    if ((mergedConfig[EModelEndpoint.agents] || managedInline) && appConfig?.endpoints?.[EModelEndpoint.agents]) {
       const {
         disableBuilder,
         capabilities,
@@ -123,7 +128,7 @@ export function createEndpointsConfigService(deps: EndpointsConfigDeps): {
               })),
           }
         : undefined;
-      mergedConfig[EModelEndpoint.agents] = {
+      const publicAgentsConfig = {
         ...mergedConfig[EModelEndpoint.agents],
         allowedProviders,
         disableBuilder,
@@ -132,6 +137,13 @@ export function createEndpointsConfigService(deps: EndpointsConfigDeps): {
         maxSubagents,
         fileSharing,
       };
+      if (mergedConfig[EModelEndpoint.agents]) {
+        mergedConfig[EModelEndpoint.agents] = publicAgentsConfig;
+      }
+      if (managedInline) {
+        mergedConfig.MissionAI = { ...mergedConfig.MissionAI,
+          inlineAgents: { capabilities, statefulCodeSessions: clientStatefulCodeSessions } };
+      }
     }
 
     if (

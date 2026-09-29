@@ -20,8 +20,10 @@ export default function useGetAgentsConfig(options?: UseGetAgentsConfigOptions):
   const endpointsConfig = providedConfig || queriedConfig;
 
   const agentsConfig = useMemo<TAgentsEndpoint | null>(() => {
+    const inlineConfig = (endpointsConfig?.MissionAI as
+      (Record<string, unknown> & { inlineAgents?: TAgentsEndpoint }) | undefined)?.inlineAgents;
     const config: TAgentsEndpoint | null =
-      (endpointsConfig?.[EModelEndpoint.agents] as TAgentsEndpoint | null) ?? null;
+      (endpointsConfig?.[EModelEndpoint.agents] as TAgentsEndpoint | null) ?? inlineConfig ?? null;
     if (!config) return null;
 
     return {

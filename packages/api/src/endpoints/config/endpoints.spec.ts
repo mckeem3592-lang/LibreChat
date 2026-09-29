@@ -79,6 +79,36 @@ describe('createEndpointsConfigService', () => {
       expect(result?.myCustom).toBeDefined();
     });
 
+    it('advertises owner inline workspace metadata without enabling the agents endpoint', async () => {
+      const previous = { ...process.env };
+      try {
+        Object.assign(process.env, { MISSION_AI_MANAGED_CHAT: 'true', MISSION_AI_MANAGED_TOOLS: 'true', MISSION_AI_OWNER_EMAIL: 'owner@example.invalid' });
+        const deps = createMockDeps({
+          getAppConfig: jest.fn().mockResolvedValue(appConfig({ endpoints: { agents: {
+            capabilities: ['execute_code', 'stateful_code_sessions'],
+            statefulCodeSessions: { allowedEnvironments: ['conversation'], environments: [{ id: 'attached-workers', name: 'Mission AI Mac', type: 'attached', baseURL: 'https://private.invalid', pairing: { workerId: 'private-worker', tokenEnv: 'PRIVATE_TOKEN' } }] },
+            toolApproval: { enabled: true, mode: 'default', ask: ['*'] },
+          } } })),
+          loadDefaultEndpointsConfig: jest.fn().mockResolvedValue({}),
+          loadCustomEndpointsConfig: jest.fn().mockReturnValue({ MissionAI: { userProvide: false } }),
+        });
+        const { getEndpointsConfig } = createEndpointsConfigService(deps);
+        const req = fakeReq();
+        req.user.email = 'OWNER@example.invalid';
+        const result = await getEndpointsConfig(req);
+        const metadata = (result.MissionAI as unknown as { inlineAgents: { statefulCodeSessions: { environments: unknown[]; approvalModes: string[] } } }).inlineAgents;
+        expect(result.agents).toBeUndefined();
+        expect(metadata.statefulCodeSessions.environments).toEqual([{ id: 'attached-workers', name: 'Mission AI Mac', type: 'attached' }]);
+        expect(metadata.statefulCodeSessions.approvalModes).toEqual(['ask']);
+        expect(JSON.stringify(result)).not.toMatch(/private.invalid|private-worker|PRIVATE_TOKEN/);
+        req.user.email = 'other@example.invalid';
+        expect((await getEndpointsConfig(req)).MissionAI).not.toHaveProperty('inlineAgents');
+        req.user.email = 'owner@example.invalid';
+        process.env.MISSION_AI_MANAGED_TOOLS = 'false';
+        expect((await getEndpointsConfig(req)).MissionAI).not.toHaveProperty('inlineAgents');
+      } finally { process.env = previous; }
+    });
+
     it('adds azureOpenAI when configured', async () => {
       const deps = createMockDeps({
         getAppConfig: jest.fn().mockResolvedValue(
