@@ -27,7 +27,10 @@ const chatContextValue = {
   },
 } as unknown as React.ContextType<typeof ChatContext>;
 
-const createWrapper = (generationCreatedAt: number | null) =>
+const createWrapper = (
+  generationCreatedAt: number | null,
+  context: React.ContextType<typeof ChatContext> = chatContextValue,
+) =>
   function ResumeWrapper({ children }: { children: React.ReactNode }) {
     const jotaiStore = React.useRef(createStore()).current;
     const initializeState = (snapshot: MutableSnapshot) => {
@@ -41,7 +44,7 @@ const createWrapper = (generationCreatedAt: number | null) =>
     return (
       <RecoilRoot initializeState={initializeState}>
         <JotaiProvider store={jotaiStore}>
-          <ChatContext.Provider value={chatContextValue}>
+          <ChatContext.Provider value={context}>
             <ApprovalProvider>{children}</ApprovalProvider>
           </ChatContext.Provider>
         </JotaiProvider>
@@ -79,6 +82,32 @@ const pendingAction: import('librechat-data-provider').Agents.PendingAction = {
 describe('useResumeSubmit', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  test('sends the stored code decision when approving a paused MCP action', () => {
+    const wrapperWithDecision = createWrapper(1000, {
+      conversation: {
+        conversationId: 'conversation-1',
+        endpoint: 'agents',
+        agent_id: 'agent-1',
+        codeEnvironmentMode: 'without_attached',
+      },
+    } as React.ContextType<typeof ChatContext>);
+    const { result } = renderHook(() => ({ approval: useApprovalContext(), resume: useResumeSubmit() }),
+      { wrapper: wrapperWithDecision });
+    act(() => {
+      result.current.approval.registerToolCall('action-1', 'call-1');
+      result.current.approval.setDecision('action-1', 'call-1', {
+        tool_call_id: 'call-1', decision: 'approve',
+      });
+    });
+    act(() => {
+      result.current.resume.submitToolApproval('action-1');
+    });
+    expect(mockApprovalMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ codeEnvironmentMode: 'without_attached' }),
+      expect.any(Object),
+    );
   });
 
   test('synchronously deduplicates tool approval submissions and unlocks a retryable error', () => {

@@ -1,6 +1,14 @@
 import { useMutation } from '@tanstack/react-query';
 import { apiBaseUrl, EModelEndpoint } from 'librechat-data-provider';
-import type { Agents, TMessage, TEphemeralAgent, TPendingSteer } from 'librechat-data-provider';
+import type {
+  Agents,
+  CodeApprovalMode,
+  CodeEnvironmentMode,
+  CodeWorkspaceSelection,
+  TMessage,
+  TEphemeralAgent,
+  TPendingSteer,
+} from 'librechat-data-provider';
 import { postGenerationRequest } from './protocol';
 
 export interface AbortStreamParams {
@@ -77,6 +85,10 @@ export interface ResumeAgentFields {
   promptPrefix?: string | null;
   ephemeralAgent?: TEphemeralAgent | null;
   isTemporary?: boolean;
+  /** Keep the pinned code-environment decision identical to the paused request. */
+  codeApprovalMode?: CodeApprovalMode;
+  codeEnvironmentMode?: CodeEnvironmentMode;
+  codeWorkspaces?: CodeWorkspaceSelection[];
 }
 
 /** Successful resume ACK. The continuation streams over the existing SSE. */

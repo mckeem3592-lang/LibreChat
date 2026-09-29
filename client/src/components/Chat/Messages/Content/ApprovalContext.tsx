@@ -461,6 +461,9 @@ export function useResumeSubmit() {
       // the resumed run rebuilds the same graph and matches the server fingerprint.
       promptPrefix: conversation?.promptPrefix,
       ephemeralAgent: getEphemeralAgent(conversationId),
+      codeApprovalMode: conversation?.codeApprovalMode,
+      codeEnvironmentMode: conversation?.codeEnvironmentMode,
+      codeWorkspaces: conversation?.codeWorkspaces,
     };
   }, [conversation, getEphemeralAgent, activeGenerationCreatedAt]);
 
