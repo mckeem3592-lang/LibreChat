@@ -16,6 +16,8 @@ export type RequestBody = {
   messageId?: string;
   fileTokenLimit?: number;
   conversationId?: string;
+  /** Selected project, validated against the signed-in owner's projects before dispatch. */
+  chatProjectId?: string | null;
   parentMessageId?: string;
   endpoint?: string;
   endpointType?: string;
