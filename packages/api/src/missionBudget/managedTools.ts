@@ -79,8 +79,8 @@ function payload(input: unknown): { compatible: Json; restore(body: unknown): Js
   return { compatible, restore(value) {
     const body = object(value); const result: Json = { ...body, maxOutputTokens: tokens };
     delete result.max_tokens;
-    if (selected.length || coding || memory) result.ephemeralAgent = {
-      ...(selected.length ? { mcp: ['mission-ai'] } : {}), ...(coding ? { execute_code: true } : {}), ...(memory ? { memory: true } : {}),
+    if (agent || selected.length || coding || memory) result.ephemeralAgent = {
+      mcp: [...selected], ...(coding ? { execute_code: true } : {}), ...(memory ? { memory: true } : {}),
     };
     if (project != null) result.chatProjectId = project;
     if (coding) { result.codeWorkspaces = workspaces; result.codeEnvironmentMode = 'attached'; result.codeApprovalMode = 'ask'; }

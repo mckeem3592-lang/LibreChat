@@ -136,6 +136,15 @@ test('coding admits only one explicit attached workspace and keeps ask authoriza
     }
   }
 });
+
+test('coding-only admission preserves an explicit empty MCP selection', () => {
+  const input = { ...body(), ephemeralAgent: { mcp: [], execute_code: true },
+    codeEnvironmentMode: 'attached', codeApprovalMode: 'ask',
+    codeWorkspaces: [{ environmentId: 'attached-workers', workspaceId: 'primary' }] };
+  const result = invoke(createManagedToolAdmission(options), { body: input });
+  assert.equal(result.next, 1);
+  assert.deepEqual(result.req.body.ephemeralAgent, { mcp: [], execute_code: true });
+});
 test('coding configuration rejects a substitute service, unmanaged execution or changed worker identity', () => {
   for (const mutate of [
     (c) => { c.endpoints.agents.statefulCodeSessions.environments[0].baseURL = 'https://other.invalid/v1'; },

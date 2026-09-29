@@ -90,7 +90,15 @@ export async function loadEphemeralAgent(
       getAccessibleMCPServers: deps.getAccessibleMCPServers,
     }),
   );
-  if (modelSpec?.mcpServers) {
+  // The managed owner's explicit opt-out must not send browser/Mac tool
+  // descriptions (and their token cost) during a coding-only request.
+  const managedMcpOptOut = endpoint === 'MissionAI' &&
+    process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
+    process.env.MISSION_AI_MANAGED_TOOLS === 'true' &&
+    Boolean(process.env.MISSION_AI_CONTROL_OWNER_EMAIL?.trim()) &&
+    req.user?.email?.toLowerCase() === process.env.MISSION_AI_CONTROL_OWNER_EMAIL?.trim().toLowerCase() &&
+    Array.isArray(ephemeralAgent?.mcp) && ephemeralAgent.mcp.length === 0;
+  if (modelSpec?.mcpServers && !managedMcpOptOut) {
     for (const mcpServer of modelSpec.mcpServers) {
       mcpServers.add(mcpServer);
     }

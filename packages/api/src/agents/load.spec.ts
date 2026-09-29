@@ -95,6 +95,26 @@ describe('Mission AI inline attached coding', () => {
     expect(agent?.code_environment_id).toBeUndefined();
     expect(agent?.stateful_code_sessions).toBeUndefined();
   });
+  test('the managed owner can exclude model-default MCP tools from a coding-only request', async () => {
+    const req = codingRequest();
+    Object.assign(req.body.ephemeralAgent, { mcp: [] });
+    Object.assign(req.config, { modelSpecs: { list: [{ name: 'mission-ai-sonnet', mcpServers: ['mission-ai'] }] } });
+    const getMCPServerTools = jest.fn(async () => ({ 'mission_readiness': {} }) as never);
+    const agent = await loadEphemeralAgent({ req: req as never, spec: 'mission-ai-sonnet', endpoint: 'MissionAI',
+      model_parameters: { model: 'claude-sonnet-5-5' } as never }, { ...deps, getMCPServerTools });
+    expect(getMCPServerTools).not.toHaveBeenCalled();
+    expect(agent?.tools).toEqual(['execute_code']);
+    expect(req.body.ephemeralAgent).toMatchObject({ mcp: [] });
+  });
+  test('without an explicit managed opt-out, model-default MCP tools remain available', async () => {
+    const req = codingRequest();
+    Object.assign(req.config, { modelSpecs: { list: [{ name: 'mission-ai-sonnet', mcpServers: ['mission-ai'] }] } });
+    const getMCPServerTools = jest.fn(async () => ({ 'mission_readiness': {} }) as never);
+    const agent = await loadEphemeralAgent({ req: req as never, spec: 'mission-ai-sonnet', endpoint: 'MissionAI',
+      model_parameters: { model: 'claude-sonnet-5-5' } as never }, { ...deps, getMCPServerTools });
+    expect(getMCPServerTools).toHaveBeenCalledTimes(1);
+    expect(agent?.tools).toContain('mission_readiness');
+  });
 });
 
 describe('loadEphemeralAgent → resolveSender parity', () => {
