@@ -342,6 +342,7 @@ export default function useCodeWorkspace(
        *  choice there: auto-selecting it would submit a selection its persisted decision rejects.
        *  Attached selections are sealed whether or not selection-less decisions are advertised. */
       hasStoredSelections:
+        managedCoding ||
         (locked && (supportsEnvironmentDecisions || (storedSelections?.length ?? 0) > 0)) ||
         stored != null ||
         conflictingDefaults ||
