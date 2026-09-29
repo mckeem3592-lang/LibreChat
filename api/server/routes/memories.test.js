@@ -16,6 +16,7 @@ const mockOpaqueDeleteById = jest.fn((_req, res) => res.status(202).json({ deleg
 let mockFilters;
 
 jest.mock('@librechat/api', () => ({
+  createManagedToolOwnerGuard: jest.fn(() => (_req, _res, next) => next()),
   Tokenizer: { getTokenCount: jest.fn(() => 1) },
   generateCheckAccess: jest.fn(() => (_req, _res, next) => next()),
   inspectContent: jest.fn(() => null),

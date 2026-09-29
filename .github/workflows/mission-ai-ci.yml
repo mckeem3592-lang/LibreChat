@@ -12,6 +12,8 @@ on:
       - 'api/server/routes/mission-ai.js'
       - 'api/server/routes/mcp.js'
       - 'api/server/routes/code-environments*'
+      - 'api/server/routes/memories*'
+      - 'api/server/routes/projects*'
       - 'api/server/routes/index.js'
       - 'client/src/components/Nav/MissionControl.tsx'
       - 'client/src/components/Nav/__tests__/MissionControl.spec.tsx'
@@ -29,6 +31,8 @@ on:
       - 'api/server/routes/mission-ai.js'
       - 'api/server/routes/mcp.js'
       - 'api/server/routes/code-environments*'
+      - 'api/server/routes/memories*'
+      - 'api/server/routes/projects*'
       - 'api/server/routes/index.js'
       - 'client/src/components/Nav/MissionControl.tsx'
       - 'client/src/components/Nav/__tests__/MissionControl.spec.tsx'
@@ -166,10 +170,10 @@ jobs:
         run: npx tsc --noEmit
       - name: Verify managed model defaults and zero-retry client transport
         working-directory: packages/api
-        run: npx jest src/endpoints/openai/config.spec.ts src/endpoints/openai/transport.spec.ts --runInBand --coverage=false
+        run: npx jest src/endpoints/openai/config.spec.ts src/endpoints/openai/transport.spec.ts src/projects/handlers.spec.ts src/agents/memory.spec.ts --runInBand --coverage=false
       - name: Verify owner authorization on coding workspace routes
         working-directory: api
-        run: npx jest server/routes/code-environments.test.js --runInBand --coverage=false
+        run: npx jest server/routes/code-environments.test.js server/routes/memories.test.js --runInBand --coverage=false
       - name: Typecheck Mission AI interface
         working-directory: client
         run: npx tsc --noEmit

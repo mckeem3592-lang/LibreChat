@@ -4,20 +4,20 @@ import { generateKeyPairSync } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createManagedToolAdmission, createManagedToolConfigGuard, createManagedToolOwnerGuard,
-  MANAGED_NATIVE_DROPS } from './generated/managedTools.js';
+  MANAGED_NATIVE_DROPS, createManagedProjectGuard } from './generated/managedTools.js';
 const options = { enabled: true, toolsEnabled: true, ownerEmail: 'owner@synthetic.invalid',
   gatewayURL: 'https://synthetic.invalid', nativeToken: 'synthetic-native-token-1234567890123',
   toolToken: 'synthetic-tool-token-123456789012345', titleConvo: 'false' };
 function config() {
-  const ui = { multiConvo: false, agents: false, schedules: false, skills: false, memories: false,
-    runCode: true, webSearch: false, fileSearch: false, defaultPinnedTools: ['mcp'],
+  const ui = { multiConvo: false, agents: false, schedules: false, skills: false, memories: true,
+    runCode: true, webSearch: false, fileSearch: false, defaultPinnedTools: ['mcp', 'memory'],
     mcpServers: { use: true, create: false, share: false, public: false, toolsRefreshInterval: 0, statusRefreshInterval: 0 } };
   const servers = { 'mission-ai': { title: 'Mission AI', type: 'streamable-http',
     url: '${MISSION_AI_GATEWAY_URL}/mcp', headers: { Authorization: 'Bearer ${MISSION_AI_TOOL_TOKEN}' }, timeout: 120000, chatMenu: true } };
-  return { config: { memory: { disabled: true }, summarization: { enabled: false }, interface: structuredClone(ui), mcpServers: structuredClone(servers) },
-    memory: { disabled: true }, summarization: { enabled: false }, interfaceConfig: ui, mcpConfig: servers,
+  return { config: { memory: { disabled: false, personalize: false, tokenLimit: 2000, charLimit: 10000, maxInputTokens: 2000, messageWindowSize: 5 }, summarization: { enabled: false }, interface: structuredClone(ui), mcpServers: structuredClone(servers) },
+    memory: { disabled: false, personalize: false, tokenLimit: 2000, charLimit: 10000, maxInputTokens: 2000, messageWindowSize: 5 }, summarization: { enabled: false }, interfaceConfig: ui, mcpConfig: servers,
     endpoints: { all: { titleConvo: false, activityLabel: false, activityPhaseLabel: false, reasoningLabel: false },
-      agents: { disableBuilder: true, allowedProviders: ['MissionAI'], capabilities: ['tools', 'execute_code', 'stateful_code_sessions'],
+      agents: { disableBuilder: true, allowedProviders: ['MissionAI'], capabilities: ['tools', 'execute_code', 'stateful_code_sessions', 'memory'],
         statefulCodeSessions: { allowedEnvironments: ['conversation'], environments: [{ id: 'attached-workers', name: 'Mission AI Mac', type: 'attached', baseURL: 'https://mission-ai-code-api-mckee.onrender.com/v1', owner: 'deployment', default: true, pairing: { workerId: 'mac-primary-code', tokenEnv: 'MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN' } }] }, recursionLimit: 8,
         maxRecursionLimit: 8, modelResponseBodyTimeoutMs: 180000, toolApproval: { enabled: true, mode: 'default', allow: [], ask: ['*'] } },
       custom: [{ name: 'MissionAI', provider: 'anthropic', apiKey: '${MISSION_AI_NATIVE_TOKEN}',
@@ -77,7 +77,7 @@ test('configuration drift cannot weaken model, ownership, retry, loop, endpoint 
     (c) => { c.endpoints.agents.recursionLimit = 90; }, (c) => { c.endpoints.agents.toolApproval.ask = []; },
     (c) => { c.endpoints.custom[0].provider = 'openai'; }, (c) => { c.endpoints.custom[0].addParams.maxRetries = 1; },
     (c) => { c.endpoints.custom[0].models.default = ['other']; }, (c) => { c.interfaceConfig.mcpServers.create = true; },
-    (c) => { c.modelSpecs.list[0].mcpServers = ['other']; }, (c) => { c.config.interface.memories = true; }];
+    (c) => { c.modelSpecs.list[0].mcpServers = ['other']; }, (c) => { c.config.memory.agent = { provider: 'other', model: 'other' }; }];
   for (const mutate of mutations) { const changed = config(); mutate(changed);
     const result = invoke(createManagedToolConfigGuard(options), { config: changed });
     assert.equal(result.status, 503); assert.equal(result.next, 0); }
@@ -140,4 +140,45 @@ test('coding discovery admits only the configured deployment and forbids enrollm
     '/api/code-environments/pairings', '/api/code-environments/attached-workers/settings']) {
     for (const method of ['GET', 'POST', 'PATCH', 'DELETE']) assert.equal(invoke(admission, { method, originalUrl }).status, 403);
   }
+});
+
+test('inline memory and project selection survive both boundaries without hidden personalization calls', () => {
+  const input = { ...body(), chatProjectId: '0123456789abcdef01234567', ephemeralAgent: { mcp: ['mission-ai'], memory: true } };
+  for (const boundary of [createManagedToolAdmission(options), createManagedToolConfigGuard(options)]) {
+    const result = invoke(boundary, { body: structuredClone(input) }); assert.equal(result.next, 1);
+    assert.equal(result.req.body.ephemeralAgent.memory, true); assert.equal(result.req.body.chatProjectId, input.chatProjectId);
+    assert.equal(invoke(boundary, { body: { ...input, chatProjectId: '../other' } }).status, 403);
+  }
+});
+test('project context checks authenticated ownership before admitting a model request and fails closed on database errors', async () => {
+  const id = '0123456789abcdef01234567'; let calls = 0;
+  for (const result of [true, false, 'database_error']) {
+    const guard = createManagedProjectGuard({ ...options, projectOwned: async (userId, projectId) => {
+      calls++; assert.equal(userId, 'owner-id'); assert.equal(projectId, id);
+      if (result === 'database_error') throw new Error('private database details'); return result;
+    } });
+    const req = { user: { id: 'owner-id', email: options.ownerEmail }, body: { chatProjectId: id } };
+    let status; let next = 0;
+    await guard(req, { status(value) { status = value; return this; }, json() {} }, () => next++);
+    assert.equal(next, result === true ? 1 : 0); assert.equal(status, result === true ? undefined : result === false ? 403 : 503);
+  }
+  assert.equal(calls, 3);
+});
+test('project and personal memory APIs are bounded, while agent partitions and unreviewed route aliases remain denied', () => {
+  const admit = createManagedToolAdmission(options);
+  for (const [method, originalUrl, value] of [
+    ['GET', '/api/projects?limit=100&sortBy=name', undefined],
+    ['POST', '/api/projects', { name: 'Project', description: 'Context.' }],
+    ['PUT', '/api/projects/conversations/conversation-1', { projectId: '0123456789abcdef01234567' }],
+    ['GET', '/api/memories', undefined], ['POST', '/api/memories', { key: 'preference', value: 'Concise.' }],
+    ['PATCH', '/api/memories/preferences', { memories: false }],
+    ['PATCH', '/api/memories/id/0123456789abcdef01234567', { value: 'Updated.' }],
+  ]) assert.equal(invoke(admit, { method, originalUrl, body: value }).next, 1);
+  for (const [method, originalUrl, value] of [
+    ['GET', '/api/projects?limit=1000', undefined], ['GET', '/api/projects?limit=10&limit=20', undefined],
+    ['POST', '/api/projects', { name: 'Project', provider: 'other' }],
+    ['GET', '/api/memories?agentId=other', undefined], ['POST', '/api/memories', { key: 'preference', value: 'Context', agentId: 'other' }],
+    ['POST', '/api/memories', { key: 'preference', value: 'x'.repeat(10001) }],
+    ['PUT', '/api/projects/conversations/conversation-1', { projectId: '../other' }],
+  ]) assert.equal(invoke(admit, { method, originalUrl, body: value }).status, 403);
 });

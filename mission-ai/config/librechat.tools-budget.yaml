@@ -19,7 +19,7 @@ interface:
     public: false
   schedules: false
   skills: false
-  memories: false
+  memories: true
   runCode: true
   webSearch: false
   fileSearch: false
@@ -32,7 +32,7 @@ interface:
     public: false
     toolsRefreshInterval: 0
     statusRefreshInterval: 0
-  defaultPinnedTools: [mcp]
+  defaultPinnedTools: [mcp, memory]
   contextUsage: true
   # Native token-credit estimates are not the authoritative shared USD ledger.
   contextCost: false
@@ -45,8 +45,12 @@ balance:
   enabled: false
 
 memory:
-  disabled: true
+  disabled: false
   personalize: false
+  tokenLimit: 2000
+  charLimit: 10000
+  maxInputTokens: 2000
+  messageWindowSize: 5
 summarization:
   enabled: false
 
@@ -79,7 +83,7 @@ endpoints:
     # An empty allowedProviders array means unrestricted, so name only the
     # managed custom endpoint. Saved-agent access is also disabled above.
     allowedProviders: ['MissionAI']
-    capabilities: [tools, execute_code, stateful_code_sessions]
+    capabilities: [tools, execute_code, stateful_code_sessions, memory]
     statefulCodeSessions:
       allowedEnvironments: [conversation]
       environments:

@@ -3,6 +3,7 @@ const {
   reportLocatorTraversalFailure,
   isEnabled,
   createManagedToolConfigGuard,
+  createManagedProjectGuard,
   GenerationJobManager,
   TERMINAL_PUBLICATION_RECONNECT_ERROR,
   hasPersistableAbortContent,
@@ -50,7 +51,7 @@ const {
   getServerGenerationProtocol,
   negotiateExistingGenerationProtocol,
 } = require('~/server/controllers/agents/protocol');
-const { getFiles, saveMessage } = require('~/models');
+const { getFiles, saveMessage, getChatProject } = require('~/models');
 const {
   recordScheduleOutcome,
   beginScheduledStop,
@@ -1163,6 +1164,12 @@ chatRouter.use(createManagedToolConfigGuard({
   toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
   ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
   toolToken: process.env.MISSION_AI_TOOL_TOKEN,
+}));
+chatRouter.use(createManagedProjectGuard({
+  enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
+  toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+  ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
+  projectOwned: async (userId, projectId) => (await getChatProject(userId, projectId)) != null,
 }));
 if (useMessageIpLimiter || useMessageUserLimiter) {
   chatRouter.use(

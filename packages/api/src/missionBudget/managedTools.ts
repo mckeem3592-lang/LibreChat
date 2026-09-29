@@ -3,8 +3,10 @@ import {
   type ManagedChatOptions, type ManagedChatRequest, type ManagedChatResponse,
 } from './managedChat.js';
 
+import { admitManagedData } from './managedData.js';
+
 type Json = Record<string, unknown>;
-interface Request extends ManagedChatRequest { user?: { email?: string } }
+interface Request extends ManagedChatRequest { user?: { email?: string; id?: string } }
 export interface ManagedToolOptions extends ManagedChatOptions {
   toolsEnabled?: boolean; ownerEmail?: string; toolToken?: string;
 }
@@ -43,6 +45,9 @@ function owner(req: Request, options: ManagedToolOptions): boolean {
 function payload(input: unknown): { compatible: Json; restore(body: unknown): Json } {
   const original = object(input);
   const compatible = { ...original };
+  const project = original.chatProjectId;
+  if (project != null && (typeof project !== 'string' || !/^[a-fA-F0-9]{24}$/.test(project))) throw new Error();
+  if (project != null) compatible.chatProjectId = null;
   if (original.max_tokens != null && original.maxOutputTokens != null) throw new Error();
   const tokens = original.maxOutputTokens ?? original.max_tokens ?? 4096;
   if (typeof tokens !== 'number' || !Number.isSafeInteger(tokens) || tokens < 1 || tokens > 32768) throw new Error();
@@ -57,6 +62,8 @@ function payload(input: unknown): { compatible: Json; restore(body: unknown): Js
   if (!Array.isArray(selected) || selected.length > 1 || selected.some((name) => name !== 'mission-ai')) throw new Error();
   if (agent?.execute_code != null && typeof agent.execute_code !== 'boolean') throw new Error();
   const coding = agent?.execute_code === true;
+  if (agent?.memory != null && typeof agent.memory !== 'boolean') throw new Error();
+  const memory = agent?.memory === true;
   const workspaces = original.codeWorkspaces ?? [];
   if (!Array.isArray(workspaces) || workspaces.length > 1) throw new Error();
   for (const value of workspaces) {
@@ -68,13 +75,14 @@ function payload(input: unknown): { compatible: Json; restore(body: unknown): Js
   if (!coding && workspaces.length) throw new Error();
   if (original.codeApprovalMode != null && original.codeApprovalMode !== 'ask') throw new Error();
   if (coding) { compatible.codeWorkspaces = []; compatible.codeEnvironmentMode = 'without_attached'; }
-  if (agent) compatible.ephemeralAgent = { ...agent, mcp: [], execute_code: false };
+  if (agent) compatible.ephemeralAgent = { ...agent, mcp: [], execute_code: false, memory: false };
   return { compatible, restore(value) {
     const body = object(value); const result: Json = { ...body, maxOutputTokens: tokens };
     delete result.max_tokens;
-    if (selected.length || coding) result.ephemeralAgent = {
-      ...(selected.length ? { mcp: ['mission-ai'] } : {}), ...(coding ? { execute_code: true } : {}),
+    if (selected.length || coding || memory) result.ephemeralAgent = {
+      ...(selected.length ? { mcp: ['mission-ai'] } : {}), ...(coding ? { execute_code: true } : {}), ...(memory ? { memory: true } : {}),
     };
+    if (project != null) result.chatProjectId = project;
     if (coding) { result.codeWorkspaces = workspaces; result.codeEnvironmentMode = 'attached'; result.codeApprovalMode = 'ask'; }
     return result;
   } };
@@ -86,6 +94,7 @@ export function createManagedToolAdmission(options: ManagedToolOptions): Middlew
   if (!options.enabled || !options.toolsEnabled) return legacy;
   return (req, res, next) => {
     const path = req.originalUrl ?? req.url ?? '';
+    try { if (admitManagedData(req.method, path, req.body)) return next(); } catch { return reject(res); }
     if (req.method === 'GET' && (MCP_READS.has(path) || path === '/api/code-environments' ||
         path === '/api/code-environments/attached-workers/status')) return next();
     if (req.method !== 'POST' || path !== '/api/agents/chat/MissionAI') return legacy(req, res, next);
@@ -115,7 +124,7 @@ function projectConfiguration(value: unknown, options: ManagedToolOptions): Json
   }
   copy.mcpConfig = null; delete raw.mcpServers;
   const endpoints = object(copy.endpoints); const agents = object(endpoints.agents);
-  same(agents.capabilities, ['tools', 'execute_code', 'stateful_code_sessions']);
+  same(agents.capabilities, ['tools', 'execute_code', 'stateful_code_sessions', 'memory']);
   const sessions = object(agents.statefulCodeSessions);
   exactKeys(sessions, ['allowedEnvironments', 'environments']); same(sessions.allowedEnvironments, ['conversation']);
   if (!Array.isArray(sessions.environments) || sessions.environments.length !== 1) throw new Error();
@@ -150,11 +159,18 @@ function projectConfiguration(value: unknown, options: ManagedToolOptions): Json
   for (const view of [copy.interfaceConfig, raw.interface]) {
     const ui = object(view);
     if (ui.runCode !== true) throw new Error(); ui.runCode = false;
-    same(ui.defaultPinnedTools, ['mcp']); ui.defaultPinnedTools = [];
+    if (ui.memories !== true) throw new Error(); ui.memories = false;
+    same(ui.defaultPinnedTools, ['mcp', 'memory']); ui.defaultPinnedTools = [];
     const mcp = object(ui.mcpServers); exactKeys(mcp, ['use', 'create', 'share', 'public',
       'toolsRefreshInterval', 'statusRefreshInterval']);
     if (mcp.use !== true || mcp.create !== false || mcp.share !== false || mcp.public !== false) throw new Error();
     if (mcp.toolsRefreshInterval !== 0 || mcp.statusRefreshInterval !== 0) throw new Error();
+  }
+  for (const view of [copy.memory, raw.memory]) {
+    const memory = object(view); exactKeys(memory, ['disabled', 'personalize', 'tokenLimit', 'charLimit', 'maxInputTokens', 'messageWindowSize']);
+    if (memory.disabled !== false || memory.personalize !== false || memory.tokenLimit !== 2000 ||
+        memory.charLimit !== 10000 || memory.maxInputTokens !== 2000 || memory.messageWindowSize !== 5) throw new Error();
+    memory.disabled = true;
   }
   return copy;
 }
@@ -178,4 +194,19 @@ export function createManagedToolConfigGuard(options: ManagedToolOptions): Middl
 
 export function createManagedToolOwnerGuard(options: ManagedToolOptions): Middleware {
   return (req, res, next) => !options.enabled || !options.toolsEnabled || owner(req, options) ? next() : reject(res);
+}
+
+/** Project context must be owned before endpoint construction can dispatch a paid model request. */
+export function createManagedProjectGuard(options: ManagedToolOptions & {
+  projectOwned: (userId: string, projectId: string) => Promise<boolean>;
+}): Middleware {
+  return async (req, res, next) => {
+    if (!options.enabled || !options.toolsEnabled) return next();
+    const id = (req.body as Json | undefined)?.chatProjectId;
+    if (id == null) return next();
+    if (!owner(req, options) || !req.user?.id || typeof id !== 'string' || !/^[a-fA-F0-9]{24}$/.test(id)) return reject(res);
+    try { if (await options.projectOwned(req.user.id, id) !== true) return reject(res); }
+    catch { return reject(res, true); }
+    return next();
+  };
 }

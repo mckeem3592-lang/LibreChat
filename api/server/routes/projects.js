@@ -1,5 +1,5 @@
 const express = require('express');
-const { createProjectHandlers } = require('@librechat/api');
+const { createProjectHandlers, createManagedToolOwnerGuard } = require('@librechat/api');
 const requireJwtAuth = require('~/server/middleware/requireJwtAuth');
 const db = require('~/models');
 
@@ -14,6 +14,11 @@ const handlers = createProjectHandlers({
 });
 
 router.use(requireJwtAuth);
+router.use(createManagedToolOwnerGuard({
+  enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
+  toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+  ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
+}));
 
 router.get('/', handlers.listProjects);
 router.post('/', handlers.createProject);
