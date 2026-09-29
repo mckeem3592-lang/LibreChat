@@ -94,18 +94,18 @@ describe('createEndpointsConfigService', () => {
         });
         const { getEndpointsConfig } = createEndpointsConfigService(deps);
         const req = fakeReq();
-        req.user.email = 'OWNER@example.invalid';
+        req.user!.email = 'OWNER@example.invalid';
         const result = await getEndpointsConfig(req);
-        const metadata = (result.MissionAI as unknown as { inlineAgents: { statefulCodeSessions: { environments: unknown[]; approvalModes: string[] } } }).inlineAgents;
-        expect(result.agents).toBeUndefined();
+        const metadata = (result!.MissionAI as unknown as { inlineAgents: { statefulCodeSessions: { environments: unknown[]; approvalModes: string[] } } }).inlineAgents;
+        expect(result?.agents).toBeUndefined();
         expect(metadata.statefulCodeSessions.environments).toEqual([{ id: 'attached-workers', name: 'Mission AI Mac', type: 'attached' }]);
         expect(metadata.statefulCodeSessions.approvalModes).toEqual(['ask']);
         expect(JSON.stringify(result)).not.toMatch(/private.invalid|private-worker|PRIVATE_TOKEN/);
-        req.user.email = 'other@example.invalid';
-        expect((await getEndpointsConfig(req)).MissionAI).not.toHaveProperty('inlineAgents');
-        req.user.email = 'owner@example.invalid';
+        req.user!.email = 'other@example.invalid';
+        expect((await getEndpointsConfig(req))?.MissionAI).not.toHaveProperty('inlineAgents');
+        req.user!.email = 'owner@example.invalid';
         process.env.MISSION_AI_MANAGED_TOOLS = 'false';
-        expect((await getEndpointsConfig(req)).MissionAI).not.toHaveProperty('inlineAgents');
+        expect((await getEndpointsConfig(req))?.MissionAI).not.toHaveProperty('inlineAgents');
       } finally { process.env = previous; }
     });
 
