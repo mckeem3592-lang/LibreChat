@@ -17,6 +17,9 @@ on:
       - 'packages/api/src/endpoints/config/endpoints.ts'
       - 'packages/api/src/endpoints/config/endpoints.spec.ts'
       - 'client/src/hooks/Agents/__tests__/useCodeWorkspace.test.tsx'
+      - 'client/src/components/Chat/Messages/Content/ApprovalContext.tsx'
+      - 'client/src/components/Chat/Messages/Content/__tests__/ApprovalContext.test.tsx'
+      - 'client/src/data-provider/SSE/mutations.ts'
       - 'api/server/routes/agents/index.js'
       - 'api/server/routes/mission-ai.js'
       - 'api/server/routes/mcp.js'
@@ -45,6 +48,9 @@ on:
       - 'packages/api/src/endpoints/config/endpoints.ts'
       - 'packages/api/src/endpoints/config/endpoints.spec.ts'
       - 'client/src/hooks/Agents/__tests__/useCodeWorkspace.test.tsx'
+      - 'client/src/components/Chat/Messages/Content/ApprovalContext.tsx'
+      - 'client/src/components/Chat/Messages/Content/__tests__/ApprovalContext.test.tsx'
+      - 'client/src/data-provider/SSE/mutations.ts'
       - 'api/server/routes/agents/index.js'
       - 'api/server/routes/mission-ai.js'
       - 'api/server/routes/mcp.js'
@@ -197,7 +203,7 @@ jobs:
         run: npx tsc --noEmit
       - name: Verify Mission AI controls and free-search interface
         working-directory: client
-        run: npx jest src/components/Nav/__tests__/MissionControl.spec.tsx src/hooks/Agents/__tests__/useCodeWorkspace.test.tsx src/hooks/Agents/__tests__/useGetAgentsConfig.test.tsx --runInBand --coverage=false
+        run: npx jest src/components/Nav/__tests__/MissionControl.spec.tsx src/hooks/Agents/__tests__/useCodeWorkspace.test.tsx src/hooks/Agents/__tests__/useGetAgentsConfig.test.tsx src/components/Chat/Messages/Content/__tests__/ApprovalContext.test.tsx --runInBand --coverage=false
       - name: Audit existing chat loading with simulated database latency
         env:
           E2E_CHROMIUM_CHANNEL: chrome
