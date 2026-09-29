@@ -1,6 +1,8 @@
 import { useCallback, useMemo } from 'react';
+import { useRecoilValue } from 'recoil';
 import {
   EModelEndpoint,
+  Constants,
   Tools,
   isEphemeralAgentId,
   isCodeWorkspaceSelections,
@@ -22,6 +24,7 @@ import type {
   TCodeEnvironmentStatusResponse,
   TConversation,
   TPublicCodeEnvironment,
+  Agent,
 } from 'librechat-data-provider';
 import type { CodeEnvironmentReconciliation } from '~/store/codeEnvironmentReconciliation';
 import {
@@ -36,6 +39,7 @@ import useAgentToolPermissions from './useAgentToolPermissions';
 import useHasAccess from '~/hooks/Roles/useHasAccess';
 import useGetAgentsConfig from './useGetAgentsConfig';
 import { useAgentsMapContext } from '~/Providers';
+import { ephemeralAgentByConvoId } from '~/store/agents';
 
 export type CodeWorkspaceState =
   | 'not_required'
@@ -181,18 +185,32 @@ export default function useCodeWorkspace(
     agentsConfig?.capabilities?.includes(AgentCapabilities.execute_code) === true &&
     agentsConfig.capabilities.includes(AgentCapabilities.stateful_code_sessions);
   const agentsMap = useAgentsMapContext();
-  const { agent: primaryAgent } = useAgentToolPermissions(conversation?.agent_id);
+  const { agent: savedPrimaryAgent } = useAgentToolPermissions(conversation?.agent_id);
   const { agent: addedAgent } = useAgentToolPermissions(addedConversation?.agent_id);
   const statefulCodeSessions = agentsConfig?.statefulCodeSessions as
     | TConfig['statefulCodeSessions']
     | undefined;
+  const ephemeral = useRecoilValue(ephemeralAgentByConvoId(conversation?.conversationId ?? Constants.NEW_CONVO));
+  const managedCoding = conversation?.endpoint === 'MissionAI' && !conversation.agent_id &&
+    ephemeral?.execute_code === true && codeEnabled &&
+    statefulCodeSessions?.environments?.length === 1 &&
+    statefulCodeSessions.environments[0].id === 'attached-workers' &&
+    statefulCodeSessions.environments[0].type === 'attached';
+  const managedAgent = useMemo(() => managedCoding ? {
+    id: 'mission-ai-inline-coding',
+    tools: [Tools.execute_code],
+    stateful_code_sessions: true,
+    stateful_code_environment: 'conversation',
+    code_environment_id: 'attached-workers',
+  } as Agent : undefined, [managedCoding]);
+  const primaryAgent = managedAgent ?? savedPrimaryAgent;
   const reachable = useMemo(
     () =>
       collectReachableAgents([primaryAgent, addedAgent], agentsMap, [
-        conversation?.agent_id,
+        managedAgent?.id ?? conversation?.agent_id,
         addedConversation?.agent_id,
       ]),
-    [addedAgent, agentsMap, primaryAgent, conversation?.agent_id, addedConversation?.agent_id],
+    [addedAgent, agentsMap, primaryAgent, managedAgent, conversation?.agent_id, addedConversation?.agent_id],
   );
   const workspaceMetadata = useMemo(() => {
     const unique = new Map<string, TPublicCodeEnvironment>();
@@ -247,8 +265,8 @@ export default function useCodeWorkspace(
     statefulCodeSessions?.environments,
   ]);
   const isAgentsConversation =
-    (conversation?.endpointType ?? conversation?.endpoint) === EModelEndpoint.agents;
-  const expectedRoot = conversation?.agent_id != null || addedConversation?.agent_id != null;
+    managedCoding || (conversation?.endpointType ?? conversation?.endpoint) === EModelEndpoint.agents;
+  const expectedRoot = managedCoding || conversation?.agent_id != null || addedConversation?.agent_id != null;
   const expectedSavedAgent = [conversation?.agent_id, addedConversation?.agent_id].some(
     (agentId) => agentId != null && !isEphemeralAgentId(agentId),
   );
@@ -399,6 +417,7 @@ export default function useCodeWorkspace(
   } else if (inferredMode == null && required && supportsEnvironmentDecisions) {
     inferredMode = 'without_attached';
   }
+  if (managedCoding && inferredMode === 'without_attached') inferredMode = undefined;
   let state: CodeWorkspaceState;
   const hasLockedWithoutAttachedDecision =
     inferredMode === 'without_attached' &&
@@ -427,6 +446,13 @@ export default function useCodeWorkspace(
        * Nothing reports that to the reader, so the send waits instead.
        */
       if (replacingDecision) return undefined;
+      if (managedCoding) {
+        if (candidateMode === 'without_attached') return undefined;
+        const codeWorkspaces = resolveSelections(candidateSelections);
+        return codeWorkspaces?.length === 1 && codeWorkspaces[0].workspaceId === 'primary'
+          ? { codeEnvironmentMode: 'attached', codeWorkspaces }
+          : undefined;
+      }
       const requestedMode =
         candidateMode ??
         inferredMode ??
@@ -453,6 +479,7 @@ export default function useCodeWorkspace(
       required,
       resolveSelections,
       supportsEnvironmentDecisions,
+      managedCoding,
     ],
   );
   const canSubmit = resolveSubmission(storedSelections, conversation?.codeEnvironmentMode) != null;
@@ -545,7 +572,7 @@ export default function useCodeWorkspace(
   return {
     recovery,
     required,
-    supportsEnvironmentDecisions,
+    supportsEnvironmentDecisions: managedCoding ? false : supportsEnvironmentDecisions,
     locked,
     mode: inferredMode,
     state,

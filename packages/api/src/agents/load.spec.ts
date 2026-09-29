@@ -60,6 +60,43 @@ const customEndpointOption = {
   model: 'claude-opus-4',
 };
 
+describe('Mission AI inline attached coding', () => {
+  const originalEnv = process.env;
+  beforeAll(() => {
+    process.env = { ...originalEnv, MISSION_AI_MANAGED_CHAT: 'true',
+      MISSION_AI_MANAGED_TOOLS: 'true', MISSION_AI_CONTROL_OWNER_EMAIL: 'owner@synthetic.invalid' };
+  });
+  afterAll(() => { process.env = originalEnv; });
+  const codingRequest = () => ({
+    user: { id: 'synthetic-owner', email: 'owner@synthetic.invalid' },
+    config: { endpoints: {
+      custom: [{ name: 'MissionAI', models: { default: ['claude-sonnet-5-5'] } }],
+      agents: { statefulCodeSessions: { environments: [{ id: 'attached-workers', type: 'attached',
+        baseURL: 'https://mission-ai-code-api-mckee.onrender.com/v1' }] } },
+    } },
+    body: { ephemeralAgent: { execute_code: true }, codeEnvironmentMode: 'attached',
+      codeApprovalMode: 'ask', codeWorkspaces: [{ environmentId: 'attached-workers', workspaceId: 'primary' }] },
+  });
+  test('the actual ephemeral agent loader binds coding to the named attached workspace', async () => {
+    const agent = await loadEphemeralAgent({ req: codingRequest() as never, endpoint: 'MissionAI',
+      model_parameters: { model: 'claude-sonnet-5-5' } as never }, deps);
+    expect(agent).toMatchObject({ stateful_code_sessions: true, stateful_code_environment: 'conversation',
+      code_environment_id: 'attached-workers', code_workspace_id: 'primary' });
+  });
+  test('missing selection fails before any model or cloud code request', async () => {
+    const req = codingRequest(); req.body.codeWorkspaces = [];
+    await expect(loadEphemeralAgent({ req: req as never, endpoint: 'MissionAI',
+      model_parameters: { model: 'claude-sonnet-5-5' } as never }, deps)).rejects.toThrow('approved attached coding workspace');
+  });
+  test('text-only Mission AI agents do not receive coding access', async () => {
+    const req = codingRequest(); req.body.ephemeralAgent.execute_code = false;
+    const agent = await loadEphemeralAgent({ req: req as never, endpoint: 'MissionAI',
+      model_parameters: { model: 'claude-sonnet-5-5' } as never }, deps);
+    expect(agent?.code_environment_id).toBeUndefined();
+    expect(agent?.stateful_code_sessions).toBeUndefined();
+  });
+});
+
 describe('loadEphemeralAgent → resolveSender parity', () => {
   test('the persisted sender matches the spec label encoded into the agent id', async () => {
     const agent = await loadEphemeralAgent(

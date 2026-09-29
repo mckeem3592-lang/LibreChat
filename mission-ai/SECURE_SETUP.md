@@ -189,3 +189,7 @@ Cloud scheduling is not enabled in this batch. The current repository is public 
 Sources: https://docs.github.com/en/billing/concepts/product-billing/github-actions and https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule
 
 Native chat cost attribution uses a server-derived project header after project ownership validation. The gateway records the bounded project identifier in private accounting metadata and removes it from upstream provider requests. No project context is automatically added to prompts for accounting. Live project cost acceptance remains pending.
+
+## Inline coding workspace selection
+
+When the owner enables Run Code on the managed MissionAI model, the composer requires an explicit selection of the existing Mac's primary workspace. The ephemeral agent loader binds that same selection to the attached Code API and conversation scope. Text-only turns receive no workspace binding. Missing selections, cloud opt-outs, different workspaces, other owners and relaxed approval modes fail before model execution. Named file/command tools do not require dynamic workspace provisioning, which remains refused by the local approval guard. Paid requests remain off during this configuration and acceptance.

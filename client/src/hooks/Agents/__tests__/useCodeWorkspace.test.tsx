@@ -14,6 +14,12 @@ const mockAgentsMap = jest.fn();
 const mockAccess = jest.fn();
 const mockPreference = jest.fn();
 const mockRememberPreference = jest.fn();
+const mockEphemeral = jest.fn();
+jest.mock('recoil', () => ({
+  ...jest.requireActual('recoil'),
+  useRecoilValue: () => mockEphemeral(),
+}));
+jest.mock('~/store/agents', () => ({ ephemeralAgentByConvoId: () => 'synthetic-ephemeral' }));
 jest.mock('../workspacePreferences', () => ({
   useWorkspacePreferences: () => ({ get: mockPreference, remember: mockRememberPreference }),
 }));
@@ -44,6 +50,7 @@ const conversation = (codeWorkspaces?: TConversation['codeWorkspaces']): TConver
 
 describe('useCodeWorkspace', () => {
   beforeEach(() => {
+    mockEphemeral.mockReturnValue(null);
     mockPreference.mockReset();
     mockRememberPreference.mockReset();
     mockAccess.mockReturnValue(true);
@@ -87,6 +94,36 @@ describe('useCodeWorkspace', () => {
         isError: false,
       },
     ]);
+  });
+
+  it('requires an explicit named Mac workspace for Mission AI inline coding', () => {
+    mockEphemeral.mockReturnValue({ execute_code: true });
+    mockAgentPermissions.mockReturnValue({ agent: undefined });
+    const config = mockAgentsConfig();
+    config.agentsConfig.statefulCodeSessions.environments[0].id = 'attached-workers';
+    mockStatus.mockReturnValue([{ data: {
+      environmentId: 'attached-workers', status: 'ready', statefulWorkspace: false,
+      workspaces: [{ id: 'primary', name: 'Mission AI project' }],
+    }, isLoading: false, isError: false }]);
+    const { result, rerender } = renderHook(({ chat }) => useCodeWorkspace(chat), {
+      initialProps: { chat: { conversationId: 'new', endpoint: 'MissionAI' } as TConversation },
+    });
+    expect(result.current.visible).toBe(true);
+    expect(result.current.required).toBe(true);
+    expect(result.current.canSubmit).toBe(false);
+    expect(result.current.resolveSubmission()).toBeUndefined();
+    expect(result.current.resolveSubmission(undefined, 'without_attached')).toBeUndefined();
+    expect(result.current.supportsEnvironmentDecisions).toBe(false);
+    const selected = [{ environmentId: 'attached-workers', workspaceId: 'primary' }];
+    expect(result.current.resolveSubmission(selected, 'attached')).toEqual({
+      codeEnvironmentMode: 'attached', codeWorkspaces: selected,
+    });
+    rerender({ chat: { conversationId: 'new', endpoint: 'MissionAI', codeWorkspaces: selected,
+      codeEnvironmentMode: 'attached' } as TConversation });
+    expect(result.current.canSubmit).toBe(true);
+    mockEphemeral.mockReturnValue({ execute_code: false });
+    rerender({ chat: { conversationId: 'new', endpoint: 'MissionAI' } as TConversation });
+    expect(result.current.required).toBe(false);
   });
 
   it.each(['role', 'execute_code', 'stateful_code_sessions'])(

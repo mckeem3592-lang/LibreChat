@@ -26,6 +26,7 @@ import { synthesizeBackgroundToolOptions } from '~/agents/background';
 import { mergeSynthesizedToolOptions } from '~/agents/selection';
 import { synthesizeIntentToolOptions } from '~/agents/intent';
 import { getCustomEndpointConfig } from '~/app/config';
+import { managedWorkspaceBinding } from '~/missionBudget/managedWorkspace';
 
 const { mcp_all, mcp_delimiter } = Constants;
 type ModelParametersWithPromptPrefix = AgentModelParameters & { promptPrefix?: string | null };
@@ -51,7 +52,7 @@ export interface LoadAgentDeps {
 
 export interface LoadAgentParams {
   req: {
-    user?: { id?: string; role?: string };
+    user?: { id?: string; role?: string; email?: string };
     config?: AppConfig;
     body?: {
       promptPrefix?: string;
@@ -187,6 +188,16 @@ export async function loadEphemeralAgent(
     model,
     tools,
   };
+  Object.assign(result, managedWorkspaceBinding({
+    endpoint,
+    enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
+    toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+    executeCode: tools.includes(Tools.execute_code),
+    ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
+    userEmail: req.user?.email,
+    body: req.body,
+    environments: req.config?.endpoints?.agents?.statefulCodeSessions?.environments,
+  }));
 
   const backgroundToolOptions: AgentToolOptions | undefined = synthesizeBackgroundToolOptions({
     ephemeralAgent,
