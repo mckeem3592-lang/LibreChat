@@ -1,5 +1,5 @@
 {
-  "verifiedOn": "2026-09-27",
+  "verifiedOn": "2026-09-29",
   "currency": "USD",
   "unit": "per_1m_tokens",
   "reservation": {
@@ -12,50 +12,93 @@
       "cachedInput": 0.01,
       "cacheWrite": 0.125,
       "output": 0.5,
+      "verifiedOn": "2026-09-29",
+      "source": "https://developers.openai.com/api/docs/models/gpt-6-luna",
       "longContext": {
         "aboveInputTokens": 272000,
         "inputMultiplier": 2,
         "outputMultiplier": 1.5,
-        "verifiedOn": "2026-09-28",
-        "source": "https://developers.openai.com/api/docs/models/gpt-6-luna"
+        "verifiedOn": "2026-09-29",
+        "source": "https://developers.openai.com/api/docs/pricing"
       }
     },
+
     "gpt-6-sol": {
       "provider": "openai",
       "input": 2,
       "cachedInput": 0.2,
       "cacheWrite": 2.5,
       "output": 10,
+      "verifiedOn": "2026-09-29",
+      "source": "https://developers.openai.com/api/docs/models/gpt-6-sol",
       "longContext": {
         "aboveInputTokens": 272000,
         "inputMultiplier": 2,
         "outputMultiplier": 1.5,
-        "verifiedOn": "2026-09-28",
-        "source": "https://developers.openai.com/api/docs/models/gpt-6-sol"
+        "verifiedOn": "2026-09-29",
+        "source": "https://developers.openai.com/api/docs/pricing"
       }
     },
+
     "gpt-6-astra": {
       "provider": "openai",
       "input": 10,
       "cachedInput": 1,
       "cacheWrite": 12.5,
       "output": 50,
+      "verifiedOn": "2026-09-29",
+      "source": "https://developers.openai.com/api/docs/models/gpt-6-astra",
       "longContext": {
         "aboveInputTokens": 272000,
         "inputMultiplier": 2,
         "outputMultiplier": 1.5,
-        "verifiedOn": "2026-09-28",
-        "source": "https://developers.openai.com/api/docs/models/gpt-6-astra"
+        "verifiedOn": "2026-09-29",
+        "source": "https://developers.openai.com/api/docs/pricing"
       }
     },
+
+    "claude-haiku-4-5": {
+      "provider": "anthropic",
+      "input": 1,
+      "cachedInput": 0.1,
+      "cacheWrite": 1.25,
+      "cacheWrite1h": 2,
+      "output": 5,
+      "verifiedOn": "2026-09-29",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing"
+    },
+
     "claude-sonnet-5": {
       "provider": "anthropic",
       "input": 2,
       "cachedInput": 0.2,
       "cacheWrite": 2.5,
-      "output": 10,
-      "cacheWrite1h": 4
+      "cacheWrite1h": 4,
+      "output": 10
     },
+
+    "claude-sonnet-5-5": {
+      "provider": "anthropic",
+      "input": 2,
+      "cachedInput": 0.2,
+      "cacheWrite": 2.5,
+      "cacheWrite1h": 4,
+      "output": 10,
+      "verifiedOn": "2026-09-29",
+      "source": "https://platform.claude.com/docs/en/models/sonnet-5-5/overview"
+    },
+
+    "claude-opus-5-5": {
+      "provider": "anthropic",
+      "input": 4,
+      "cachedInput": 0.2,
+      "cacheWrite": 5,
+      "cacheWrite1h": 8,
+      "output": 20,
+      "verifiedOn": "2026-09-29",
+      "source": "https://platform.claude.com/docs/en/models/opus-5-5/overview"
+    },
+
     "gemini-3.8-flash": {
       "provider": "google",
       "input": 0.75,
@@ -63,6 +106,7 @@
       "cacheWrite": 0,
       "output": 3.75
     },
+
     "gemini-3.1-flash-image": {
       "provider": "google",
       "input": 0.5,
@@ -70,16 +114,6 @@
       "cacheWrite": 0,
       "output": 3,
       "imageOutput": 60
-    },
-    "claude-sonnet-5-5": {
-      "provider": "anthropic",
-      "input": 2,
-      "output": 10,
-      "cachedInput": 0.2,
-      "cacheWrite": 2.5,
-      "cacheWrite1h": 4,
-      "verifiedOn": "2026-09-28",
-      "source": "https://platform.claude.com/docs/en/models/sonnet-5-5/overview"
     }
   }
 }
