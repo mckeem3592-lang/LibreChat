@@ -1,5 +1,11 @@
 # Accounting acceptance
 
+Sonnet refusal billing follows [Anthropic's rules](https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback),
+verified September 28, 2026. Known unbilled pre-output refusals settle zero while
+retaining token telemetry. Billed categories and partial-output refusals settle
+their known usage; incomplete content is discarded. Unknown refusal categories
+retain the conservative estimate. No refusal triggers a retry or fallback.
+
 Paid delegation remains disabled during these checks. Use the development gateway and isolated test databases; never redirect tests to LibreChat's application database.
 
 ## Repeatable checks

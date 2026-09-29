@@ -6,6 +6,7 @@ import { apiBaseUrl, request } from 'librechat-data-provider';
 import { Button, Input, TooltipAnchor } from '@librechat/client';
 import { useLocalize } from '~/hooks';
 import { useAuthContext } from '~/hooks/AuthContext';
+import { useGetEndpointsQuery } from '~/data-provider/Endpoints/queries';
 
 const openAtoms = { right: atom(false), bottom: atom(false) };
 const queryAtom = atom('');
@@ -29,12 +30,14 @@ const dollars = (value: number) => new Intl.NumberFormat(undefined, {
 export default function MissionControl({ side = 'right' }: { side?: 'right' | 'bottom' }) {
   const localize = useLocalize();
   const { user, isAuthenticated } = useAuthContext();
+  const { data: endpoints } = useGetEndpointsQuery();
   const [open, setOpen] = useAtom(openAtoms[side]);
   const [query, setQuery] = useAtom(queryAtom);
   const capabilities = useQuery({
     queryKey: ['mission-ai-capabilities', user?.id],
     queryFn: () => request.get<{ enabled: boolean }>(endpoint('capabilities')),
-    enabled: isAuthenticated, retry: false, staleTime: Infinity, refetchOnWindowFocus: false,
+    enabled: isAuthenticated && endpoints?.MissionAI != null,
+    retry: false, staleTime: Infinity, refetchOnWindowFocus: false,
   });
   const status = useQuery({
     queryKey: ['mission-ai-status', user?.id], queryFn: () => request.get<Status>(endpoint('status')),

@@ -41,6 +41,45 @@ async function fixture(overrides = {}) {
   return { deps, events, realLedger, bridge: createNativeBridge(deps) };
 }
 
+test('documented unbilled refusals settle zero, retain token telemetry and do not retry', async () => {
+  for (const category of ['cyber', 'general_harms', null]) {
+    let attempts = 0;
+    const raw = response({ content: [], stop_reason: 'refusal',
+      stop_details: { type: 'refusal', category, explanation: null },
+      usage: { input_tokens: 20, output_tokens: 0, service_tier: 'standard' } });
+    const f = await fixture({ fetchImpl: async () => { attempts++; return { status: 200, json: async () => raw }; } });
+    const result = await f.bridge.handle(request());
+    const settled = f.events.at(-1).input;
+    assert.equal(attempts, 1); assert.equal(settled.actualUsd, 0);
+    assert.equal(settled.usage.inputTokens, 20); assert.equal(settled.usage.unbilledRefusal, true);
+    assert.equal(result.choices[0].message.content, null);
+    assert.equal(result.choices[0].finish_reason, 'content_filter');
+  }
+});
+test('billed and partial-output refusals settle known cost and discard incomplete content', async () => {
+  for (const category of ['bio', 'frontier_llm', 'reasoning_extraction']) {
+    const raw = response({ content: [], stop_reason: 'refusal', stop_details: { type: 'refusal', category },
+      usage: { input_tokens: 20, output_tokens: 0, service_tier: 'standard' } });
+    const f = await fixture({ fetchImpl: async () => ({ status: 200, json: async () => raw }) });
+    const result = await f.bridge.handle(request());
+    assert.equal(f.events.at(-1).input.actualUsd, .00004);
+    assert.equal(result.choices[0].message.content, null);
+  }
+  const raw = response({ stop_reason: 'refusal', stop_details: { type: 'refusal', category: 'cyber' } });
+  const f = await fixture({ fetchImpl: async () => ({ status: 200, json: async () => raw }) });
+  const result = await f.bridge.handle(request());
+  assert.equal(f.events.at(-1).input.usage.estimated, false);
+  assert(f.events.at(-1).input.actualUsd > 0); assert.equal(result.choices[0].message.content, null);
+});
+test('unknown pre-output refusal billing retains the conservative estimate', async () => {
+  const raw = response({ content: [], stop_reason: 'refusal',
+    stop_details: { type: 'refusal', category: 'future_unknown_category' },
+    usage: { input_tokens: 20, output_tokens: 0, service_tier: 'standard' } });
+  const f = await fixture({ fetchImpl: async () => ({ status: 200, json: async () => raw }) });
+  await assert.rejects(f.bridge.handle(request()), { code: 'native_usage_unverified' });
+  assert.equal(f.events.at(-1).input.usage.estimated, true);
+});
+
 test('Anthropic text transport reserves translated payload and settles additive cache TTL usage before answering', async () => {
   const f = await fixture();
   const result = await f.bridge.handle(request({ messages: [

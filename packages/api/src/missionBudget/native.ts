@@ -417,11 +417,14 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
         throw failure ?? new NativeBridgeError('native_provider_response_invalid', 502);
       }
       try {
-        const cost = deps.calculateCost(provider, model, response.usage, pricing);
+        const unbilledRefusal = provider === 'anthropic' && 'billable' in response && response.billable === false;
+        const cost = unbilledRefusal ? { totalUsd: 0, pricingVerifiedOn: null }
+          : deps.calculateCost(provider, model, response.usage, pricing);
         const actualUsd = amount(cost.totalUsd);
         await deps.ledger.settle({
           reservationId: reservation.reservationId, actualUsd,
           usage: { ...metadata, ...response.usage, serviceTier: provider === 'anthropic' ? 'standard' : 'default', estimated: false,
+            ...(unbilledRefusal ? { unbilledRefusal: true, billingRuleVerifiedOn: '2026-09-28' } : {}),
             pricingVerifiedOn: cost.pricingVerifiedOn ?? null },
         });
         if (actualUsd > reserveUsd + 1e-9) fail('reservation_underestimated', 503);

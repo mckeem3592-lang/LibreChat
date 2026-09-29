@@ -59,7 +59,7 @@ export function anthropicRequest(body: Json): Json {
 }
 
 /** Verify billable fields independently of presentation, so malformed text cannot hide a known charge. */
-export function anthropicUsage(value: unknown, model: string): { response: Json; usage: Usage } {
+export function anthropicUsage(value: unknown, model: string): { response: Json; usage: Usage; billable: boolean } {
   const response = object(value);
   if (response.model !== model) fail('native_model_unverified', 502);
   const raw = object(response.usage);
@@ -94,18 +94,34 @@ export function anthropicUsage(value: unknown, model: string): { response: Json;
     if (Object.keys(detail).some((key) => key !== 'thinking_tokens') ||
         count(detail.thinking_tokens) > outputTokens) fail('native_usage_unverified', 502);
   }
-  return { response, usage: { inputTokens, outputTokens, cachedInputTokens,
+  let billable = true;
+  if (response.stop_reason === 'refusal' && outputTokens === 0) {
+    // September 2026 provider policy: unknown categories retain an estimate.
+    if (!Array.isArray(response.content) || response.content.length) fail('native_usage_unverified', 502);
+    const details = object(response.stop_details);
+    if (details.type !== 'refusal' || Object.keys(details).some((key) =>
+      !['type', 'category', 'explanation', 'recommended_model'].includes(key)) ||
+      details.recommended_model != null) fail('native_usage_unverified', 502);
+    if (details.category === null || ['cyber', 'general_harms'].includes(String(details.category))) billable = false;
+    else if (!['bio', 'frontier_llm', 'reasoning_extraction'].includes(String(details.category))) {
+      fail('native_usage_unverified', 502);
+    }
+  }
+  return { response, billable, usage: { inputTokens, outputTokens, cachedInputTokens,
     cacheWriteTokens, cacheWrite5mTokens, cacheWrite1hTokens } };
 }
 
 export function anthropicCompletion(raw: Json, usage: Pick<Usage,
   'inputTokens' | 'outputTokens' | 'cachedInputTokens' | 'cacheWriteTokens'>, now: Date): Json {
   if (raw.type !== 'message' || raw.role !== 'assistant' || typeof raw.id !== 'string' ||
-      !raw.id || raw.id.length > 300 || !Array.isArray(raw.content) || !raw.content.length) {
+      !raw.id || raw.id.length > 300 || !Array.isArray(raw.content) ||
+      (!raw.content.length && raw.stop_reason !== 'refusal')) {
     fail('native_provider_response_invalid', 502);
   }
   let content = '';
+  const refused = raw.stop_reason === 'refusal';
   for (const part of raw.content) {
+    if (refused) continue; // Never expose incomplete output from a refusal.
     const block = object(part);
     if (block.type === 'text' && typeof block.text === 'string' &&
         (block.citations == null || (Array.isArray(block.citations) && !block.citations.length))) {
@@ -115,15 +131,16 @@ export function anthropicCompletion(raw: Json, usage: Pick<Usage,
       continue;
     } else fail('native_provider_response_invalid', 502);
   }
-  if (!content || !['end_turn', 'stop_sequence', 'max_tokens', 'refusal'].includes(String(raw.stop_reason))) {
+  if ((!content && !refused) || !['end_turn', 'stop_sequence', 'max_tokens', 'refusal'].includes(String(raw.stop_reason))) {
     fail('native_provider_response_invalid', 502);
   }
   const promptTokens = sum(usage.inputTokens, usage.cachedInputTokens, usage.cacheWriteTokens);
   return {
     id: raw.id, object: 'chat.completion', created: Math.floor(now.getTime() / 1000),
     model: raw.model, service_tier: 'default',
-    choices: [{ index: 0, message: { role: 'assistant', content, refusal: null },
-      finish_reason: raw.stop_reason === 'max_tokens' ? 'length' : 'stop' }],
+    choices: [{ index: 0, message: { role: 'assistant', content: refused ? null : content,
+      refusal: refused ? 'Request declined by the provider.' : null },
+      finish_reason: refused ? 'content_filter' : raw.stop_reason === 'max_tokens' ? 'length' : 'stop' }],
     usage: { prompt_tokens: promptTokens, completion_tokens: usage.outputTokens,
       total_tokens: sum(promptTokens, usage.outputTokens),
       prompt_tokens_details: { cached_tokens: usage.cachedInputTokens } },

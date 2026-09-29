@@ -6,10 +6,16 @@ import { Provider } from 'jotai';
 import { request } from 'librechat-data-provider';
 import MissionControl from '../MissionControl';
 
+let mockMissionAvailable = true;
+jest.mock('~/data-provider/Endpoints/queries', () => ({ useGetEndpointsQuery: () => ({
+  data: mockMissionAvailable ? { MissionAI: {} } : {},
+}) }));
+
 jest.mock('~/hooks', () => ({ useLocalize: () => (key: string) =>
   require('~/locales/en/translation.json')[key] }));
 jest.mock('~/hooks/AuthContext', () => ({ useAuthContext: () => ({ user: { id: 'fixture-owner' }, isAuthenticated: true }) }));
-jest.mock('librechat-data-provider', () => ({ apiBaseUrl: () => '', request: { get: jest.fn(), post: jest.fn() } }));
+jest.mock('librechat-data-provider', () => ({ ...jest.requireActual('librechat-data-provider'),
+  apiBaseUrl: () => '', request: { get: jest.fn(), post: jest.fn() } }));
 jest.mock('@librechat/client', () => ({
   ...jest.requireActual('@librechat/client'),
   TooltipAnchor: ({ render: content }: { render: React.ReactNode }) => <>{content}</>,
@@ -22,7 +28,13 @@ function mount() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, cacheTime: 0 } } });
   return render(<Provider><QueryClientProvider client={client}><MissionControl /></QueryClientProvider></Provider>);
 }
-beforeEach(() => { jest.clearAllMocks(); });
+beforeEach(() => { jest.clearAllMocks(); mockMissionAvailable = true; });
+it('does not add control requests to a chat without the Mission AI endpoint', () => {
+  mockMissionAvailable = false;
+  mount();
+  expect(request.get).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: 'Mission AI controls' })).not.toBeInTheDocument();
+});
 it('shows recorded spending and prevents disabled free-search requests', async () => {
   (request.get as jest.Mock).mockImplementation((url: string) => Promise.resolve(url.endsWith('capabilities') ? { enabled: true } : status));
   mount();
