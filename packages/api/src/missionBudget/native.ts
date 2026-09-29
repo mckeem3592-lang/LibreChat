@@ -28,6 +28,7 @@ export interface NativeBridgeDependencies {
     timeZone: string;
     directCapUsd: number;
     maxOutputTokens?: number;
+    allowedToolNames?: readonly string[];
   }>;
   pricingLoader: () => Awaitable<unknown>;
   estimateCost: (input: {
@@ -375,6 +376,19 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
           if (!Number.isSafeInteger(budget.maxOutputTokens) || budget.maxOutputTokens < 1 || budget.maxOutputTokens > 32768) fail('shared_budget_unready', 503);
           outputLimit = Math.min(outputLimit, budget.maxOutputTokens);
           body.max_tokens = outputLimit;
+          serialized = JSON.stringify(upstreamBody);
+        }
+        if (nativeMessages && budget.allowedToolNames !== undefined) {
+          const allowed = budget.allowedToolNames;
+          if (!Array.isArray(allowed) || !allowed.length || allowed.length > 64 ||
+              allowed.some(value => typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(value)) ||
+              new Set(allowed).size !== allowed.length) fail('shared_budget_unready', 503);
+          body.tools = (body.tools as JsonObject[] | undefined)?.filter(tool => allowed.includes(String(tool.name))) ?? [];
+          if (!(body.tools as JsonObject[]).length) fail('native_acceptance_tool_unavailable');
+          for (const message of body.messages as JsonObject[]) {
+            if (Array.isArray(message.content) && message.content.some(block =>
+                block.type === 'tool_use' && !allowed.includes(String(block.name)))) fail('native_acceptance_tool_unavailable');
+          }
           serialized = JSON.stringify(upstreamBody);
         }
         pricing = await deps.pricingLoader();

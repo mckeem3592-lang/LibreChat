@@ -264,3 +264,40 @@ test('ordinary output limit is unchanged and invalid acceptance limits fail befo
     assert.deepEqual(denied.events, []);
   }
 });
+
+test('read-only acceptance sends and reserves only the selected tool, retaining paired continuation', async () => {
+  const read = { name: 'read_file', input_schema: { type: 'object', properties: { path: { type: 'string' } } } };
+  const raw = answer(); raw.content[1].name = read.name; raw.content[1].input = { path: 'synthetic.txt' };
+  const policy = { targetUsd: 100, economyUsd: 125, hardUsd: 175 };
+  let estimate;
+  const f = await fixture(raw, { estimateCost: value => { estimate = value; return maximumTextRequestCost(value); },
+    budgetReader: () => ({ mode: 'shared', policy, timeZone: 'America/Denver', directCapUsd: 175,
+      maxOutputTokens: 256, allowedToolNames: ['read_file'] }) });
+  const result = await f.bridge.handle(request({ max_tokens: 4096, tools: [tool, read] }));
+  const sent = JSON.parse(f.events.find(event => event.type === 'fetch').init.body);
+  assert.deepEqual(sent.tools, [read]); assert.equal(sent.max_tokens, 256);
+  assert.equal(estimate.prompt, anthropicReservationPrompt(sent));
+  await f.bridge.handle(request({ tools: [tool, read], messages: [{ role: 'user', content: 'First.' },
+    { role: 'assistant', content: result.content },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_fixture', content: 'Synthetic verification.' }] }] }));
+  const ordinary = await fixture(raw); await ordinary.bridge.handle(request({ tools: [tool, read] }));
+  assert.deepEqual(JSON.parse(ordinary.events.find(event => event.type === 'fetch').init.body).tools, [tool, read]);
+});
+
+test('invalid or missing read-only acceptance tools deny before reservation or provider dispatch', async () => {
+  const policy = { targetUsd: 100, economyUsd: 125, hardUsd: 175 };
+  for (const allowedToolNames of [[], ['read_file', 'read_file'], ['unsafe name'], 'read_file', ['read_file']]) {
+    const denied = await fixture(answer(), { budgetReader: () => ({ mode: 'shared', policy,
+      timeZone: 'America/Denver', directCapUsd: 175, allowedToolNames }) });
+    await assert.rejects(denied.bridge.handle(request()), /shared_budget_unready|native_acceptance_tool_unavailable/);
+    assert.deepEqual(denied.events, []);
+  }
+  const read = { ...tool, name: 'read_file' };
+  const history = await fixture(answer(), { budgetReader: () => ({ mode: 'shared', policy,
+    timeZone: 'America/Denver', directCapUsd: 175, allowedToolNames: ['read_file'] }) });
+  await assert.rejects(history.bridge.handle(request({ tools: [tool, read], messages: [
+    { role: 'user', content: 'First.' }, { role: 'assistant', content: answer().content },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_fixture', content: 'Other tool history.' }] },
+  ] })), /native_acceptance_tool_unavailable/);
+  assert.deepEqual(history.events, []);
+});
