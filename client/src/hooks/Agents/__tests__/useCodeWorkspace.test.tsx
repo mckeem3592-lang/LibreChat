@@ -106,7 +106,7 @@ describe('useCodeWorkspace', () => {
       workspaces: [{ id: 'primary', name: 'Mission AI project' }],
     }, isLoading: false, isError: false }]);
     const { result, rerender } = renderHook(({ chat }) => useCodeWorkspace(chat), {
-      initialProps: { chat: { conversationId: 'new', endpoint: 'MissionAI' } as TConversation },
+      initialProps: { chat: { conversationId: 'new', endpoint: 'MissionAI' as EModelEndpoint } as TConversation },
     });
     expect(result.current.visible).toBe(true);
     expect(result.current.required).toBe(true);
@@ -118,11 +118,19 @@ describe('useCodeWorkspace', () => {
     expect(result.current.resolveSubmission(selected, 'attached')).toEqual({
       codeEnvironmentMode: 'attached', codeWorkspaces: selected,
     });
-    rerender({ chat: { conversationId: 'new', endpoint: 'MissionAI', codeWorkspaces: selected,
+    rerender({ chat: { conversationId: 'new', endpoint: 'MissionAI' as EModelEndpoint, codeWorkspaces: selected,
       codeEnvironmentMode: 'attached' } as TConversation });
     expect(result.current.canSubmit).toBe(true);
+    rerender({ chat: { conversationId: 'saved-coding-chat', endpoint: 'MissionAI' as EModelEndpoint,
+      agent_id: 'ephemeral-inline-coding', codeWorkspaces: selected,
+      codeEnvironmentMode: 'attached' } as TConversation });
+    expect(result.current.required).toBe(true);
+    expect(result.current.canSubmit).toBe(true);
+    expect(result.current.resolveSubmission(selected, 'attached')).toEqual({
+      codeEnvironmentMode: 'attached', codeWorkspaces: selected,
+    });
     mockEphemeral.mockReturnValue({ execute_code: false });
-    rerender({ chat: { conversationId: 'new', endpoint: 'MissionAI' } as TConversation });
+    rerender({ chat: { conversationId: 'new', endpoint: 'MissionAI' as EModelEndpoint } as TConversation });
     expect(result.current.required).toBe(false);
   });
 

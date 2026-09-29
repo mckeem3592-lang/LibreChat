@@ -191,7 +191,7 @@ export default function useCodeWorkspace(
     | TConfig['statefulCodeSessions']
     | undefined;
   const ephemeral = useRecoilValue(ephemeralAgentByConvoId(conversation?.conversationId ?? Constants.NEW_CONVO));
-  const managedCoding = conversation?.endpoint === 'MissionAI' && !conversation.agent_id &&
+  const managedCoding = String(conversation?.endpoint) === 'MissionAI' && isEphemeralAgentId(conversation?.agent_id) &&
     ephemeral?.execute_code === true && codeEnabled &&
     statefulCodeSessions?.environments?.length === 1 &&
     statefulCodeSessions.environments[0].id === 'attached-workers' &&
