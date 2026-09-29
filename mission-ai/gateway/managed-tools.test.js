@@ -251,3 +251,21 @@ test('server-restored resume retains decisions and revalidates pinned model, wor
     assert.equal(invoke(guard, { originalUrl: '/api/agents/chat/resume', body: { ...restored, ...patch } }).status, 403);
   }
 });
+
+test('the fixed generated inline agent can resume without admitting a saved or alternate agent', () => {
+  const inlineId = 'MissionAI__claude-sonnet-5-5___Mission AI — Claude Sonnet 5.5 (offline)';
+  const envelope = { ...resumeBody(), agent_id: inlineId };
+  const request = { originalUrl: '/api/agents/chat/resume', body: envelope };
+  assert.equal(invoke(createManagedToolAdmission(options), request).next, 1);
+  assert.equal(invoke(createManagedToolConfigGuard(options), request).next, 1);
+  const restored = { ...body(), ...envelope, codeWorkspaces: [{ environmentId: 'attached-workers', workspaceId: 'primary' }],
+    codeEnvironmentMode: 'attached', codeApprovalMode: 'ask' };
+  const checked = invoke(createManagedResumeConfigGuard(options), { ...request, body: restored });
+  assert.equal(checked.next, 1); assert.equal(checked.req.body.agent_id, inlineId);
+  assert.deepEqual(checked.req.body.decisions, envelope.decisions);
+  for (const agent_id of ['agent_saved', 'MissionAI__claude-opus-5-5___Other', inlineId + '____1', inlineId + 'modified']) {
+    assert.equal(invoke(createManagedToolAdmission(options), { ...request, body: { ...envelope, agent_id } }).status, 403);
+    assert.equal(invoke(createManagedResumeConfigGuard(options), { ...request, body: { ...restored, agent_id } }).status, 403);
+  }
+  assert.equal(invoke(createManagedToolConfigGuard(options), { ...request, user: { email: 'other@synthetic.invalid' } }).status, 403);
+});

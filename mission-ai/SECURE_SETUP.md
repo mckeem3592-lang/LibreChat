@@ -151,6 +151,12 @@ the independent Terminal preview/literal-`y` checkpoint. Memory, schedules,
 coding workspaces and file features remain disabled pending their integration;
 this configuration is not final product acceptance.
 
+Approval resumes admit only the fixed inline agent identifier generated for the
+managed Sonnet model. Saved agents, other labels/models and parallel-agent suffixes
+remain denied. The server restores its paused owner-scoped context before rechecking
+the fixed model, workspace and Ask mode; the controller then checks the paused
+generation and fingerprint. An inline identifier does not grant access to a saved agent.
+
 Keep `MISSION_AI_SEARCH_ENABLED=false` until search acceptance. The gateway's
 only search path is Tavily basic, with no model answer or alternate provider.
 It checks current account/key limits and requires a verified PAYG-off timestamp

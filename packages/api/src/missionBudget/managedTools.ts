@@ -43,6 +43,7 @@ function owner(req: Request, options: ManagedToolOptions): boolean {
     req.user.email.toLowerCase() === options.ownerEmail.toLowerCase();
 }
 const RESUME_PATH = '/api/agents/chat/resume';
+const INLINE_AGENT_ID = 'MissionAI__claude-sonnet-5-5___Mission AI — Claude Sonnet 5.5 (offline)';
 const RESUME_FIELDS = ['conversationId', 'generationCreatedAt', 'endpoint', 'endpointType',
   'agent_id', 'model', 'spec', 'promptPrefix', 'ephemeralAgent', 'isTemporary', 'actionId', 'decisions', 'generationProtocolVersion'];
 function resumeEnvelope(input: unknown): Json {
@@ -52,7 +53,7 @@ function resumeEnvelope(input: unknown): Json {
   }
   if (body.generationProtocolVersion != null && body.generationProtocolVersion !== 2) throw new Error();
   if (!Number.isSafeInteger(body.generationCreatedAt) || Number(body.generationCreatedAt) < 0) throw new Error();
-  if (body.endpoint !== 'MissionAI' || body.agent_id != null ||
+  if (body.endpoint !== 'MissionAI' || (body.agent_id != null && body.agent_id !== INLINE_AGENT_ID) ||
       (body.endpointType != null && body.endpointType !== 'custom') ||
       (body.model != null && body.model !== 'claude-sonnet-5-5') ||
       (body.spec != null && body.spec !== 'mission-ai-sonnet')) throw new Error();
@@ -243,10 +244,15 @@ export function createManagedResumeConfigGuard(options: ManagedToolOptions): Mid
       const input = object(req.body);
       const actions = { actionId: input.actionId, decisions: input.decisions, generationCreatedAt: input.generationCreatedAt };
       const body: Json = { ...input, text: '' };
-      if (body.agent_id == null) delete body.agent_id;
+      const agentId = body.agent_id;
+      if (agentId != null && agentId !== INLINE_AGENT_ID) throw new Error();
+      delete body.agent_id;
       for (const key of Object.keys(actions)) delete body[key];
       const probe = { ...req, originalUrl: '/api/agents/chat/MissionAI', body };
-      return guard(probe, res, () => { req.body = { ...object(probe.body), ...actions }; return next(); });
+      return guard(probe, res, () => {
+        req.body = { ...object(probe.body), ...actions, ...(agentId != null ? { agent_id: agentId } : {}) };
+        return next();
+      });
     } catch { return reject(res); }
   };
 }
