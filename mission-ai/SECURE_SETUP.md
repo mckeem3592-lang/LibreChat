@@ -4,6 +4,16 @@ Do not paste secrets into chat, source code, commits, or screenshots.
 
 ## One-request accounting acceptance while paid gates are off
 
+For the subsequent owner-approved chat/tool acceptance, a temporary native window
+can be configured with `MISSION_AI_ACCEPTANCE_START`, `MISSION_AI_ACCEPTANCE_END`,
+`MISSION_AI_ACCEPTANCE_BASELINE_USD`, and `MISSION_AI_ACCEPTANCE_ALLOWANCE_USD`.
+It requires the ordinary native gate to remain false, expires within 30 minutes,
+cannot cross a Denver accounting-month boundary, and accepts at most $0.10 of
+additional spending. Native reservations use the lower of the normal shared cap
+and baseline plus allowance, so concurrent requests cannot exceed the test ceiling.
+Missing, malformed, expired or oversized settings deny the temporary path.
+Remove these settings after testing; this window is not general paid activation.
+
 `gateway/paid-acceptance.js` supports an explicitly approved Anthropic run pinned
 to `claude-sonnet-5-5`, the deployed source SHA, the model's verified pricing date,
 and a fresh UUID. Both native chat and delegation must remain disabled. It reserves

@@ -500,15 +500,16 @@ export function createMissionMcpNodeHandler({
     registerTool(
       'mac_type',
       {
-        description: 'Type text with macOS Accessibility input on the paired personal Mac.',
+        description: 'Type in an explicitly named allowed app. After approving in Terminal, the owner must return to that app within ten seconds. Terminal input is refused.',
         inputSchema: z.object({
           deviceId: z.string().optional(),
           text: z.string().max(20000),
+          expectedApp: z.string().min(1).max(100),
         }),
       },
-      async ({ deviceId, text }) => {
+      async ({ deviceId, text, expectedApp }) => {
         try {
-          return textResult(await invoke(deviceId || 'mac-primary', 'mac.type', { text }));
+          return textResult(await invoke(deviceId || 'mac-primary', 'mac.type', { text, expectedApp }));
         } catch (error) {
           return errorResult(error);
         }
@@ -518,15 +519,16 @@ export function createMissionMcpNodeHandler({
     registerTool(
       'mac_key',
       {
-        description: 'Send one allowlisted keyboard key to the paired personal Mac.',
+        description: 'Send one allowed key to an explicitly named allowed app. After approving in Terminal, return to that app within ten seconds. Terminal input is refused.',
         inputSchema: z.object({
           deviceId: z.string().optional(),
           key: z.enum(['return', 'enter', 'tab', 'escape', 'left', 'right', 'down', 'up', 'pagedown', 'pageup', 'delete']),
+          expectedApp: z.string().min(1).max(100),
         }),
       },
-      async ({ deviceId, key }) => {
+      async ({ deviceId, key, expectedApp }) => {
         try {
-          return textResult(await invoke(deviceId || 'mac-primary', 'mac.key', { key }));
+          return textResult(await invoke(deviceId || 'mac-primary', 'mac.key', { key, expectedApp }));
         } catch (error) {
           return errorResult(error);
         }

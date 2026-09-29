@@ -9,6 +9,7 @@ import { normalizeMacControlError } from './permission-errors.js';
 import { reconnectDelayMs } from './reconnect-policy.js';
 import { requireManualApproval } from './approval-gate.js';
 import { createScreenshotGeometryStore } from './screenshot-geometry.js';
+import { validateInputTarget, waitForInputTarget, inputTargetScript } from './foreground-guard.js';
 import {
   normalizeCloseTabRequest,
   parseChromeTabRows,
@@ -119,11 +120,12 @@ async function typeMac(args) {
   await runAccessibilityScript([
     '-e',
     'on run argv',
-    '-e',
-    'tell application "System Events" to keystroke (item 1 of argv)',
+    ...inputTargetScript.flatMap(line => ['-e', line]),
+    '-e', 'keystroke (item 2 of argv)',
+    '-e', 'end tell',
     '-e',
     'end run',
-    text,
+    args.expectedApp, text,
   ]);
   return { typedLength: text.length };
 }
@@ -140,11 +142,12 @@ async function keyMac(args) {
   await runAccessibilityScript([
     '-e',
     'on run argv',
-    '-e',
-    'tell application "System Events" to key code (item 1 of argv as integer)',
+    ...inputTargetScript.flatMap(line => ['-e', line]),
+    '-e', 'key code (item 2 of argv as integer)',
+    '-e', 'end tell',
     '-e',
     'end run',
-    String(code),
+    args.expectedApp, String(code),
   ]);
   return { key };
 }
@@ -313,6 +316,9 @@ function callBrowser(tool, args = {}) {
 async function dispatch(tool, args, deadlineMs) {
   // Execute the same immutable arguments shown in the local preview.
   args = structuredClone(args || {});
+  const inputTarget = ['mac.type', 'mac.key'].includes(tool)
+    ? validateInputTarget(args, allowedApps) : null;
+  if (inputTarget && (await activeApp()).name !== inputTarget) throw new Error('input_target_not_active');
   let mappedClick;
   if (tool === 'mac.click') {
     mappedClick = screenshotGeometry.resolve(args, await mainDisplay());
@@ -321,6 +327,7 @@ async function dispatch(tool, args, deadlineMs) {
     deadlineMs,
     isConnected: () => gatewayConnected && gatewaySocket?.readyState === WebSocket.OPEN,
   });
+  if (inputTarget) await waitForInputTarget(inputTarget, activeApp, deadlineMs);
   if (!['mac.active_app', 'mac.screenshot', 'mac.click', 'browser.list_tabs', 'browser.get_state'].includes(tool)) screenshotGeometry.clear();
   switch (tool) {
     case 'mac.active_app':

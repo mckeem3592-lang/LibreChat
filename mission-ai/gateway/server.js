@@ -21,6 +21,7 @@ import { createFreeCreditStore } from './generated/freeCredits.js';
 import { createMissionControlHttp } from './generated/control.js';
 import { defaultUsageLedger } from './usage-ledger.js';
 import { loadPricing, maximumTextRequestCost, calculateUsageCost } from './cost.js';
+import { acceptanceWindow } from './acceptance-window.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const DEVICE_TOKEN = process.env.MISSION_AI_DEVICE_TOKEN || '';
@@ -101,7 +102,10 @@ const nativeDependencies = {
       const shared = await nativeLedger.sharedBudget();
       if (!shared) throw new Error('shared_budget_unready');
       await nativeLedger.reconcileStaleReservations({ now });
-      return { ...shared, directCapUsd: shared.policy.hardUsd };
+      const acceptance = acceptanceWindow(process.env, now);
+      if (process.env.MISSION_AI_NATIVE_ENABLED !== 'true' && !acceptance) throw new Error('native_disabled');
+      return { ...shared, directCapUsd: acceptance
+        ? Math.min(shared.policy.hardUsd, acceptance.ceilingUsd) : shared.policy.hardUsd };
     },
     pricingLoader: loadPricing,
     estimateCost: maximumTextRequestCost,
@@ -117,12 +121,12 @@ const nativeDependencies = {
 const nativeToken = [TOOL_TOKEN, DEVICE_TOKEN].includes(process.env.MISSION_AI_NATIVE_TOKEN)
   ? '' : process.env.MISSION_AI_NATIVE_TOKEN || '';
 const nativeHttp = createNativeHttp({
-  enabled: () => process.env.MISSION_AI_NATIVE_ENABLED === 'true',
+  enabled: () => process.env.MISSION_AI_NATIVE_ENABLED === 'true' || Boolean(acceptanceWindow(process.env)),
   token: nativeToken, safeEqual, models: nativeModels,
   bridge: createNativeBridge(nativeDependencies),
 });
 const anthropicHttp = createAnthropicHttp({
-  enabled: () => process.env.MISSION_AI_NATIVE_ENABLED === 'true',
+  enabled: () => process.env.MISSION_AI_NATIVE_ENABLED === 'true' || Boolean(acceptanceWindow(process.env)),
   token: nativeToken, safeEqual,
   bridge: createNativeBridge({ ...nativeDependencies, protocol: 'anthropic-messages' }),
 });
