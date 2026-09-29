@@ -19,7 +19,11 @@ for variable in $(compgen -e); do
   [[ -n ${!variable} ]] || continue
   case "$variable" in
     MONGO_URI|JWT_SECRET|JWT_REFRESH_SECRET|CREDS_KEY|CREDS_IV|MISSION_AI_NATIVE_TOKEN|MISSION_AI_GATEWAY_URL|\
-    MISSION_AI_MANAGED_CHAT|MISSION_AI_MANAGED_TOOLS|MISSION_AI_TOOL_TOKEN|MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN|CODEAPI_AUTH_PROVIDER|CODEAPI_JWT_PRIVATE_KEY_BASE64|CODEAPI_JWT_ALGORITHM|CODEAPI_JWT_KID|CODEAPI_JWT_ISSUER|CODEAPI_JWT_AUDIENCE|CODEAPI_JWT_SINGLE_TENANT_ID|MISSION_AI_BOOTSTRAP_OWNER|MISSION_AI_OWNER_EMAIL|MISSION_AI_OWNER_PASSWORD|MISSION_AI_CONTROL_OWNER_EMAIL)
+    MISSION_AI_MANAGED_CHAT|MISSION_AI_MANAGED_TOOLS|MISSION_AI_TOOL_TOKEN|MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN|CODEAPI_AUTH_PROVIDER|CODEAPI_JWT_PRIVATE_KEY_BASE64|CODEAPI_JWT_ALGORITHM|CODEAPI_JWT_KID|CODEAPI_JWT_ISSUER|CODEAPI_JWT_AUDIENCE|CODEAPI_JWT_SINGLE_TENANT_ID|MISSION_AI_BOOTSTRAP_OWNER|MISSION_AI_OWNER_EMAIL|MISSION_AI_OWNER_PASSWORD|MISSION_AI_CONTROL_OWNER_EMAIL|MISSION_AI_FREE_BASELINE)
+      continue ;;
+    GOOGLE_KEY)
+      [[ ${MISSION_AI_FREE_BASELINE-false} == true ]] ||
+        fail 'GOOGLE_KEY requires MISSION_AI_FREE_BASELINE=true'
       continue ;;
     OPENAI_*|ANTHROPIC_*|AZURE_*|ASSISTANTS_*|GOOGLE_*|GEMINI_*|BEDROCK_*|AWS_*|VERTEX_*|\
     ANYSCALE_*|APIPIE_*|COHERE_*|DEEPSEEK_*|DATABRICKS_*|FIREWORKS_*|GROQ_*|HUGGINGFACE_*|\
@@ -38,6 +42,21 @@ done
 [[ ${MISSION_AI_GATEWAY_URL-} == https://mission-ai-gateway-mckee.onrender.com ]] ||
   fail 'MISSION_AI_GATEWAY_URL must match the reviewed gateway origin'
 [[ ${MISSION_AI_MANAGED_CHAT-} == true ]] || fail 'MISSION_AI_MANAGED_CHAT must explicitly enable the managed API guard'
+
+case "${MISSION_AI_FREE_BASELINE-false}" in
+  true)
+    [[ ${MISSION_AI_MANAGED_TOOLS-false} == false ]] ||
+      fail 'free baseline verification requires managed tools disabled'
+    [[ -n ${GOOGLE_KEY-} && $GOOGLE_KEY != *[[:space:]]* ]] ||
+      fail 'free baseline requires GOOGLE_KEY without whitespace'
+    ;;
+  false)
+    [[ -z ${GOOGLE_KEY-} ]] ||
+      fail 'GOOGLE_KEY requires MISSION_AI_FREE_BASELINE=true'
+    ;;
+  *) fail 'MISSION_AI_FREE_BASELINE must be explicitly true or false' ;;
+esac
+
 native_token="${MISSION_AI_NATIVE_TOKEN-}"
 [[ ${#native_token} -ge 32 && $native_token != *[[:space:]]* ]] || fail 'MISSION_AI_NATIVE_TOKEN must contain at least 32 characters without whitespace'
 [[ ${JWT_SECRET-} =~ ^[[:xdigit:]]{64}$ ]] || fail 'JWT_SECRET must be a private, persistent 32-byte hex value'
