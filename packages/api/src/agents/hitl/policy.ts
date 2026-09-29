@@ -431,6 +431,8 @@ function normalizeEphemeralAgent(ephemeral: Record<string, unknown> | null | und
  * works across reloads/replicas, and a crafted resume can't swap the tool set.
  */
 export const RESUME_CONTEXT_KEYS = [
+  // Preserve owner-validated project attribution across approved continuation.
+  'chatProjectId',
   'endpoint',
   'endpointType',
   'agent_id',

@@ -1,6 +1,8 @@
 const express = require('express');
 const { logger } = require('@librechat/data-schemas');
 const {
+  createManagedResumeConfigGuard,
+  createManagedProjectGuard,
   createMessageFilterPii,
   reportLocatorTraversalFailure,
   generateCheckAccess,
@@ -23,7 +25,7 @@ const guardSubagentThreadTurn = require('~/server/middleware/validate/subagentTh
 const AgentController = require('~/server/controllers/agents/request');
 const ResumeController = require('~/server/controllers/agents/resume');
 const addTitle = require('~/server/services/Endpoints/agents/title');
-const { getFiles, getRoleByName } = require('~/models');
+const { getFiles, getRoleByName, getChatProject } = require('~/models');
 
 const router = express.Router();
 
@@ -53,7 +55,15 @@ const restoreResumeContext = async (req, res, next) => {
     const streamId = req.body?.conversationId;
     if (streamId) {
       const job = await GenerationJobManager.getJob(streamId);
+      if (process.env.MISSION_AI_MANAGED_CHAT === 'true' && process.env.MISSION_AI_MANAGED_TOOLS === 'true' &&
+          (!job || job.metadata?.userId !== req.user?.id ||
+           (job.metadata?.tenantId != null && job.metadata.tenantId !== req.user?.tenantId))) {
+        return res.status(403).json({ error: { code: 'managed_tools_denied' } });
+      }
       const resumeContext = job?.metadata?.pendingAction?.resumeContext;
+      if (process.env.MISSION_AI_MANAGED_CHAT === 'true' && process.env.MISSION_AI_MANAGED_TOOLS === 'true' && !resumeContext) {
+        return res.status(403).json({ error: { code: 'managed_tools_denied' } });
+      }
       applyResumeContext(req.body, resumeContext);
       // Replay the paused turn's resolved model parameters. Ephemeral agents derive these
       // (temperature, max tokens, custom endpoint params) from the request body, which the
@@ -66,11 +76,29 @@ const restoreResumeContext = async (req, res, next) => {
     }
   } catch (err) {
     logger.warn('[agents/chat] Failed to restore resume context', getSafeErrorMetadata(err));
+    if (process.env.MISSION_AI_MANAGED_CHAT === 'true' && process.env.MISSION_AI_MANAGED_TOOLS === 'true') {
+      return res.status(403).json({ error: { code: 'managed_tools_denied' } });
+    }
   }
   next();
 };
 
 router.use(restoreResumeContext);
+router.use(createManagedResumeConfigGuard({
+  enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
+  toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+  ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
+  gatewayURL: process.env.MISSION_AI_GATEWAY_URL,
+  nativeToken: process.env.MISSION_AI_NATIVE_TOKEN,
+  toolToken: process.env.MISSION_AI_TOOL_TOKEN,
+  titleConvo: process.env.TITLE_CONVO,
+}));
+router.use(createManagedProjectGuard({
+  enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
+  toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+  ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
+  projectOwned: async (userId, projectId) => (await getChatProject(userId, projectId)) != null,
+}));
 router.use(
   createMessageFilterPii({
     onTraversalFailure: reportLocatorTraversalFailure,

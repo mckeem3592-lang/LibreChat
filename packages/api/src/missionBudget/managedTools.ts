@@ -42,6 +42,38 @@ function owner(req: Request, options: ManagedToolOptions): boolean {
   return !!options.ownerEmail && !!req.user?.email &&
     req.user.email.toLowerCase() === options.ownerEmail.toLowerCase();
 }
+const RESUME_PATH = '/api/agents/chat/resume';
+const RESUME_FIELDS = ['conversationId', 'generationCreatedAt', 'endpoint', 'endpointType',
+  'agent_id', 'model', 'spec', 'promptPrefix', 'ephemeralAgent', 'isTemporary', 'actionId', 'decisions', 'generationProtocolVersion'];
+function resumeEnvelope(input: unknown): Json {
+  const body = object(input); exactKeys(body, RESUME_FIELDS);
+  for (const key of ['conversationId', 'actionId']) {
+    if (typeof body[key] !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(body[key] as string)) throw new Error();
+  }
+  if (body.generationProtocolVersion != null && body.generationProtocolVersion !== 2) throw new Error();
+  if (!Number.isSafeInteger(body.generationCreatedAt) || Number(body.generationCreatedAt) < 0) throw new Error();
+  if (body.endpoint !== 'MissionAI' || body.agent_id != null ||
+      (body.endpointType != null && body.endpointType !== 'custom') ||
+      (body.model != null && body.model !== 'claude-sonnet-5-5') ||
+      (body.spec != null && body.spec !== 'mission-ai-sonnet')) throw new Error();
+  if (body.promptPrefix != null && (typeof body.promptPrefix !== 'string' || body.promptPrefix.length > 1_000_000)) throw new Error();
+  if (body.isTemporary != null && typeof body.isTemporary !== 'boolean') throw new Error();
+  if (body.ephemeralAgent != null) {
+    const agent = object(body.ephemeralAgent); exactKeys(agent, ['mcp', 'execute_code', 'memory', 'web_search']);
+    if (agent.mcp != null && (!Array.isArray(agent.mcp) || agent.mcp.length > 1 || agent.mcp.some(x => x !== 'mission-ai'))) throw new Error();
+    for (const key of ['execute_code', 'memory']) if (agent[key] != null && typeof agent[key] !== 'boolean') throw new Error();
+    if (agent.web_search != null && agent.web_search !== false) throw new Error();
+  }
+  if (!Array.isArray(body.decisions) || !body.decisions.length || body.decisions.length > 32) throw new Error();
+  const ids = new Set();
+  for (const item of body.decisions) {
+    const decision = object(item); exactKeys(decision, ['tool_call_id', 'decision', 'scope']);
+    if (typeof decision.tool_call_id !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(decision.tool_call_id) || ids.has(decision.tool_call_id)) throw new Error();
+    ids.add(decision.tool_call_id);
+    if (!['approve', 'reject'].includes(String(decision.decision)) || (decision.scope != null && decision.scope !== 'once')) throw new Error();
+  }
+  return body;
+}
 function payload(input: unknown): { compatible: Json; restore(body: unknown): Json } {
   const original = object(input);
   const compatible = { ...original };
@@ -102,6 +134,9 @@ export function createManagedToolAdmission(options: ManagedToolOptions): Middlew
     if (req.method === 'POST' && path === '/api/mcp/mission-ai/reinitialize' &&
         (req.body === undefined || req.body != null && typeof req.body === 'object' &&
         !Array.isArray(req.body) && Object.keys(req.body).length === 0)) return next();
+    if (req.method === 'POST' && path === RESUME_PATH) {
+      try { resumeEnvelope(req.body); return next(); } catch { return reject(res); }
+    }
     if (req.method !== 'POST' || path !== '/api/agents/chat/MissionAI') return legacy(req, res, next);
     try {
       const conversion = payload(req.body);
@@ -190,9 +225,28 @@ export function createManagedToolConfigGuard(options: ManagedToolOptions): Middl
     try { projected = projectConfiguration(req.config, options); }
     catch { return reject(res, true); }
     try {
-      const conversion = payload(req.body);
+      const isResume = (req.originalUrl ?? req.url) === RESUME_PATH;
+      if (isResume) resumeEnvelope(req.body);
+      const conversion = payload(isResume ? { endpoint: 'MissionAI', model: 'claude-sonnet-5-5', spec: 'mission-ai-sonnet', text: '' } : req.body);
       const probe = { ...req, config: projected, body: conversion.compatible };
-      return legacy(probe, res, () => { req.body = conversion.restore(probe.body); return next(); });
+      return legacy(probe, res, () => { if (!isResume) req.body = conversion.restore(probe.body); return next(); });
+    } catch { return reject(res); }
+  };
+}
+
+/** Recheck the owner-scoped, server-restored graph before endpoint construction. */
+export function createManagedResumeConfigGuard(options: ManagedToolOptions): Middleware {
+  const guard = createManagedToolConfigGuard(options);
+  return (req, res, next) => {
+    if (!options.enabled || !options.toolsEnabled || (req.originalUrl ?? req.url) !== RESUME_PATH) return next();
+    try {
+      const input = object(req.body);
+      const actions = { actionId: input.actionId, decisions: input.decisions, generationCreatedAt: input.generationCreatedAt };
+      const body: Json = { ...input, text: '' };
+      if (body.agent_id == null) delete body.agent_id;
+      for (const key of Object.keys(actions)) delete body[key];
+      const probe = { ...req, originalUrl: '/api/agents/chat/MissionAI', body };
+      return guard(probe, res, () => { req.body = { ...object(probe.body), ...actions }; return next(); });
     } catch { return reject(res); }
   };
 }

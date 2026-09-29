@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { createManagedToolAdmission, createManagedToolConfigGuard, createManagedToolOwnerGuard,
+import { createManagedToolAdmission, createManagedToolConfigGuard, createManagedResumeConfigGuard, createManagedToolOwnerGuard,
   MANAGED_NATIVE_DROPS, createManagedProjectGuard } from './generated/managedTools.js';
 const options = { enabled: true, toolsEnabled: true, ownerEmail: 'owner@synthetic.invalid',
   gatewayURL: 'https://synthetic.invalid', nativeToken: 'synthetic-native-token-1234567890123',
@@ -218,4 +218,36 @@ test('project cost header is server-derived, bounded and confined to the native 
   assert.throws(() => attachManagedProjectCost({ clientOptions: { baseURL: 'https://other.invalid' } }, { enabled: true, gatewayURL: 'https://synthetic.invalid' }));
   const original = { unchanged: true }; attachManagedProjectCost(original, { enabled: false });
   assert.deepEqual(original, { unchanged: true });
+});
+
+const resumeBody = () => ({ conversationId: 'conversation_fixture', generationCreatedAt: 1, generationProtocolVersion: 2,
+  endpoint: 'MissionAI', endpointType: 'custom', model: 'claude-sonnet-5-5', spec: 'mission-ai-sonnet',
+  actionId: 'action_fixture', decisions: [{ tool_call_id: 'tool_fixture', decision: 'approve', scope: 'once' }],
+  ephemeralAgent: { mcp: [], execute_code: true } });
+test('exact one-action resume is admitted then owner/config checked without trusting client graph', () => {
+  const request = { originalUrl: '/api/agents/chat/resume', body: resumeBody() };
+  assert.equal(invoke(createManagedToolAdmission(options), request).next, 1);
+  const checked = invoke(createManagedToolConfigGuard(options), request);
+  assert.equal(checked.next, 1); assert.deepEqual(checked.req.body, request.body);
+  assert.equal(invoke(createManagedToolConfigGuard(options), { ...request, user: { email: 'other@synthetic.invalid' } }).status, 403);
+  for (const patch of [{ decisions: [{ tool_call_id: 'tool_fixture', decision: 'approve', scope: 'session' }] },
+    { endpoint: 'agents' }, { agent_id: 'other' }, { providerKey: 'injected' }, { generationCreatedAt: null },
+    { decisions: [] }, { ephemeralAgent: { mcp: ['other'] } }]) {
+    assert.equal(invoke(createManagedToolAdmission(options), { ...request, body: { ...resumeBody(), ...patch } }).status, 403);
+  }
+  for (const originalUrl of ['/api/agents/chat/resume?retry=true', '/api/agents/chat//resume', '/api/agents/chat/Resume']) {
+    assert.equal(invoke(createManagedToolAdmission(options), { ...request, originalUrl }).status, 403);
+  }
+});
+test('server-restored resume retains decisions and revalidates pinned model, workspace and ask mode', () => {
+  const guard = createManagedResumeConfigGuard(options);
+  const restored = { ...body(), ...resumeBody(), codeWorkspaces: [{ environmentId: 'attached-workers', workspaceId: 'primary' }],
+    codeEnvironmentMode: 'attached', codeApprovalMode: 'ask' };
+  const checked = invoke(guard, { originalUrl: '/api/agents/chat/resume', body: restored });
+  assert.equal(checked.next, 1); assert.deepEqual(checked.req.body.decisions, restored.decisions);
+  assert.deepEqual(checked.req.body.codeWorkspaces, restored.codeWorkspaces);
+  for (const patch of [{ model: 'claude-opus-5-5' }, { codeApprovalMode: 'fullAccess' },
+    { codeEnvironmentMode: 'without_attached' }, { ephemeralAgent: { mcp: ['other'] } }]) {
+    assert.equal(invoke(guard, { originalUrl: '/api/agents/chat/resume', body: { ...restored, ...patch } }).status, 403);
+  }
 });
