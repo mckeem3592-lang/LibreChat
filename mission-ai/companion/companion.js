@@ -8,6 +8,7 @@ import { readSecret, writeSecret } from './keychain.js';
 import { normalizeMacControlError } from './permission-errors.js';
 import { reconnectDelayMs } from './reconnect-policy.js';
 import { requireManualApproval } from './approval-gate.js';
+import { createScreenshotGeometryStore } from './screenshot-geometry.js';
 import {
   normalizeCloseTabRequest,
   parseChromeTabRows,
@@ -39,6 +40,7 @@ const allowedApps = new Set(
     .filter(Boolean),
 );
 
+const screenshotGeometry = createScreenshotGeometryStore();
 let extensionSocket = null;
 let gatewaySocket = null;
 let gatewayConnected = false;
@@ -254,13 +256,31 @@ async function chromeOpenUrl(args) {
   return { url: url.toString() };
 }
 
+async function mainDisplay() {
+  const { stdout } = await execFileAsync('/usr/bin/osascript', ['-l', 'JavaScript', '-e',
+    'ObjC.import("CoreGraphics"); const id = $.CGMainDisplayID(); const b = $.CGDisplayBounds(id); JSON.stringify({id:Number(id),x:Number(b.origin.x),y:Number(b.origin.y),width:Number(b.size.width),height:Number(b.size.height)});']);
+  return JSON.parse(stdout.trim());
+}
+
 async function screenshot() {
   const file = `/tmp/mission-ai-${crypto.randomUUID()}.jpg`;
   try {
-    await execFileAsync('screencapture', ['-x', '-t', 'jpg', file]);
-    await execFileAsync('sips', ['-Z', '1600', file]);
-    const bytes = await readFile(file);
-    return { mimeType: 'image/jpeg', base64: bytes.toString('base64') };
+    const before = await mainDisplay();
+    await execFileAsync('screencapture', ['-x', '-m', '-t', 'jpg', file]);
+    await execFileAsync('sips', ['-s', 'formatOptions', '65', '-Z', '1600', file]);
+    let bytes = await readFile(file);
+    if (bytes.length > 196608) {
+      await execFileAsync('sips', ['-s', 'formatOptions', '40', '-Z', '1200', file]);
+      bytes = await readFile(file);
+    }
+    if (bytes.length > 196608) throw new Error('screenshot_too_large');
+    const { stdout } = await execFileAsync('sips', ['-g', 'pixelWidth', '-g', 'pixelHeight', file]);
+    const dimensions = { width: Number(stdout.match(/pixelWidth:\s*(\d+)/)?.[1]),
+      height: Number(stdout.match(/pixelHeight:\s*(\d+)/)?.[1]) };
+    const after = await mainDisplay();
+    if (Object.keys(before).some((key) => before[key] !== after[key])) throw new Error('display_geometry_changed');
+    const geometry = screenshotGeometry.remember(after, dimensions);
+    return { mimeType: 'image/jpeg', base64: bytes.toString('base64'), ...geometry };
   } catch (error) {
     throw normalizeMacControlError('screen-recording', error);
   } finally {
@@ -293,10 +313,15 @@ function callBrowser(tool, args = {}) {
 async function dispatch(tool, args, deadlineMs) {
   // Execute the same immutable arguments shown in the local preview.
   args = structuredClone(args || {});
-  await requireManualApproval(tool, args, {
+  let mappedClick;
+  if (tool === 'mac.click') {
+    mappedClick = screenshotGeometry.resolve(args, await mainDisplay());
+  }
+  await requireManualApproval(tool, mappedClick || args, {
     deadlineMs,
     isConnected: () => gatewayConnected && gatewaySocket?.readyState === WebSocket.OPEN,
   });
+  if (!['mac.active_app', 'mac.screenshot', 'mac.click', 'browser.list_tabs', 'browser.get_state'].includes(tool)) screenshotGeometry.clear();
   switch (tool) {
     case 'mac.active_app':
       return await activeApp();
@@ -304,8 +329,12 @@ async function dispatch(tool, args, deadlineMs) {
       return await openApp(args);
     case 'mac.screenshot':
       return await screenshot();
-    case 'mac.click':
-      return await clickMac(args);
+    case 'mac.click': {
+      const fresh = screenshotGeometry.resolve(args, await mainDisplay());
+      if (fresh.screenX !== mappedClick.screenX || fresh.screenY !== mappedClick.screenY) throw new Error('display_geometry_changed');
+      screenshotGeometry.clear();
+      return await clickMac({ x: fresh.screenX, y: fresh.screenY });
+    }
     case 'mac.type':
       return await typeMac(args);
     case 'mac.key':

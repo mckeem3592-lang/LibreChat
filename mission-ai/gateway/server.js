@@ -282,7 +282,7 @@ app.use('/native/openai/v1', nativeHttp.authorize, express.json({ limit: '1mb' }
 app.get('/native/openai/v1/models', nativeHttp.models);
 app.post('/native/openai/v1/chat/completions', nativeHttp.complete);
 app.use('/native/openai/v1', nativeHttp.unsupported);
-app.use('/native/anthropic/v1', anthropicHttp.authorize, express.json({ limit: '1mb' }));
+app.use('/native/anthropic/v1', anthropicHttp.authorize, express.json({ limit: '12mb' }));
 app.post('/native/anthropic/v1/messages', anthropicHttp.complete);
 app.use('/native/anthropic/v1', anthropicHttp.unsupported);
 

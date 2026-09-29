@@ -460,7 +460,7 @@ export function createMissionMcpNodeHandler({
     registerTool(
       'mac_screenshot',
       {
-        description: 'Capture a compressed screenshot from the paired personal Mac.',
+        description: 'Capture a bounded screenshot of the paired Mac primary display, with an ID and image dimensions for correctly scaled clicks.',
         inputSchema: z.object({ deviceId: z.string().optional() }),
       },
       async ({ deviceId }) => {
@@ -468,7 +468,8 @@ export function createMissionMcpNodeHandler({
           const result = await invoke(deviceId || 'mac-primary', 'mac.screenshot', {});
           if (!result?.base64 || !result?.mimeType) return textResult(result);
           return {
-            content: [{ type: 'image', data: result.base64, mimeType: result.mimeType }],
+            content: [{ type: 'image', data: result.base64, mimeType: result.mimeType },
+              { type: 'text', text: JSON.stringify({ screenshotId: result.screenshotId, imageWidth: result.imageWidth, imageHeight: result.imageHeight, display: result.display, capturedAt: result.capturedAt }) }],
           };
         } catch (error) {
           return errorResult(error);
@@ -479,16 +480,17 @@ export function createMissionMcpNodeHandler({
     registerTool(
       'mac_click',
       {
-        description: 'Click screen coordinates on the paired personal Mac.',
+        description: 'Click x/y image coordinates from a fresh mac_screenshot on the paired primary display. Supply its screenshotId; the Mac converts coordinates and asks the owner before clicking.',
         inputSchema: z.object({
           deviceId: z.string().optional(),
+          screenshotId: z.string().uuid(),
           x: z.number().nonnegative(),
           y: z.number().nonnegative(),
         }),
       },
-      async ({ deviceId, x, y }) => {
+      async ({ deviceId, screenshotId, x, y }) => {
         try {
-          return textResult(await invoke(deviceId || 'mac-primary', 'mac.click', { x, y }));
+          return textResult(await invoke(deviceId || 'mac-primary', 'mac.click', { screenshotId, x, y }));
         } catch (error) {
           return errorResult(error);
         }

@@ -1,5 +1,5 @@
 import { anthropicRequest, anthropicUsage, anthropicCompletion } from './anthropicNative.js';
-import { normalizeAnthropicMessages, validateAnthropicMessage } from './anthropicMessages.js';
+import { normalizeAnthropicMessages, validateAnthropicMessage, anthropicReservationPrompt } from './anthropicMessages.js';
 
 /** Restricted, non-streaming upstream transport. The host owns HTTP authentication and SSE. */
 type JsonObject = Record<string, unknown>;
@@ -337,7 +337,7 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
       const imageInputTokens = 'imageInputTokens' in normalized && typeof normalized.imageInputTokens === 'number' ? normalized.imageInputTokens : 0;
       const upstreamBody = provider === 'anthropic' && !nativeMessages ? anthropicRequest(body) : body;
       const serialized = JSON.stringify(upstreamBody);
-      if (new TextEncoder().encode(serialized).length > MAX_BODY_BYTES) fail('native_request_too_large', 413);
+      if (new TextEncoder().encode(serialized).length > (nativeMessages ? 12_582_912 : MAX_BODY_BYTES)) fail('native_request_too_large', 413);
       try {
         if (await deps.modelAllowed(model) !== true) fail('native_model_unsupported');
       } catch (error) {
@@ -363,7 +363,7 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
             amount(budget.directCapUsd) > policy.hardUsd) fail('shared_budget_unready', 503);
         pricing = await deps.pricingLoader();
         reserveUsd = amount(deps.estimateCost({
-          provider, model, prompt: serialized, system: '', maxOutputTokens: outputLimit, pricing, imageInputTokens,
+          provider, model, prompt: nativeMessages ? anthropicReservationPrompt(body) : serialized, system: '', maxOutputTokens: outputLimit, pricing, imageInputTokens,
         }), true);
         const reservationId = deps.randomId();
         if (typeof reservationId !== 'string' || !reservationId || reservationId.length > 200) fail('native_accounting_invalid', 503);

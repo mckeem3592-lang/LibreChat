@@ -3,7 +3,7 @@ import test from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { createNativeBridge } from './generated/native.js';
 import { createAnthropicHttp } from './generated/anthropicHttp.js';
-import { normalizeAnthropicMessages } from './generated/anthropicMessages.js';
+import { normalizeAnthropicMessages, anthropicReservationPrompt } from './generated/anthropicMessages.js';
 import { createMemoryUsageLedger } from './usage-ledger.js';
 import { maximumTextRequestCost, calculateUsageCost } from './cost.js';
 
@@ -123,7 +123,7 @@ test('user images and screenshot tool results retain typed bytes with visual-tok
     const fetchEvent = f.events.find((event) => event.type === 'fetch');
     assert.deepEqual(JSON.parse(fetchEvent.init.body).messages, messages);
     const expected = maximumTextRequestCost({ provider: 'anthropic', model,
-      prompt: fetchEvent.init.body, maxOutputTokens: 128, imageInputTokens: 4784,
+      prompt: anthropicReservationPrompt(JSON.parse(fetchEvent.init.body)), maxOutputTokens: 128, imageInputTokens: 4784,
       pricing: { models: { [model]: { provider: 'anthropic', input: 2, output: 10 } } } });
     const summary = await f.ledger.summary({ now, timeZone: 'America/Denver' });
     assert(summary.settledUsd > 0);
@@ -146,4 +146,12 @@ test('external image sources, invalid encoding, assistant images and excess imag
     { role: 'user', content: 'First.' }, { role: 'assistant', content: [image] },
     { role: 'user', content: 'Next.' },
   ] })), /native_content_unsupported/);
+});
+
+test('multi-step screenshot history fits the bounded image transport without estimating base64 as text', () => {
+  const screenshots = Array.from({ length: 5 }, () => ({ ...image, source: { ...image.source, data: 'A'.repeat(262144) } }));
+  const value = normalizeAnthropicMessages(request({ messages: [{ role: 'user', content: screenshots }] }));
+  assert.equal(value.imageInputTokens, 5 * 4784);
+  assert(anthropicReservationPrompt(value.body).length < 2000);
+  assert.throws(() => normalizeAnthropicMessages(request({ messages: [{ role: 'user', content: 'x'.repeat(1048576) }] })), /native_request_too_large/);
 });

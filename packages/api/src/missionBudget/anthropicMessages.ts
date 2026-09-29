@@ -2,6 +2,8 @@ import { NativeBridgeError } from './native.js';
 
 type Json = Record<string, unknown>;
 const MAX_BYTES = 1_048_576;
+const MAX_REQUEST_BYTES = 12_582_912;
+const MAX_IMAGE_BYTES = 4_194_304;
 function fail(code = 'native_request_invalid', status = 400): never {
   throw new NativeBridgeError(code, status);
 }
@@ -42,8 +44,8 @@ function imageBlock(block: Json): void {
   keys(source, ['type', 'media_type', 'data']);
   if (source.type !== 'base64' ||
       !['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(String(source.media_type))) fail('native_content_unsupported');
-  const data = text(source.data);
-  if (data.length % 4 !== 0 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data)) fail();
+  const data = text(source.data, MAX_IMAGE_BYTES);
+  if (data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) fail();
   cache(block.cache_control);
 }
 function textBlocks(value: unknown, allowEmpty = false, allowImages = false): void {
@@ -64,7 +66,7 @@ export function normalizeAnthropicMessages(value: unknown): {
 } {
   json(value);
   const serialized = JSON.stringify(value);
-  if (new TextEncoder().encode(serialized).length > MAX_BYTES) fail('native_request_too_large', 413);
+  if (new TextEncoder().encode(serialized).length > MAX_REQUEST_BYTES) fail('native_request_too_large', 413);
   // Snapshot before the ledger's first await; callers cannot alter the approved request.
   const body = record(JSON.parse(serialized));
   keys(body, ['model', 'messages', 'system', 'max_tokens', 'stream', 'service_tier',
@@ -158,8 +160,23 @@ export function normalizeAnthropicMessages(value: unknown): {
   body.thinking = { type: 'between_tools' };
   body.output_config = { effort: 'low' };
   // Reserve the documented Sonnet 5.5 maximum visual tokens even for tiny compressed images.
-  if (imageCount > 20) fail('native_request_too_large', 413);
+  if (imageCount > 20 || new TextEncoder().encode(anthropicReservationPrompt(body)).length > MAX_BYTES) fail('native_request_too_large', 413);
   return { body, model: 'claude-sonnet-5-5', outputLimit, imageInputTokens: imageCount * 4784 };
+}
+
+/** Only validated image bytes are excluded from text-token estimation; visual tokens are reserved separately. */
+export function anthropicReservationPrompt(body: Json): string {
+  const snapshot = JSON.parse(JSON.stringify(body)) as Json;
+  for (const message of snapshot.messages as Json[]) {
+    if (!Array.isArray(message.content)) continue;
+    for (const block of message.content as Json[]) {
+      if (block.type === 'image') (block.source as Json).data = '';
+      if (block.type === 'tool_result' && Array.isArray(block.content)) {
+        for (const part of block.content as Json[]) if (part.type === 'image') (part.source as Json).data = '';
+      }
+    }
+  }
+  return JSON.stringify(snapshot);
 }
 
 /** Check presentation only after known provider billing has been settled. */
