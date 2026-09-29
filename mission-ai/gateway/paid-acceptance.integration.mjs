@@ -124,3 +124,41 @@ test('real Mongo missing provider usage creates an estimated event and never a p
   assert.equal((await runPaidAcceptance(f.options)).status, 'SKIP_ALREADY_CLAIMED');
   assert.equal(calls, 1);
 });
+
+test('real Mongo Sonnet acceptance persists one standard-tier settlement and refuses replay', async () => {
+  const f = await fixture();
+  process.env.ANTHROPIC_API_KEY = 'test-anthropic-acceptance-key';
+  delete process.env.ANTHROPIC_API_BASE_URL;
+  Object.assign(f.options, {
+    approvedProvider: 'anthropic', approvedModel: 'claude-sonnet-5-5', approvedPricingDate: '2026-09-28',
+    catalogLoader: async () => ({ providers: { anthropic: { economy: 'claude-sonnet-5-5' } } }),
+    pricingLoader: async () => ({ verifiedOn: '2026-09-27', models: {
+      'claude-sonnet-5-5': { provider: 'anthropic', input: 2, output: 10, cachedInput: 0.2,
+        cacheWrite: 2.5, cacheWrite1h: 4, verifiedOn: '2026-09-28' },
+    } }),
+    fetchImpl: async (url, options) => {
+      f.requests.push({ url, options });
+      assert.equal(url, 'https://api.anthropic.com/v1/messages');
+      assert.equal(JSON.parse(options.body).service_tier, 'standard_only');
+      const event = await db.collection('delegated_usage').findOne({});
+      assert.equal(event.status, 'reserved');
+      assert.equal(event.reservedUsd, 0.05);
+      return { ok: true, status: 200, json: async () => ({ model: 'claude-sonnet-5-5',
+        content: [{ type: 'text', text: 'OK' }],
+        usage: { input_tokens: 10, output_tokens: 2, service_tier: 'standard' } }) };
+    },
+  });
+  Object.assign(f.options.env, { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    MISSION_AI_NATIVE_ENABLED: 'false', MISSION_AI_MODEL_ECONOMY: 'claude-sonnet-5-5' });
+  assert.equal((await runPaidAcceptance(f.options)).status, 'PASS_ACTUAL');
+  const event = await db.collection('delegated_usage').findOne({});
+  const state = await db.collection('budget_state').findOne({});
+  assert.equal(event.usage.provider, 'anthropic');
+  assert.equal(event.usage.serviceTier, 'standard');
+  assert.equal(event.usage.estimated, false);
+  assert.ok(Math.abs(event.actualUsd - 0.00004) < 1e-12);
+  assert.equal(state.reservedUsd, 0);
+  assert.equal(state.settledUsd, event.actualUsd);
+  assert.equal((await runPaidAcceptance(f.options)).status, 'SKIP_ALREADY_CLAIMED');
+  assert.equal(f.requests.length, 1);
+});

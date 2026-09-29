@@ -14,7 +14,7 @@ import { monthStartFor } from '../../plugin/mission-ai-budget/scripts/budget-tim
 const RESERVE_USD = 0.05;
 const OUTPUT_TOKENS = 128;
 const PROMPT = 'Reply only with OK.';
-const PROVIDER_URL = 'https://api.openai.com/v1/responses';
+const PROVIDER_URLS = { openai: 'https://api.openai.com/v1/responses', anthropic: 'https://api.anthropic.com/v1/messages' };
 const WRITE_CONCERN = { w: 'majority', wtimeoutMS: 5000 };
 const UUID = /^[\da-f]{8}-[\da-f]{4}-[1-8][\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i;
 const SHA = /^[\da-f]{40}$/i;
@@ -110,6 +110,7 @@ export function createMongoAcceptanceStore({ uri, dbName }) {
 
 export async function runPaidAcceptance({
   approvedRunId,
+  approvedProvider = 'openai',
   approvedModel,
   approvedPricingDate,
   approvedSourceSha,
@@ -132,9 +133,13 @@ export async function runPaidAcceptance({
   let claimed = false;
   const owned = !usageLedger && !claimStore;
   const role = 'economy';
+  const provider = approvedProvider;
+  const anthropic = provider === 'anthropic';
+  const serviceTier = anthropic ? 'standard_only' : 'default';
+  let standardTierVerified = !anthropic;
   const safe = { runId: UUID.test(approvedRunId || '') ? approvedRunId : null,
-    provider: 'openai', role, reservedUsd: RESERVE_USD, maxOutputTokens: OUTPUT_TOKENS,
-    requestedServiceTier: 'default' };
+    provider, role, reservedUsd: RESERVE_USD, maxOutputTokens: OUTPUT_TOKENS,
+    requestedServiceTier: serviceTier };
   const report = (status, fields = {}) => ({ ...safe, status, ...fields,
     requestCount, elapsedMs: Date.now() - started });
   const finish = async (status, fields = {}) => {
@@ -144,11 +149,13 @@ export async function runPaidAcceptance({
   };
 
   try {
-    if (!UUID.test(approvedRunId || '') ||
+    if (!['openai', 'anthropic'].includes(provider) || !UUID.test(approvedRunId || '') ||
         String(env.MISSION_AI_DELEGATION_ENABLED).toLowerCase() !== 'false' ||
         !env.MISSION_AI_LEDGER_MONGO_URI || env.MISSION_AI_LEDGER_DB !== 'MissionAI' ||
-        !env.MISSION_AI_MONGO_URI || !env.OPENAI_API_KEY ||
-        (env.OPENAI_API_BASE_URL && env.OPENAI_API_BASE_URL !== 'https://api.openai.com/v1') ||
+        !env.MISSION_AI_MONGO_URI ||
+        (!anthropic && (!env.OPENAI_API_KEY || (env.OPENAI_API_BASE_URL && env.OPENAI_API_BASE_URL !== 'https://api.openai.com/v1'))) ||
+        (anthropic && (!env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY !== env.ANTHROPIC_API_KEY || env.MISSION_AI_NATIVE_ENABLED !== 'false' ||
+          (env.ANTHROPIC_API_BASE_URL && env.ANTHROPIC_API_BASE_URL !== 'https://api.anthropic.com'))) ||
         Boolean(usageLedger) !== Boolean(claimStore)) {
       throw failure('acceptance_configuration_invalid');
     }
@@ -156,15 +163,16 @@ export async function runPaidAcceptance({
       throw failure('acceptance_approval_mismatch');
     }
     const [catalog, pricing] = await Promise.all([catalogLoader(), pricingLoader()]);
-    const model = env[`MISSION_AI_MODEL_${role.toUpperCase()}`] || catalog?.providers?.openai?.[role];
-    if (!model || !Object.values(catalog?.providers?.openai || {}).includes(model)) {
+    const model = env[`MISSION_AI_MODEL_${role.toUpperCase()}`] || catalog?.providers?.[provider]?.[role];
+    if (!model || !Object.values(catalog?.providers?.[provider] || {}).includes(model)) {
       throw failure('acceptance_model_not_configured');
     }
-    if (model !== approvedModel || !/^\d{4}-\d{2}-\d{2}$/.test(approvedPricingDate || '') ||
-        pricing?.verifiedOn !== approvedPricingDate) throw failure('acceptance_approval_mismatch');
+    const pricingDate = pricing?.models?.[model]?.verifiedOn ?? pricing?.verifiedOn;
+    if (model !== approvedModel || (anthropic && model !== 'claude-sonnet-5-5') || !/^\d{4}-\d{2}-\d{2}$/.test(approvedPricingDate || '') ||
+        pricingDate !== approvedPricingDate) throw failure('acceptance_approval_mismatch');
     Object.assign(safe, { model, pricingVerifiedOn: approvedPricingDate, sourceSha: approvedSourceSha });
     const estimatedMaximumUsd = maximumTextRequestCost({
-      provider: 'openai', model, prompt: PROMPT, system: '', maxOutputTokens: OUTPUT_TOKENS, pricing,
+      provider, model, prompt: PROMPT, system: '', maxOutputTokens: OUTPUT_TOKENS, pricing,
     });
     if (!Number.isFinite(estimatedMaximumUsd) || estimatedMaximumUsd <= 0 || estimatedMaximumUsd > RESERVE_USD) {
       throw failure('acceptance_estimate_exceeds_cap');
@@ -190,38 +198,46 @@ export async function runPaidAcceptance({
       reservationId, createdAt: now, updatedAt: now,
       requestFingerprint: crypto.createHash('sha256')
         .update(JSON.stringify({ model, prompt: PROMPT, maxOutputTokens: OUTPUT_TOKENS,
-          serviceTier: 'default' })).digest('hex'),
+          serviceTier })).digest('hex'),
     });
     claimed = true;
     reservationAttempted = true;
     reservation = await ledger.reserve({
       reservationId, reserveUsd: RESERVE_USD, directCapUsd: budget.directCapUsd,
       now, timeZone: dashboard.timeZone,
-      metadata: { provider: 'openai', model, role, task: 'paid_acceptance', project: 'mission-ai-acceptance' },
+      metadata: { provider, model, role, task: 'paid_acceptance', project: 'mission-ai-acceptance' },
     });
     await store.markDispatch(approvedRunId, reservationId);
     let output;
     try {
       output = await executeProvider({
-        provider: 'openai', model, prompt: PROMPT, maxOutputTokens: OUTPUT_TOKENS,
+        provider, model, prompt: PROMPT, maxOutputTokens: OUTPUT_TOKENS,
         fetchImpl: async (url, options) => {
           let sent;
           try { sent = JSON.parse(options.body); } catch { throw failure('acceptance_provider_request_invalid'); }
-          if (requestCount !== 0 || url !== PROVIDER_URL || options.method !== 'POST' ||
-              options.redirect !== 'error' || !isDeepStrictEqual(sent, {
-                model, input: PROMPT, max_output_tokens: OUTPUT_TOKENS, service_tier: 'default',
-              })) throw failure('acceptance_provider_request_invalid');
+          if (requestCount !== 0 || url !== PROVIDER_URLS[provider] || options.method !== 'POST' ||
+              options.redirect !== 'error' || !isDeepStrictEqual(sent, anthropic ? {
+                model, thinking: { type: 'between_tools' }, output_config: { effort: 'low' },
+                max_tokens: OUTPUT_TOKENS, messages: [{ role: 'user', content: PROMPT }],
+              } : { model, input: PROMPT, max_output_tokens: OUTPUT_TOKENS, service_tier: 'default' })) throw failure('acceptance_provider_request_invalid');
           requestCount += 1;
-          return fetchImpl(url, { ...options,
+          const response = await fetchImpl(url, { ...options,
+            ...(anthropic ? { body: JSON.stringify({ ...sent, service_tier: 'standard_only' }) } : {}),
             signal: AbortSignal.any([options.signal, AbortSignal.timeout(20000)]),
           });
+          if (!anthropic) return response;
+          const body = await response.json();
+          standardTierVerified = body?.usage?.service_tier === 'standard';
+          return { ok: response.ok, status: response.status, json: async () => body };
         },
       });
+      if (!standardTierVerified) throw new ProviderRequestError(provider, 502, 'provider_service_tier_unverified', { chargeUnknown: true });
+      if (anthropic) output.serviceTier = 'standard';
       if (output.model !== model) {
-        throw new ProviderRequestError('openai', 502, 'acceptance_model_mismatch', { chargeUnknown: true });
+        throw new ProviderRequestError(provider, 502, 'acceptance_model_mismatch', { chargeUnknown: true });
       }
       if (!output.text || output.usage.outputTokens === 0) {
-        throw new ProviderRequestError('openai', 502, 'acceptance_output_missing', { chargeUnknown: true });
+        throw new ProviderRequestError(provider, 502, 'acceptance_output_missing', { chargeUnknown: true });
       }
     } catch (error) {
       const reason = safeReason(error, 'provider_request_failed');
@@ -230,7 +246,7 @@ export async function runPaidAcceptance({
         return await finish(requestCount === 0 ? 'FAIL_PRE_DISPATCH' : 'FAIL_REJECTED', { reason });
       }
       await ledger.settle({ reservationId, actualUsd: RESERVE_USD,
-        usage: { provider: 'openai', model, estimated: true, reason, acceptanceRunId: approvedRunId },
+        usage: { provider, model, estimated: true, reason, acceptanceRunId: approvedRunId },
       });
       const event = await store.readEvent(reservationId);
       if (event.status !== 'settled' || event.actualUsd !== RESERVE_USD || event.usage?.estimated !== true) {
@@ -238,8 +254,8 @@ export async function runPaidAcceptance({
       }
       return await finish('FAIL_ESTIMATED', { reason, estimated: true, accountedUsd: RESERVE_USD });
     }
-    const cost = calculateUsageCost('openai', model, output.usage, pricing);
-    const usage = { provider: 'openai', model, ...output.usage, serviceTier: output.serviceTier,
+    const cost = calculateUsageCost(provider, model, output.usage, pricing);
+    const usage = { provider, model, ...output.usage, serviceTier: output.serviceTier,
       pricingVerifiedOn: cost.pricingVerifiedOn, estimated: false, acceptanceRunId: approvedRunId };
     await ledger.settle({ reservationId, actualUsd: cost.totalUsd, usage });
     const [event, after] = await Promise.all([
@@ -247,7 +263,7 @@ export async function runPaidAcceptance({
     ]);
     if (event.status !== 'settled' || event.reservedUsd !== RESERVE_USD ||
         event.actualUsd !== cost.totalUsd || !isDeepStrictEqual(event.usage, usage) ||
-        event.metadata?.provider !== 'openai' || event.metadata?.model !== model ||
+        event.metadata?.provider !== provider || event.metadata?.model !== model ||
         event.underestimated || after.accountingBlocked || after.reservedUsd !== before.reservedUsd ||
         Math.abs(after.settledUsd - before.settledUsd - cost.totalUsd) > 1e-9) {
       throw failure('acceptance_postcheck_failed');
@@ -271,7 +287,7 @@ export async function runPaidAcceptance({
 async function main() {
   const options = {};
   const flags = new Map([
-    ['--approved-run-id', 'approvedRunId'], ['--approved-model', 'approvedModel'],
+    ['--approved-run-id', 'approvedRunId'], ['--approved-provider', 'approvedProvider'], ['--approved-model', 'approvedModel'],
     ['--approved-pricing-date', 'approvedPricingDate'], ['--approved-source-sha', 'approvedSourceSha'],
   ]);
   for (let index = 2; index < process.argv.length; index += 2) {

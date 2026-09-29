@@ -2,6 +2,20 @@
 
 Do not paste secrets into chat, source code, commits, or screenshots.
 
+## One-request accounting acceptance while paid gates are off
+
+`gateway/paid-acceptance.js` supports an explicitly approved Anthropic run pinned
+to `claude-sonnet-5-5`, the deployed source SHA, the model's verified pricing date,
+and a fresh UUID. Both native chat and delegation must remain disabled. It reserves
+$0.05 before sending one standard-only request containing only `Reply only with
+OK.`, with at most 128 output tokens and a 20-second provider timeout. There are no
+tools, history, provider fallbacks or retries. The durable claim prevents replay,
+including after a failure or process restart. Verified usage settles the actual
+charge; uncertain billing retains the conservative charge. This direct provider
+accounting test does not establish native chat or computer-tool readiness and
+does not authorize enabling any paid gate. Reusing private gateway credentials
+in a local operator requires explicit approval; never print or commit them.
+
 ## Owner controls in the separate chat
 
 The sidebar's Mission AI controls show ledger spending and run only basic free

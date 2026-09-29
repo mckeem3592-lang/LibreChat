@@ -262,3 +262,61 @@ test('CLI without explicit approval arguments exits safely without provider or d
     return true;
   });
 });
+
+function anthropicFixture() {
+  process.env.ANTHROPIC_API_KEY = 'test-anthropic-acceptance-key';
+  delete process.env.ANTHROPIC_API_BASE_URL;
+  const f = fixture();
+  Object.assign(f.options, { approvedProvider: 'anthropic', approvedModel: 'claude-sonnet-5-5', approvedPricingDate: '2026-09-28',
+    pricingLoader: async () => ({ verifiedOn: '2026-09-27', models: { 'claude-sonnet-5-5': { provider: 'anthropic', input: 2, output: 10, cachedInput: 0.2, cacheWrite: 2.5, cacheWrite1h: 4, verifiedOn: '2026-09-28' } } }),
+    catalogLoader: async () => ({ providers: { anthropic: { economy: 'claude-sonnet-5-5' } } }),
+    fetchImpl: async (url, options) => {
+      f.requests.push({ url, options });
+      assert.equal(f.claims.get(RUN_ID).stage, 'dispatch_started');
+      return response({ model: 'claude-sonnet-5-5', content: [{ type: 'text', text: 'PRIVATE_ANTHROPIC_OUTPUT' }], usage: { input_tokens: 10, output_tokens: 2, service_tier: 'standard' } });
+    },
+  });
+  Object.assign(f.options.env, { ANTHROPIC_API_KEY: 'test-anthropic-acceptance-key', MISSION_AI_NATIVE_ENABLED: 'false', MISSION_AI_MODEL_ECONOMY: 'claude-sonnet-5-5' });
+  return f;
+}
+
+test('approved Sonnet 5.5 acceptance is one exact standard-only request with five-cent reservation and both paid gates off', async () => {
+  const f = anthropicFixture();
+  const result = await runPaidAcceptance(f.options);
+  assert.equal(result.status, 'PASS_ACTUAL');
+  assert.equal(result.provider, 'anthropic');
+  assert.equal(result.serviceTier, 'standard');
+  assert.equal(result.pricingVerifiedOn, '2026-09-28');
+  assert.ok(Math.abs(result.actualUsd - 0.00004) < 1e-12);
+  assert.equal(f.requests.length, 1);
+  assert.equal(f.requests[0].url, 'https://api.anthropic.com/v1/messages');
+  assert.deepEqual(JSON.parse(f.requests[0].options.body), { model: 'claude-sonnet-5-5', thinking: { type: 'between_tools' }, output_config: { effort: 'low' }, max_tokens: 128, messages: [{ role: 'user', content: 'Reply only with OK.' }], service_tier: 'standard_only' });
+  assert.equal(f.events.get(`paid-acceptance:${RUN_ID}`).reservedUsd, 0.05);
+  assert.equal(f.options.env.MISSION_AI_NATIVE_ENABLED, 'false');
+  assert.equal(f.options.env.MISSION_AI_DELEGATION_ENABLED, 'false');
+  assert.equal((await runPaidAcceptance(f.options)).status, 'SKIP_ALREADY_CLAIMED');
+  assert.equal(f.requests.length, 1);
+  assert.doesNotMatch(JSON.stringify(result) + JSON.stringify([...f.claims.values()]), /PRIVATE_ANTHROPIC_OUTPUT|test-anthropic-acceptance-key|mongodb:\/\//);
+});
+
+test('Sonnet acceptance refuses native activation, alternate provider URLs, key mismatch and mismatched pricing before dispatch', async () => {
+  for (const change of [f => { f.options.env.MISSION_AI_NATIVE_ENABLED = 'true'; }, f => { f.options.env.ANTHROPIC_API_BASE_URL = 'https://other.invalid'; }, f => { f.options.env.ANTHROPIC_API_KEY = 'different-test-key'; }, f => { f.options.approvedPricingDate = '2026-09-27'; }, f => { f.options.approvedProvider = 'google'; }]) {
+    const f = anthropicFixture(); change(f);
+    assert.equal((await runPaidAcceptance(f.options)).status, 'FAIL_PRE_DISPATCH');
+    assert.equal(f.requests.length, 0);
+    assert.equal(f.claims.size, 0);
+  }
+});
+
+test('Sonnet acceptance retains its reservation on unknown or premium tier and never retries', async () => {
+  for (const tier of [undefined, 'priority']) {
+    const f = anthropicFixture();
+    f.options.fetchImpl = async (url, options) => { f.requests.push({ url, options }); return response({ model: 'claude-sonnet-5-5', content: [{ type: 'text', text: 'OK' }], usage: { input_tokens: 10, output_tokens: 2, service_tier: tier } }); };
+    const result = await runPaidAcceptance(f.options);
+    assert.equal(result.status, 'FAIL_ESTIMATED');
+    assert.equal(result.reason, 'provider_service_tier_unverified');
+    assert.equal(result.accountedUsd, 0.05);
+    assert.equal((await runPaidAcceptance(f.options)).status, 'SKIP_ALREADY_CLAIMED');
+    assert.equal(f.requests.length, 1);
+  }
+});
