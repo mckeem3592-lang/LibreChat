@@ -1406,11 +1406,8 @@ wss.on(
           }
 
           if (
-            message?.type ===
-              'device_capabilities' &&
-            Array.isArray(
-              message.capabilities,
-            )
+            message?.type === 'device_capabilities' &&
+            Array.isArray(message.capabilities)
           ) {
             const safeCapabilities =
               [
