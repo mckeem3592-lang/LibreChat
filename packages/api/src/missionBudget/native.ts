@@ -27,6 +27,7 @@ export interface NativeBridgeDependencies {
     policy: { targetUsd: number; economyUsd: number; hardUsd: number };
     timeZone: string;
     directCapUsd: number;
+    maxOutputTokens?: number;
   }>;
   pricingLoader: () => Awaitable<unknown>;
   estimateCost: (input: {
@@ -335,10 +336,11 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
         fail('native_provider_unready', 503);
       }
       const normalized = nativeMessages ? normalizeAnthropicMessages(input) : normalizeBody(input);
-      const { body, model, outputLimit } = normalized;
+      const { body, model } = normalized;
+      let outputLimit = normalized.outputLimit;
       const imageInputTokens = 'imageInputTokens' in normalized && typeof normalized.imageInputTokens === 'number' ? normalized.imageInputTokens : 0;
       const upstreamBody = provider === 'anthropic' && !nativeMessages ? anthropicRequest(body) : body;
-      const serialized = JSON.stringify(upstreamBody);
+      let serialized = JSON.stringify(upstreamBody);
       if (new TextEncoder().encode(serialized).length > (nativeMessages ? 12_582_912 : MAX_BODY_BYTES)) fail('native_request_too_large', 413);
       try {
         if (await deps.modelAllowed(model) !== true) fail('native_model_unsupported');
@@ -363,6 +365,13 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
         if (amount(policy.targetUsd) > amount(policy.economyUsd) ||
             amount(policy.economyUsd) > amount(policy.hardUsd, true) ||
             amount(budget.directCapUsd) > policy.hardUsd) fail('shared_budget_unready', 503);
+        // A temporary acceptance limit changes the actual upstream request, not just its reservation.
+        if (nativeMessages && budget.maxOutputTokens !== undefined) {
+          if (!Number.isSafeInteger(budget.maxOutputTokens) || budget.maxOutputTokens < 1 || budget.maxOutputTokens > 32768) fail('shared_budget_unready', 503);
+          outputLimit = Math.min(outputLimit, budget.maxOutputTokens);
+          body.max_tokens = outputLimit;
+          serialized = JSON.stringify(upstreamBody);
+        }
         pricing = await deps.pricingLoader();
         reserveUsd = amount(deps.estimateCost({
           provider, model, prompt: nativeMessages ? anthropicReservationPrompt(body) : serialized, system: '', maxOutputTokens: outputLimit, pricing, imageInputTokens,

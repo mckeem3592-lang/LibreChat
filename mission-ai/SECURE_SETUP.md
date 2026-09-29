@@ -12,7 +12,9 @@ cannot cross a Denver accounting-month boundary, and accepts at most $0.10 of
 additional spending. Native reservations use the lower of the normal shared cap
 and baseline plus allowance, so concurrent requests cannot exceed the test ceiling.
 Missing, malformed, expired or oversized settings deny the temporary path.
-Remove these settings after testing; this window is not general paid activation.
+The temporary native Messages path limits the actual upstream output to 2,048 tokens
+(or the lower requested limit), reserving against that same real limit. The ordinary
+output setting is unchanged. Remove these settings after testing; this window is not general paid activation.
 
 `gateway/paid-acceptance.js` supports an explicitly approved Anthropic run pinned
 to `claude-sonnet-5-5`, the deployed source SHA, the model's verified pricing date,

@@ -104,7 +104,7 @@ const nativeDependencies = {
       await nativeLedger.reconcileStaleReservations({ now });
       const acceptance = acceptanceWindow(process.env, now);
       if (process.env.MISSION_AI_NATIVE_ENABLED !== 'true' && !acceptance) throw new Error('native_disabled');
-      return { ...shared, directCapUsd: acceptance
+      return { ...shared, ...(acceptance ? { maxOutputTokens: 2048 } : {}), directCapUsd: acceptance
         ? Math.min(shared.policy.hardUsd, acceptance.ceilingUsd) : shared.policy.hardUsd };
     },
     pricingLoader: loadPricing,

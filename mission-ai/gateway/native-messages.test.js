@@ -194,3 +194,36 @@ test('programmatic or malformed caller remains denied before dispatch on continu
     assert.throws(() => normalizeAnthropicMessages(next), /native_/);
   }
 });
+
+
+test('temporary output ceiling is sent upstream and reserved at the same real limit', async () => {
+  const policy = { targetUsd: 100, economyUsd: 125, hardUsd: 175 };
+  for (const requested of [128, 4096]) {
+    let estimate;
+    const f = await fixture(answer(), { estimateCost: value => { estimate = value; return maximumTextRequestCost(value); }, budgetReader: () => ({ mode: 'shared', policy,
+      timeZone: 'America/Denver', directCapUsd: 175, maxOutputTokens: 2048 }) });
+    await f.bridge.handle(request({ max_tokens: requested }));
+    const sent = JSON.parse(f.events.find(e => e.type === 'fetch').init.body);
+    assert.equal(sent.max_tokens, Math.min(requested, 2048));
+    assert.equal(estimate.maxOutputTokens, sent.max_tokens);
+    assert.equal(JSON.parse(estimate.prompt).max_tokens, sent.max_tokens);
+    const reserve = f.events.at(-1).input;
+    assert.equal(reserve.usage.estimated, false);
+    const expected = maximumTextRequestCost({ provider: 'anthropic', model,
+      prompt: anthropicReservationPrompt(sent), maxOutputTokens: sent.max_tokens,
+      pricing: { models: { [model]: { provider: 'anthropic', input: 2, output: 10 } } } });
+    const summary = await f.ledger.summary({ now, timeZone: 'America/Denver' });
+    assert(summary.settledUsd <= expected);
+  }
+});
+test('ordinary output limit is unchanged and invalid acceptance limits fail before paid dispatch', async () => {
+  const f = await fixture(); await f.bridge.handle(request({ max_tokens: 4096 }));
+  assert.equal(JSON.parse(f.events.find(e => e.type === 'fetch').init.body).max_tokens, 4096);
+  const policy = { targetUsd: 100, economyUsd: 125, hardUsd: 175 };
+  for (const maxOutputTokens of [0, 32769, NaN, '2048']) {
+    const denied = await fixture(answer(), { budgetReader: () => ({ mode: 'shared', policy,
+      timeZone: 'America/Denver', directCapUsd: 175, maxOutputTokens }) });
+    await assert.rejects(denied.bridge.handle(request()), /shared_budget_unready/);
+    assert.deepEqual(denied.events, []);
+  }
+});
