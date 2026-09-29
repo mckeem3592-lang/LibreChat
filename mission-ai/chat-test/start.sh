@@ -111,7 +111,7 @@ CODEJWT
 esac
 [[ -f $managed_config ]] || fail 'reviewed managed configuration is missing'
 [[ ${CONFIG_PATH-$managed_config} == "$managed_config" ]] || fail 'CONFIG_PATH cannot select another configuration'
-[[ ${ENDPOINTS-} == google,anthropic ]] || fail 'ENDPOINTS must be google,anthropic'
+[[ ${ENDPOINTS-custom} == custom ]] || fail 'ENDPOINTS must be custom'
 for variable in ALLOW_REGISTRATION ALLOW_SOCIAL_LOGIN ALLOW_SOCIAL_REGISTRATION \
   ALLOW_UNVERIFIED_EMAIL_LOGIN ALLOW_PASSWORD_RESET ALLOW_EMAIL_LOGIN_OVERRIDE SEARCH USE_REDIS \
   DEBUG_LOGGING DEBUG_CONSOLE AGENT_DEBUG_LOGGING TITLE_CONVO DEPLOYMENT_PLUGIN_HOOKS; do
@@ -121,7 +121,7 @@ done
 [[ ${ALLOW_EMAIL_LOGIN-true} == true ]] || fail 'verified local email login must remain enabled'
 [[ ${SESSION_COOKIE_SECURE-true} == true ]] || fail 'secure session cookies are required'
 [[ ${NODE_TLS_REJECT_UNAUTHORIZED-1} != 0 ]] || fail 'TLS verification must remain enabled'
-export CONFIG_PATH="$managed_config" ENDPOINTS=google,anthropic NODE_ENV=production HOST=0.0.0.0
+export CONFIG_PATH="$managed_config" ENDPOINTS=custom NODE_ENV=production HOST=0.0.0.0
 export ALLOW_EMAIL_LOGIN=true SESSION_COOKIE_SECURE=true TRUST_PROXY=1
 export PORT="${PORT:-10000}" SCARF_ANALYTICS=false
 
