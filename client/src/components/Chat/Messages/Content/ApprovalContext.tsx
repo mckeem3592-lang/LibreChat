@@ -135,6 +135,24 @@ const isExpiredError = (error: unknown): boolean => {
   return status === 409;
 };
 
+/** Report only bounded protocol fields; error messages and response bodies may contain private data. */
+const logSafeApprovalFailure = (error: unknown): void => {
+  const failure = error as
+    | { code?: unknown; response?: { status?: unknown; data?: { code?: unknown } } }
+    | undefined;
+  const rawStatus = failure?.response?.status;
+  const rawCode = failure?.response?.data?.code ?? failure?.code;
+  const status =
+    typeof rawStatus === 'number' && Number.isInteger(rawStatus) && rawStatus >= 100 && rawStatus <= 599
+      ? rawStatus
+      : 'unavailable';
+  const code =
+    typeof rawCode === 'string' && /^[a-zA-Z0-9_]{1,64}$/.test(rawCode)
+      ? rawCode
+      : 'unavailable';
+  console.warn('Mission AI approval request failed', { status, code });
+};
+
 /**
  * Coordinates human-in-the-loop decisions for a single response message.
  *
@@ -489,6 +507,9 @@ export function useResumeSubmit() {
             }
           },
           onError: (error) => {
+            if (fields.endpoint === 'MissionAI') {
+              logSafeApprovalFailure(error);
+            }
             const expired = isExpiredError(error);
             if (!expired) {
               // Network/validation failures are retryable; a 409 is terminal.
