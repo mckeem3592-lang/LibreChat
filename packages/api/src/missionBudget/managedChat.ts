@@ -2,8 +2,8 @@
  * Admission boundary for the Mission AI managed text-chat service.
  *
  * Exactly seven reviewed model specs are exposed across three reviewed custom
- * endpoints. Gemini remains the only default. Paid models require a manual
- * user selection in LibreChat and route through the Mission AI gateway.
+ * endpoints in free-baseline mode. Gemini remains the only default there.
+ * The existing non-baseline tool deployment retains its isolated Sonnet profile.
  */
 type ObjectValue = Record<string, unknown>;
 
@@ -39,7 +39,7 @@ type ApprovedSpec = Readonly<{
   endpoint: string;
   model: string;
   default: boolean;
-  prompt: PromptKind;
+  prompt?: PromptKind;
 }>;
 
 type ApprovedEndpoint = Readonly<{
@@ -58,13 +58,11 @@ const GOOGLE_ENDPOINT = 'MissionAI';
 const CLAUDE_ENDPOINT = 'MissionAIClaude';
 const OPENAI_ENDPOINT = 'MissionAIOpenAI';
 
-const ENDPOINTS = Object.freeze([
-  GOOGLE_ENDPOINT,
-  CLAUDE_ENDPOINT,
-  OPENAI_ENDPOINT,
-] as const);
+const ENDPOINTS: readonly string[] = Object.freeze(
+  FREE_BASELINE ? [GOOGLE_ENDPOINT, CLAUDE_ENDPOINT, OPENAI_ENDPOINT] : [GOOGLE_ENDPOINT],
+);
 
-const APPROVED_SPECS: Readonly<Record<string, ApprovedSpec>> = Object.freeze({
+const BASELINE_SPECS: Readonly<Record<string, ApprovedSpec>> = Object.freeze({
   'mission-ai-free': Object.freeze({
     endpoint: GOOGLE_ENDPOINT,
     model: 'gemini-3.5-flash-lite',
@@ -109,7 +107,17 @@ const APPROVED_SPECS: Readonly<Record<string, ApprovedSpec>> = Object.freeze({
   }),
 });
 
-const APPROVED_ENDPOINTS: Readonly<Record<string, ApprovedEndpoint>> = Object.freeze({
+const APPROVED_SPECS: Readonly<Record<string, ApprovedSpec>> = FREE_BASELINE
+  ? BASELINE_SPECS
+  : Object.freeze({
+      'mission-ai-sonnet': Object.freeze({
+        endpoint: GOOGLE_ENDPOINT,
+        model: 'claude-sonnet-5-5',
+        default: true,
+      }),
+    });
+
+const BASELINE_ENDPOINTS: Readonly<Record<string, ApprovedEndpoint>> = Object.freeze({
   [GOOGLE_ENDPOINT]: Object.freeze({
     baseURL: 'google',
     apiKey: 'google',
@@ -134,6 +142,16 @@ const APPROVED_ENDPOINTS: Readonly<Record<string, ApprovedEndpoint>> = Object.fr
     ]),
   }),
 });
+
+const APPROVED_ENDPOINTS: Readonly<Record<string, ApprovedEndpoint>> = FREE_BASELINE
+  ? BASELINE_ENDPOINTS
+  : Object.freeze({
+      [GOOGLE_ENDPOINT]: Object.freeze({
+        baseURL: 'anthropicGateway',
+        apiKey: 'native',
+        models: Object.freeze(['claude-sonnet-5-5']),
+      }),
+    });
 
 const MASTER_GATEWAY_PROMPT = `MISSION AI MASTER GATEWAY v2
 
@@ -606,10 +624,12 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
 
       if (
         method === 'POST' &&
-        query === '' &&
+        separator < 0 &&
         ENDPOINTS.some((endpoint) => path === chatPath(endpoint))
       ) {
-        req.body = chatBody(req.body);
+        const body = chatBody(req.body);
+        if (path !== chatPath(body.endpoint as string)) throw new Error();
+        req.body = body;
         return next();
       }
 
@@ -620,6 +640,7 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
         if (
           params.size !== 1 ||
           requested == null ||
+          query !== `name=${requested}` ||
           !ENDPOINTS.includes(requested as (typeof ENDPOINTS)[number])
         ) {
           throw new Error();
@@ -709,12 +730,6 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
   ) {
     throw new Error();
   }
-
-  /*
-   * This seven-model reviewed configuration is valid only in the free-baseline
-   * deployment mode where Gemini remains the default.
-   */
-  if (!FREE_BASELINE) throw new Error();
 
   const gateway = new URL(options.gatewayURL ?? '');
 
@@ -817,7 +832,7 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
     const expected = expectedEndpointConfig(name, gateway.origin);
 
     const approvedApiKeys =
-      name === GOOGLE_ENDPOINT
+      APPROVED_ENDPOINTS[name].apiKey === 'google'
         ? expected.apiKeys
         : [options.nativeToken, ...expected.apiKeys];
 
@@ -938,7 +953,11 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
 
     integer(preset.max_tokens, 1, 32768);
 
-    if (!reviewedPrompt(approved.prompt, preset.promptPrefix)) {
+    if (
+      approved.prompt
+        ? !reviewedPrompt(approved.prompt, preset.promptPrefix)
+        : preset.promptPrefix != null
+    ) {
       throw new Error();
     }
   }
