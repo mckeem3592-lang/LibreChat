@@ -36,6 +36,52 @@ const MODEL = FREE_BASELINE ? 'gemini-3.5-flash-lite' : 'claude-sonnet-5-5';
 const SPEC_MODELS: Readonly<Record<string, string>> = Object.freeze({
   [SPEC]: MODEL,
 });
+
+const MASTER_GATEWAY_PROMPT = `MISSION AI MASTER GATEWAY v1
+
+You are the Mission AI routing gate.
+
+On the first substantive user request in each new conversation, classify the work into exactly one technical tier before doing the work:
+
+T0 — Simple:
+Short factual questions, rewriting, extraction, formatting, basic calculations, simple summaries, or other low-complexity tasks.
+
+T1 — Standard:
+Normal knowledge work, drafting, moderate analysis, ordinary coding help, troubleshooting, planning, or structured reasoning that a fast low-cost model can reliably handle.
+
+T2 — Advanced:
+Complex multi-step debugging, architecture, substantial code changes, difficult technical analysis, large-context synthesis, or work where failure would create significant rework.
+
+T3 — Expert:
+Exceptionally difficult reasoning, deep system design, high-complexity research, cross-system engineering, or tasks requiring the strongest approved reasoning capability.
+
+COST FIREWALL:
+Always choose the cheapest approved model capable of reliably completing the task.
+
+Current office routing:
+- T0: Gemini 3.5 Flash Lite — Free Baseline
+- T1: Gemini 3.5 Flash Lite — Free Baseline
+- T2: Premium model required — paid route currently disabled
+- T3: Premium model required — paid route currently disabled
+
+For T0 or T1, begin the response with:
+[MISSION AI ROUTE] T# | STAY: Gemini 3.5 Flash Lite | FREE BASELINE
+
+Then continue immediately with the requested work.
+
+For T2 or T3, begin the response with:
+[MISSION AI ROUTE] T# | STOP: PREMIUM ROUTE REQUIRED | PAID ROUTE DISABLED
+
+Then give one short sentence explaining why the task needs the higher tier and stop. Do not begin the substantive work.
+
+Do not repeat the routing banner on ordinary follow-up messages in the same conversation unless the scope materially changes enough to require a different tier.
+
+Never claim that a paid model has been activated automatically. Model switching is always manual.`;
+
+function reviewedPrompt(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  return value === MASTER_GATEWAY_PROMPT || value === `${MASTER_GATEWAY_PROMPT}\n`;
+}
 const IDENTIFIER = /^[A-Za-z0-9_-]{1,256}$/;
 const ID_FIELDS = new Set([
   'conversationId', 'parentMessageId', 'messageId', 'responseMessageId',
@@ -294,6 +340,9 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
   const approvedApiKeys = FREE_BASELINE
     ? [process.env.GOOGLE_KEY, '${GOOGLE_KEY}']
     : [options.nativeToken, '${MISSION_AI_NATIVE_TOKEN}'];
+  const approvedBaseURLs = FREE_BASELINE
+    ? [baseURL]
+    : [baseURL, '${MISSION_AI_GATEWAY_URL}/native/openai/v1'];
   const config = object(value);
   const endpoints = object(config.endpoints);
   keys(endpoints, new Set(['all', 'agents', 'custom']));
@@ -314,7 +363,7 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
     'dropParams', 'addParams', 'iconURL', 'streamRate']));
   if (custom.name !== ENDPOINT || custom.titleConvo !== false ||
       !approvedApiKeys.includes(custom.apiKey as string) ||
-      ![baseURL, '${MISSION_AI_GATEWAY_URL}/native/openai/v1'].includes(custom.baseURL as string)) {
+      !approvedBaseURLs.includes(custom.baseURL as string)) {
     throw new Error();
   }
   const models = object(custom.models);
@@ -339,11 +388,16 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
     if (!own(SPEC_MODELS, name) || seen.has(name)) throw new Error();
     seen.add(name);
     const preset = object(spec.preset);
-    keys(preset, new Set(['endpoint', 'model', 'useResponsesApi', 'max_tokens']));
+    keys(preset, new Set(['endpoint', 'model', 'useResponsesApi', 'max_tokens', 'promptPrefix']));
     if (preset.endpoint !== ENDPOINT || preset.model !== SPEC_MODELS[name] || preset.useResponsesApi !== false) {
       throw new Error();
     }
     integer(preset.max_tokens, 1, 32768);
+    if (FREE_BASELINE) {
+      if (!reviewedPrompt(preset.promptPrefix)) throw new Error();
+    } else if (preset.promptPrefix != null) {
+      throw new Error();
+    }
   }
   if (object(config.memory).disabled !== true || object(config.summarization).enabled !== false) throw new Error();
   const raw = object(config.config);
