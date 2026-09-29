@@ -19,7 +19,7 @@ for variable in $(compgen -e); do
   [[ -n ${!variable} ]] || continue
   case "$variable" in
     MONGO_URI|JWT_SECRET|JWT_REFRESH_SECRET|CREDS_KEY|CREDS_IV|MISSION_AI_NATIVE_TOKEN|MISSION_AI_GATEWAY_URL|\
-    MISSION_AI_MANAGED_CHAT|MISSION_AI_BOOTSTRAP_OWNER|MISSION_AI_OWNER_EMAIL|MISSION_AI_OWNER_PASSWORD|MISSION_AI_CONTROL_OWNER_EMAIL)
+    MISSION_AI_MANAGED_CHAT|MISSION_AI_MANAGED_TOOLS|MISSION_AI_TOOL_TOKEN|MISSION_AI_BOOTSTRAP_OWNER|MISSION_AI_OWNER_EMAIL|MISSION_AI_OWNER_PASSWORD|MISSION_AI_CONTROL_OWNER_EMAIL)
       continue ;;
     OPENAI_*|ANTHROPIC_*|AZURE_*|ASSISTANTS_*|GOOGLE_*|GEMINI_*|BEDROCK_*|AWS_*|VERTEX_*|\
     ANYSCALE_*|APIPIE_*|COHERE_*|DEEPSEEK_*|DATABRICKS_*|FIREWORKS_*|GROQ_*|HUGGINGFACE_*|\
@@ -78,7 +78,16 @@ try {
 }
 NODE
 
-managed_config="$repo_dir/mission-ai/config/librechat.shared-budget.yaml"
+case "${MISSION_AI_MANAGED_TOOLS-false}" in
+  false) managed_config="$repo_dir/mission-ai/config/librechat.shared-budget.yaml"
+    [[ -z ${MISSION_AI_TOOL_TOKEN-} ]] || fail 'tool credential requires the explicit managed tools gate' ;;
+  true) managed_config="$repo_dir/mission-ai/config/librechat.tools-budget.yaml"
+    [[ -n ${MISSION_AI_CONTROL_OWNER_EMAIL-} ]] || fail 'managed tools require the approved owner binding'
+    tool_token="${MISSION_AI_TOOL_TOKEN-}"
+    [[ ${#tool_token} -ge 32 && $tool_token != *[[:space:]]* && $tool_token != "$MISSION_AI_NATIVE_TOKEN" ]] ||
+      fail 'managed tools require a separate gateway tool credential' ;;
+  *) fail 'MISSION_AI_MANAGED_TOOLS must be explicitly true or false' ;;
+esac
 [[ -f $managed_config ]] || fail 'reviewed managed configuration is missing'
 [[ ${CONFIG_PATH-$managed_config} == "$managed_config" ]] || fail 'CONFIG_PATH cannot select another configuration'
 [[ ${ENDPOINTS-custom} == custom ]] || fail 'ENDPOINTS must be custom'

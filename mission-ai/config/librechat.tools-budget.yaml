@@ -1,0 +1,154 @@
+# Prepared native-tool configuration for the SEPARATE managed deployment.
+# Default-off: MISSION_AI_MANAGED_TOOLS must be explicitly approved and enabled.
+# Do not merge this with librechat.mission-ai.yaml or an existing tenant override.
+# Required deployment controls and cutover: ../NATIVE_BUDGET_CUTOVER.md.
+# This file alone is not a network boundary and does not gate every LibreChat API.
+version: 1.3.17
+cache: true
+
+interface:
+  modelSelect: true
+  parameters: false
+  multiConvo: false
+  presets: false
+  agents: false
+  remoteAgents:
+    use: false
+    create: false
+    share: false
+    public: false
+  schedules: false
+  skills: false
+  memories: false
+  runCode: false
+  webSearch: false
+  fileSearch: false
+  marketplace:
+    use: false
+  mcpServers:
+    use: true
+    create: false
+    share: false
+    public: false
+    toolsRefreshInterval: 0
+    statusRefreshInterval: 0
+  defaultPinnedTools: [mcp]
+  contextUsage: true
+  # Native token-credit estimates are not the authoritative shared USD ledger.
+  contextCost: false
+
+# Keep native transaction history for audit. Shared-mode totals must not add
+# these post-cutover copies to the same requests already settled by the gateway.
+transactions:
+  enabled: true
+balance:
+  enabled: false
+
+memory:
+  disabled: true
+  personalize: false
+summarization:
+  enabled: false
+
+# These hide speech controls; they are NOT authorization for the speech API.
+# No speech providers/credentials and denied direct egress are also required.
+speech:
+  speechTab:
+    speechToText: false
+    textToSpeech: false
+
+fileConfig:
+  endpoints:
+    default:
+      disabled: true
+    agents:
+      disabled: true
+    custom:
+      disabled: true
+    MissionAI:
+      disabled: true
+
+endpoints:
+  all:
+    titleConvo: false
+    activityLabel: false
+    activityPhaseLabel: false
+    reasoningLabel: false
+  agents:
+    disableBuilder: true
+    # An empty allowedProviders array means unrestricted, so name only the
+    # managed custom endpoint. Saved-agent access is also disabled above.
+    allowedProviders: ['MissionAI']
+    capabilities: [tools]
+    recursionLimit: 8
+    maxRecursionLimit: 8
+    modelResponseBodyTimeoutMs: 180000
+    toolApproval:
+      enabled: true
+      mode: default
+      allow: []
+      ask: ['mcp:mission-ai:*']
+  custom:
+    - name: 'MissionAI'
+      provider: anthropic
+      apiKey: '${MISSION_AI_NATIVE_TOKEN}'
+      baseURL: '${MISSION_AI_GATEWAY_URL}/native/anthropic'
+      models:
+        default: ['claude-sonnet-5-5']
+        fetch: false
+      modelDisplayLabel: 'Mission AI'
+      titleConvo: false
+      # Disable the model client's own retry loop as well as gateway fallbacks.
+      addParams:
+        maxRetries: 0
+        timeout: 180000
+      # Force the supported Chat Completions path, including stored settings
+      # that previously selected Responses. Gateway validation remains final.
+      dropParams: ['useResponsesApi', 'temperature', 'top_p', 'topP', 'topK', 'frequency_penalty', 'frequencyPenalty', 'presence_penalty', 'presencePenalty', 'seed', 'user', 'verbosity', 'metadata', 'thinking', 'outputConfig', 'output_config', 'promptCache', 'web_search']
+
+modelSpecs:
+  enforce: true
+  prioritize: true
+  # Capped Anthropic text adapter behind the compatible transport. Keep native
+  # requests disabled until reviewed deployment and paid acceptance pass.
+  list:
+    - name: 'mission-ai-sonnet'
+      label: 'Mission AI — Claude Sonnet 5.5 (offline)'
+      default: true
+      mcpServers: [mission-ai]
+      preset:
+        endpoint: 'MissionAI'
+        model: 'claude-sonnet-5-5'
+        useResponsesApi: false
+        maxOutputTokens: 4096
+        effort: low
+        thinking: true
+        promptCache: false
+
+mcpServers:
+  mission-ai:
+    title: Mission AI
+    type: streamable-http
+    url: '${MISSION_AI_GATEWAY_URL}/mcp'
+    headers:
+      Authorization: 'Bearer ${MISSION_AI_TOOL_TOKEN}'
+    timeout: 120000
+    chatMenu: true
+
+# Search remains disabled above until Free-plan/PAYG-off verification passes.
+webSearch:
+  searchProvider: tavily
+  scraperProvider: tavily
+  rerankerType: none
+  tavilyApiKey: '${TAVILY_API_KEY}'
+  tavilySearchOptions:
+    searchDepth: basic
+    maxResults: 5
+    includeAnswer: false
+    includeImages: false
+    includeRawContent: false
+    timeout: 15000
+  tavilyScraperOptions:
+    extractDepth: basic
+    includeImages: false
+    timeout: 15000

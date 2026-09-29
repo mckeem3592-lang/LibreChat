@@ -100,6 +100,23 @@ configuration still uses the restricted text adapter: deploying the native
 transport does not enable chat tools or authorize a local action. The actual
 Anthropic SDK is tested with synthetic responses and no provider calls.
 
+The separate chat now has an opt-in native tool configuration. Its default is
+`MISSION_AI_MANAGED_TOOLS=false`, using the existing text configuration. The
+`true` path selects only `librechat.tools-budget.yaml` and requires the approved
+`MISSION_AI_CONTROL_OWNER_EMAIL` plus a separate `MISSION_AI_TOOL_TOKEN`.
+Activation needs explicit owner approval for the browser/Mac tool access; a
+spending-panel approval alone does not grant that broader scope. Keep paid gates
+off while configuring. No direct provider/search credentials belong on the chat.
+
+Native tool mode pins Sonnet 5.5, the gateway's Messages endpoint, one fixed MCP
+server, zero client retries, low effort, and eight graph steps. Owner checks run
+after authentication for both chat and MCP metadata. Alternate MCP servers,
+OAuth/credential APIs, endpoint changes, retry overrides and unlisted APIs are
+denied. Every MCP action also asks for chat approval, and local mutations retain
+the independent Terminal preview/literal-`y` checkpoint. Memory, schedules,
+coding workspaces and file features remain disabled pending their integration;
+this configuration is not final product acceptance.
+
 Keep `MISSION_AI_SEARCH_ENABLED=false` until search acceptance. The gateway's
 only search path is Tavily basic, with no model answer or alternate provider.
 It checks current account/key limits and requires a verified PAYG-off timestamp

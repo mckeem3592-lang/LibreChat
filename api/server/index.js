@@ -27,7 +27,7 @@ const {
   createSecurityHeaders,
   performStartupChecks,
   handleJsonParseError,
-  createManagedChatAdmission,
+  createManagedToolAdmission,
   GenerationJobManager,
   QUERY_DEVTOOLS_HEADER,
   createStreamServices,
@@ -336,7 +336,8 @@ const startServer = async () => {
   app.use(express.json({ limit: '3mb' }));
   app.use(express.urlencoded({ extended: true, limit: '3mb' }));
   app.use(handleJsonParseError);
-  app.use(createManagedChatAdmission({ enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true' }));
+  app.use(createManagedToolAdmission({ enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
+    toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true' }));
 
   /**
    * Express 5 Compatibility: Make req.query writable for mongoSanitize

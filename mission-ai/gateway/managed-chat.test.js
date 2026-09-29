@@ -375,8 +375,8 @@ test('post-config guard also refuses a payload changed after early admission', (
 test('CJS wiring places admission before routers and config validation before chat dispatch', async () => {
   const server = await readFile(new URL('../../api/server/index.js', import.meta.url), 'utf8');
   const agents = await readFile(new URL('../../api/server/routes/agents/index.js', import.meta.url), 'utf8');
-  assert.ok(server.indexOf('app.use(createManagedChatAdmission(') > server.indexOf('app.use(handleJsonParseError)'));
-  assert.ok(server.indexOf('app.use(createManagedChatAdmission(') < server.indexOf("app.use('/api/auth'"));
-  assert.ok(agents.indexOf('chatRouter.use(createManagedChatConfigGuard(') > agents.indexOf('chatRouter.use(configMiddleware)'));
-  assert.ok(agents.indexOf('chatRouter.use(createManagedChatConfigGuard(') < agents.indexOf("chatRouter.use('/', chat)"));
+  assert.ok(server.indexOf('app.use(createManagedToolAdmission(') > server.indexOf('app.use(handleJsonParseError)'));
+  assert.ok(server.indexOf('app.use(createManagedToolAdmission(') < server.indexOf("app.use('/api/auth'"));
+  assert.ok(agents.indexOf('chatRouter.use(createManagedToolConfigGuard(') > agents.indexOf('chatRouter.use(configMiddleware)'));
+  assert.ok(agents.indexOf('chatRouter.use(createManagedToolConfigGuard(') < agents.indexOf("chatRouter.use('/', chat)"));
 });

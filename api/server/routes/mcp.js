@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { createManagedToolOwnerGuard } = require('@librechat/api');
 const { logger, getTenantId, tenantStorage } = require('@librechat/data-schemas');
 const {
   CacheKeys,
@@ -77,6 +78,15 @@ const { getLogStores } = require('~/cache');
 const db = require('~/models');
 
 const router = Router();
+const managedToolOwner = createManagedToolOwnerGuard({
+  enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
+  toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+  ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
+});
+router.use((req, res, next) => {
+  if (process.env.MISSION_AI_MANAGED_CHAT !== 'true' || process.env.MISSION_AI_MANAGED_TOOLS !== 'true') return next();
+  return requireJwtAuth(req, res, () => managedToolOwner(req, res, next));
+});
 
 const OAUTH_CSRF_COOKIE_PATH = '/api/mcp';
 
