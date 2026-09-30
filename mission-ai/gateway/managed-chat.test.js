@@ -379,6 +379,36 @@ test('login, MFA, safe configuration/history and stream lifecycle retain existin
   for (const [method, path] of routes) assert.equal(invoke(admission, { method, path }).next, 1, path);
 });
 
+test('only a single owner chat deletion reaches the existing authenticated handler', () => {
+  const id = 'cd7d6729-cd1b-5255-aba3-9d504b3d9a77';
+  for (const body of [
+    { arg: { conversationId: id, source: 'button' } },
+    { arg: { conversationId: id, source: 'button', endpoint: 'MissionAI', thread_id: null } },
+    { arg: { conversationId: id, source: 'button', endpoint: 'MissionAIClaude', thread_id: 'thread-1' } },
+    { arg: { conversationId: id } },
+  ]) {
+    const result = invoke(admission, { method: 'DELETE', path: '/api/convos', body });
+    assert.equal(result.next, 1);
+    assert.equal(result.status, undefined);
+    assert.deepEqual(result.req.body, body);
+  }
+  for (const body of [
+    {}, { arg: {} }, { arg: { conversationId: '' } },
+    { arg: { conversationId: 'all' }, extra: true },
+    { arg: { conversationId: '../all' } },
+    { arg: { conversationId: id, source: 'unknown' } },
+    { arg: { conversationId: id, endpoint: 'openAI', thread_id: 'thread-1' } },
+    { arg: { conversationId: id, thread_id: '../thread' } },
+    { arg: { conversationId: id, extra: true } },
+  ]) {
+    assert.equal(invoke(admission, { method: 'DELETE', path: '/api/convos', body }).status, 403);
+  }
+  for (const path of ['/api/convos/all', '/api/convos/', '/api/convos?all=true', '/api/convos/id']) {
+    assert.equal(invoke(admission, { method: 'DELETE', path,
+      body: { arg: { conversationId: id, source: 'button' } } }).status, 403);
+  }
+});
+
 test('session recovery permits only the exact stock refresh retry URL', () => {
   for (const path of ['/api/auth/refresh', '/api/auth/refresh?retry=true']) {
     const result = invoke(admission, { method: 'POST', path, body: {} });

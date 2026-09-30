@@ -633,6 +633,18 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
         return next();
       }
 
+      if (method === 'DELETE' && path === '/api/convos' && query === '') {
+        const body = object(req.body);
+        keys(body, new Set(['arg']));
+        const arg = object(body.arg);
+        keys(arg, new Set(['conversationId', 'thread_id', 'endpoint', 'source']));
+        if (!IDENTIFIER.test(string(arg.conversationId))) throw new Error();
+        if (arg.source !== undefined && arg.source !== 'button') throw new Error();
+        if (arg.endpoint != null && !ENDPOINTS.includes(string(arg.endpoint))) throw new Error();
+        if (arg.thread_id != null && !IDENTIFIER.test(string(arg.thread_id))) throw new Error();
+        return next();
+      }
+
       if (method === 'GET' && path === '/api/keys') {
         const params = new URLSearchParams(query);
         const requested = params.get('name');
