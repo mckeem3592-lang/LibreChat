@@ -449,11 +449,15 @@ function chatBody(value: unknown): ObjectValue {
     out.timezone = zone;
   }
 
-  /*
-   * Enforced model-spec promptPrefix is restored server-side after this request
-   * admission boundary. The client must never supply or override it.
-   */
-  if (input.promptPrefix != null) throw new Error();
+  /* A loaded conversation can echo the enforced prompt on follow-up sends.
+   * Admit only the exact reviewed copy, then discard it: model-spec restoration
+   * remains the sole source of the prompt passed to the provider. */
+  if (
+    input.promptPrefix != null &&
+    (!approved.spec.prompt || !reviewedPrompt(approved.spec.prompt, input.promptPrefix))
+  ) {
+    throw new Error();
+  }
 
   if (input.maxContextTokens != null) {
     out.maxContextTokens = integer(input.maxContextTokens, 1, 1_000_000);
