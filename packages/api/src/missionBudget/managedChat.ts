@@ -692,6 +692,27 @@ const READ_PATTERNS = [
   /^\/api\/agents\/chat\/(?:status|stream)\/[A-Za-z0-9_-]{1,256}$/,
 ];
 
+const SHARE_ID = '[A-Za-z0-9_-]{1,256}';
+const SHARE_RESOURCE_ID = '(?!link(?:/|$))[A-Za-z0-9_-]{1,256}';
+const SHARE_READ_PATHS = [
+  new RegExp(`^/api/share/link/${SHARE_ID}$`),
+  new RegExp(`^/api/share/${SHARE_RESOURCE_ID}(?:/config)?$`),
+  new RegExp(`^/api/share/${SHARE_RESOURCE_ID}/files/${SHARE_ID}(?:/(?:preview|download))?$`),
+];
+const SHARE_WRITE_PATH = new RegExp(`^/api/share/${SHARE_RESOURCE_ID}$`);
+
+/** Only link publication settings reach the existing authenticated share handler.
+ * Content and file access remain subject to its normal ACL and preflight checks. */
+function managedShareBody(value: unknown): void {
+  const input = object(value);
+  keys(input, new Set(['targetMessageId', 'snapshotFiles']));
+  if (own(input, 'targetMessageId') &&
+      !IDENTIFIER.test(string(input.targetMessageId))) throw new Error();
+  if (own(input, 'snapshotFiles') && typeof input.snapshotFiles !== 'boolean') {
+    throw new Error();
+  }
+}
+
 function chatPath(endpoint: string): string {
   return `/api/agents/chat/${endpoint}`;
 }
@@ -763,6 +784,22 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
 
       if (method === 'GET' && path === '/api/files/speech/config/get' && query === '') {
         return next();
+      }
+
+      if (method === 'GET' && query === '' &&
+          SHARE_READ_PATHS.some((rule) => rule.test(path))) {
+        return next();
+      }
+
+      if (query === '' && SHARE_WRITE_PATH.test(path)) {
+        if (method === 'POST' || method === 'PATCH') {
+          managedShareBody(req.body);
+          return next();
+        }
+        if (method === 'DELETE') {
+          if (req.body != null) keys(object(req.body), new Set());
+          return next();
+        }
       }
 
       if (method === 'GET' && path === '/api/keys') {

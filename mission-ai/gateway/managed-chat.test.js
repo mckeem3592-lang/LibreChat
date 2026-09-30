@@ -437,6 +437,56 @@ test('login, MFA, safe configuration/history and stream lifecycle retain existin
   for (const [method, path] of routes) assert.equal(invoke(admission, { method, path }).next, 1, path);
 });
 
+test('shared links reach the existing auth, ACL and file-snapshot handlers', () => {
+  const conversationId = '47ed5e42-7026-5eff-ac4d-bdd3ce59f6c8';
+  const shareId = 'shared_link-1';
+  const fileId = 'file-1';
+  for (const path of [
+    `/api/share/link/${conversationId}`,
+    `/api/share/${shareId}`,
+    `/api/share/${shareId}/config`,
+    `/api/share/${shareId}/files/${fileId}`,
+    `/api/share/${shareId}/files/${fileId}/preview`,
+    `/api/share/${shareId}/files/${fileId}/download`,
+  ]) {
+    assert.equal(invoke(admission, { method: 'GET', path }).next, 1, path);
+  }
+  for (const method of ['POST', 'PATCH']) {
+    for (const body of [{}, { targetMessageId: 'message-1', snapshotFiles: true },
+      { snapshotFiles: false }]) {
+      const path = `/api/share/${method === 'POST' ? conversationId : shareId}`;
+      const result = invoke(admission, { method, path, body });
+      assert.equal(result.next, 1, `${method} ${path}`);
+      assert.deepEqual(result.req.body, body);
+    }
+  }
+  assert.equal(invoke(admission, { method: 'DELETE', path: `/api/share/${shareId}`,
+    body: {} }).next, 1);
+});
+
+test('shared-link admission rejects unrelated routes, unsafe bodies and ambiguous URLs', () => {
+  const id = 'share-1';
+  for (const path of ['/api/share', '/api/share/link', '/api/share/a/b',
+    `/api/share/${id}/fork`, `/api/share/${id}/files`,
+    `/api/share/${id}/files/file-1/other`, `/api/share/${id}?extra=1`,
+    `/api/share/${id}/`, `/api/share/%2e%2e`]) {
+    assert.equal(invoke(admission, { method: 'GET', path }).status, 403, path);
+  }
+  for (const body of [null, [], { targetMessageId: '' }, { targetMessageId: '../x' },
+    { snapshotFiles: 'true' }, { files: ['file-1'] }, { public: true }]) {
+    assert.equal(invoke(admission, { method: 'POST', path: `/api/share/${id}`, body }).status,
+      403, JSON.stringify(body));
+  }
+  for (const method of ['PUT', 'HEAD', 'OPTIONS']) {
+    assert.equal(invoke(admission, { method, path: `/api/share/${id}`, body: {} }).status,
+      403, method);
+  }
+  assert.equal(invoke(admission, { method: 'DELETE', path: `/api/share/${id}`,
+    body: { permanent: true } }).status, 403);
+  assert.equal(invoke(admission, { method: 'POST', path: `/api/share/${id}?retry=true`,
+    body: {} }).status, 403);
+});
+
 test('only a single owner chat deletion reaches the existing authenticated handler', () => {
   const id = 'cd7d6729-cd1b-5255-aba3-9d504b3d9a77';
   for (const body of [
