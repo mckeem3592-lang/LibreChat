@@ -19,11 +19,13 @@ export default memo(function AudioRecorder({
   ask,
   methods,
   isSubmitting,
+  stopSignal,
 }: {
   disabled: boolean;
   ask: TAskFunction;
   methods: ReturnType<typeof useChatFormContext>;
   isSubmitting: boolean;
+  stopSignal: number;
 }) {
   const { setValue, reset, getValues } = methods;
   const localize = useLocalize();
@@ -35,6 +37,7 @@ export default memo(function AudioRecorder({
   const existingTextRef = useRef<string>('');
   const isSubmittingRef = useRef(isSubmitting);
   isSubmittingRef.current = isSubmitting;
+  const previousStopSignalRef = useRef(stopSignal);
 
   const onTranscriptionComplete = useCallback(
     (text: string) => {
@@ -103,6 +106,12 @@ export default memo(function AudioRecorder({
   }, [speechToTextEndpoint, stopRecording]);
 
   useEffect(() => {
+    if (stopSignal === previousStopSignalRef.current) return;
+    previousStopSignalRef.current = stopSignal;
+    if (isListening || isLoading) handleStopRecording();
+  }, [stopSignal, isListening, isLoading, handleStopRecording]);
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!event.shiftKey || !event.altKey || event.code !== 'KeyL' || recorderDisabled) {
         return;
@@ -133,7 +142,7 @@ export default memo(function AudioRecorder({
 
   return (
     <TooltipAnchor
-      description={localize('com_ui_use_micrphone')}
+      description={localize(isListening ? 'com_ui_stop' : 'com_ui_use_micrphone')}
       render={
         <IconButton
           id="audio-recorder"
@@ -141,7 +150,7 @@ export default memo(function AudioRecorder({
           variant="ghost"
           size="theme"
           shape="theme"
-          label={localize('com_ui_use_micrphone')}
+          label={localize(isListening ? 'com_ui_stop' : 'com_ui_use_micrphone')}
           onClick={isListening === true ? handleStopRecording : handleStartRecording}
           disabled={recorderDisabled}
           className="p-1 hover:bg-surface-composer-hover"

@@ -163,6 +163,7 @@ const ChatForm = memo(function ChatForm({
   const [visualRowCount, setVisualRowCount] = useState(1);
   const [isTextAreaFocused, setIsTextAreaFocused] = useState(false);
   const [backupBadges, setBackupBadges] = useState<Pick<BadgeItem, 'id'>[]>([]);
+  const [micStopSignal, setMicStopSignal] = useState(0);
 
   const SpeechToText = useRecoilValue(store.speechToText);
   const TextToSpeech = useRecoilValue(store.textToSpeech);
@@ -253,6 +254,7 @@ const ChatForm = memo(function ChatForm({
    * hovercard) sit in exempted popup content, so they restore focus themselves. */
   const consumeComposer = useCallback(() => {
     methods.reset();
+    setMicStopSignal((value) => value + 1);
     focusTextArea();
   }, [methods, focusTextArea]);
 
@@ -491,6 +493,7 @@ const ChatForm = memo(function ChatForm({
       }
       if (consumed) {
         methods.reset();
+        setMicStopSignal((value) => value + 1);
       }
     },
     [methods, steering],
@@ -620,8 +623,8 @@ const ChatForm = memo(function ChatForm({
    *  queued follow-up about to start), then an ordinary send: the same route
    *  for typed, dictated, and shortcut-bound submissions. */
   const submitComposerText = useCallback(
-    (data: { text: string }): false | void =>
-      submitFromComposer(
+    (data: { text: string }): false | void => {
+      const result = submitFromComposer(
         {
           answerMode,
           steering,
@@ -629,7 +632,10 @@ const ChatForm = memo(function ChatForm({
           reset: () => methods.reset(),
         },
         data,
-      ),
+      );
+      if (result !== false) setMicStopSignal((value) => value + 1);
+      return result;
+    },
     [answerMode, steering, submitMessage, methods],
   );
 
@@ -883,6 +889,7 @@ const ChatForm = memo(function ChatForm({
                     ask={submitComposerText}
                     disabled={disableInputs || isNotAppendable}
                     isSubmitting={isSubmitting}
+                    stopSignal={micStopSignal}
                   />
                 )}
                 {steering.duringRunActive &&

@@ -5,20 +5,8 @@ import { useGetCustomConfigSpeechQuery } from 'librechat-data-provider/react-que
 import SpeechRecognitionImport, { useSpeechRecognition } from 'react-speech-recognition';
 import { useLocalize } from '~/hooks';
 import store from '~/store';
+import { createPersistentMacSpeech, type TrackSpeechRecognition } from './persistentMacSpeech';
 import { openMacBuiltInMicrophone } from './selectMacBuiltInMicrophone';
-
-type TrackSpeechRecognition = {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  onresult:
-    | ((event: { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void)
-    | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-  start: (track: MediaStreamTrack) => void;
-  stop: () => void;
-};
 
 const isMacChrome = () =>
   typeof navigator !== 'undefined' &&
@@ -64,13 +52,13 @@ const useSpeechToTextBrowser = (
   const lastTranscript = useRef<string | null>(null);
   const lastInterim = useRef<string | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>();
-  const macRecognitionRef = useRef<TrackSpeechRecognition | null>(null);
+  const macSessionRef = useRef<ReturnType<typeof createPersistentMacSpeech> | null>(null);
   const macStreamRef = useRef<MediaStream | null>(null);
   const macStartingRef = useRef(false);
+  const macShouldListenRef = useRef(false);
   const [macListening, setMacListening] = useState(false);
   const [macStarting, setMacStarting] = useState(false);
-  const [macFinalTranscript, setMacFinalTranscript] = useState('');
-  const [macInterimTranscript, setMacInterimTranscript] = useState('');
+  const [macTranscript, setMacTranscript] = useState('');
   const [autoSendText] = useRecoilState(store.autoSendText);
   const [languageSTT] = useRecoilState<string>(store.languageSTT);
   const [autoTranscribeAudio] = useRecoilState<boolean>(store.autoTranscribeAudio);
@@ -84,13 +72,12 @@ const useSpeechToTextBrowser = (
     browserSupportsSpeechRecognition,
   } = useSpeechRecognition();
   const isListening = isMacChrome() ? macListening : listening;
-  const activeFinalTranscript = isMacChrome() ? macFinalTranscript : finalTranscript;
-  const activeInterimTranscript = isMacChrome() ? macInterimTranscript : interimTranscript;
 
   const releaseMacMicrophone = useCallback(() => {
+    macShouldListenRef.current = false;
     macStreamRef.current?.getTracks().forEach((track) => track.stop());
     macStreamRef.current = null;
-    macRecognitionRef.current = null;
+    macSessionRef.current = null;
     macStartingRef.current = false;
     setMacStarting(false);
     setMacListening(false);
@@ -98,38 +85,45 @@ const useSpeechToTextBrowser = (
 
   useEffect(() => {
     return () => {
-      macRecognitionRef.current?.stop();
+      macShouldListenRef.current = false;
+      macSessionRef.current?.stop();
       macStreamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
 
   useEffect(() => {
-    if (activeInterimTranscript === '') {
-      return;
-    }
-
-    if (lastInterim.current === activeInterimTranscript) {
-      return;
-    }
-
-    setText(activeInterimTranscript);
-    lastInterim.current = activeInterimTranscript;
-  }, [setText, activeInterimTranscript]);
+    if (!isMacChrome() || !macTranscript || lastTranscript.current === macTranscript) return;
+    setText(macTranscript);
+    lastTranscript.current = macTranscript;
+  }, [macTranscript, setText]);
 
   useEffect(() => {
-    if (activeFinalTranscript === '') {
+    if (isMacChrome() || interimTranscript === '') {
       return;
     }
 
-    if (lastTranscript.current === activeFinalTranscript) {
+    if (lastInterim.current === interimTranscript) {
       return;
     }
 
-    setText(activeFinalTranscript);
-    lastTranscript.current = activeFinalTranscript;
-    if (autoSendText > -1 && activeFinalTranscript.length > 0) {
+    setText(interimTranscript);
+    lastInterim.current = interimTranscript;
+  }, [setText, interimTranscript]);
+
+  useEffect(() => {
+    if (isMacChrome() || finalTranscript === '') {
+      return;
+    }
+
+    if (lastTranscript.current === finalTranscript) {
+      return;
+    }
+
+    setText(finalTranscript);
+    lastTranscript.current = finalTranscript;
+    if (autoSendText > -1 && finalTranscript.length > 0) {
       timeoutRef.current = setTimeout(() => {
-        onTranscriptionComplete(activeFinalTranscript);
+        onTranscriptionComplete(finalTranscript);
         resetTranscript();
       }, autoSendText * 1000);
     }
@@ -139,16 +133,18 @@ const useSpeechToTextBrowser = (
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [setText, onTranscriptionComplete, resetTranscript, activeFinalTranscript, autoSendText]);
+  }, [setText, onTranscriptionComplete, resetTranscript, finalTranscript, autoSendText]);
 
-  const toggleMacListening = useCallback(async () => {
-    if (macRecognitionRef.current) {
-      macRecognitionRef.current.stop();
-      return;
-    }
-    if (macStartingRef.current) {
-      return;
-    }
+  const stopMacListening = useCallback(() => {
+    macShouldListenRef.current = false;
+    setMacTranscript('');
+    if (macSessionRef.current) macSessionRef.current.stop();
+    else releaseMacMicrophone();
+  }, [releaseMacMicrophone]);
+
+  const startMacListening = useCallback(async () => {
+    if (macShouldListenRef.current || macStartingRef.current || macSessionRef.current) return;
+    macShouldListenRef.current = true;
     macStartingRef.current = true;
     setMacStarting(true);
     try {
@@ -157,44 +153,41 @@ const useSpeechToTextBrowser = (
         throw new Error('speech recognition unavailable');
       }
       const stream = await openMacBuiltInMicrophone(navigator.mediaDevices);
+      if (!macShouldListenRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       macStreamRef.current = stream;
-      const recognition = new Recognition();
-      recognition.lang = languageSTT;
-      recognition.continuous = autoTranscribeAudio;
-      recognition.interimResults = true;
-      recognition.onresult = (event) => {
-        const results = Array.from(event.results);
-        setMacFinalTranscript(
-          results
-            .filter((result) => result.isFinal)
-            .map((result) => result[0].transcript)
-            .join(' '),
-        );
-        setMacInterimTranscript(results.map((result) => result[0].transcript).join(' '));
-      };
-      recognition.onerror = () => {
-        showToast({ message: localize('com_ui_microphone_unavailable'), status: 'error' });
-        releaseMacMicrophone();
-      };
-      recognition.onend = releaseMacMicrophone;
-      macRecognitionRef.current = recognition;
+      const track = stream.getAudioTracks()[0];
+      if (!track || track.readyState !== 'live') throw new Error('MacBook audio track unavailable');
       lastTranscript.current = null;
       lastInterim.current = null;
-      setMacFinalTranscript('');
-      setMacInterimTranscript('');
-      recognition.start(stream.getAudioTracks()[0]);
+      setMacTranscript('');
+      const session = createPersistentMacSpeech({
+        track,
+        createRecognition: () => new Recognition(),
+        language: languageSTT || navigator.language || 'en-US',
+        onTranscript: setMacTranscript,
+        onStopped: (error) => {
+          releaseMacMicrophone();
+          if (!error) return;
+          showToast({ message: localize('com_ui_microphone_unavailable'), status: 'error' });
+        },
+      });
+      macSessionRef.current = session;
+      session.start();
       macStartingRef.current = false;
       setMacStarting(false);
-      setMacListening(true);
+      if (session.isActive()) setMacListening(true);
     } catch {
       releaseMacMicrophone();
       showToast({ message: localize('com_ui_microphone_unavailable'), status: 'error' });
     }
-  }, [autoTranscribeAudio, languageSTT, localize, releaseMacMicrophone, showToast]);
+  }, [languageSTT, localize, releaseMacMicrophone, showToast]);
 
-  const toggleListening = useCallback(() => {
+  const startListening = useCallback(() => {
     if (isMacChrome()) {
-      void toggleMacListening();
+      void startMacListening();
       return;
     }
     if (!browserSupportsSpeechRecognition) {
@@ -225,14 +218,11 @@ const useSpeechToTextBrowser = (
       return;
     }
 
-    if (isListening === true) {
-      SpeechRecognition.stopListening();
-    } else {
-      SpeechRecognition.startListening({
-        language: languageSTT,
-        continuous: autoTranscribeAudio,
-      });
-    }
+    if (isListening) return;
+    SpeechRecognition.startListening({
+      language: languageSTT,
+      continuous: autoTranscribeAudio,
+    });
   }, [
     autoTranscribeAudio,
     browserSupportsSpeechRecognition,
@@ -242,14 +232,22 @@ const useSpeechToTextBrowser = (
     localize,
     showToast,
     sttExternal,
-    toggleMacListening,
+    startMacListening,
   ]);
+
+  const stopListening = useCallback(() => {
+    if (isMacChrome()) {
+      stopMacListening();
+    } else if (isListening && hasSpeechRecognitionController(SpeechRecognition)) {
+      SpeechRecognition.stopListening();
+    }
+  }, [isListening, stopMacListening]);
 
   return {
     isListening,
     isLoading: macStarting,
-    startRecording: toggleListening,
-    stopRecording: toggleListening,
+    startRecording: startListening,
+    stopRecording: stopListening,
   };
 };
 

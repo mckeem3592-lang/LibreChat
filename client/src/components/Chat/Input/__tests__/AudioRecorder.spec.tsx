@@ -99,7 +99,7 @@ const dispatchSpeechShortcut = () => {
   return event;
 };
 
-const renderRecorder = ({ disabled = false, initialized = true } = {}) =>
+const renderRecorder = ({ disabled = false, initialized = true, stopSignal = 0 } = {}) =>
   render(
     <RecoilRoot initializeState={({ set }) => set(store.speechSettingsInitialized, initialized)}>
       <AudioRecorder
@@ -113,6 +113,7 @@ const renderRecorder = ({ disabled = false, initialized = true } = {}) =>
           } as never
         }
         isSubmitting={false}
+        stopSignal={stopSignal}
       />
     </RecoilRoot>,
   );
@@ -177,5 +178,22 @@ describe('AudioRecorder speech shortcut', () => {
     dispatchSpeechShortcut();
 
     expect(mockStopSpeechRecordingExternal).not.toHaveBeenCalled();
+  });
+
+  it('stops listening once when the composer accepts a message', () => {
+    mockBrowserIsListening = true;
+    const view = renderRecorder();
+    view.rerender(
+      <RecoilRoot>
+        <AudioRecorder
+          disabled={false}
+          ask={mockAsk as never}
+          methods={{ setValue: mockSetValue, reset: mockReset, getValues: mockGetValues } as never}
+          isSubmitting={true}
+          stopSignal={1}
+        />
+      </RecoilRoot>,
+    );
+    expect(mockStopSpeechRecordingBrowser).toHaveBeenCalledTimes(1);
   });
 });

@@ -481,6 +481,30 @@ test('owner-wide chat deletion accepts only the confirmed UI request shape', () 
   }
 });
 
+test('a live text steer and its cancel or arm controls pass without opening other APIs', () => {
+  const base = { conversationId: 'conversation-1', generationCreatedAt: 123, clientSteerId: 'steer-1' };
+  for (const [path, body] of [
+    ['/api/agents/chat/steer', { ...base, text: 'Change direction', preempt: true }],
+    ['/api/agents/chat/steer/cancel', { ...base, steerId: 'server-steer-1' }],
+    ['/api/agents/chat/steer/arm', { ...base, steerId: 'server-steer-1' }],
+  ]) {
+    const result = invoke(admission, { path, body });
+    assert.equal(result.next, 1, path);
+    assert.deepEqual(result.req.body, body);
+    assert.equal(invoke(admission, { path: `${path}?retry=true`, body }).status, 403);
+    assert.equal(invoke(admission, { method: 'GET', path, body }).status, 403);
+  }
+  for (const body of [
+    { ...base, text: 'hello', files: [] },
+    { ...base, text: 'hello', endpoint: 'Other' },
+    { ...base, text: 'hello', preempt: 'true' },
+    { ...base, text: '  ' },
+    { ...base, text: 'hello', generationCreatedAt: -1 },
+  ]) {
+    assert.equal(invoke(admission, { path: '/api/agents/chat/steer', body }).status, 403);
+  }
+});
+
 test('session recovery permits only the exact stock refresh retry URL', () => {
   for (const path of ['/api/auth/refresh', '/api/auth/refresh?retry=true']) {
     const result = invoke(admission, { method: 'POST', path, body: {} });
@@ -537,7 +561,7 @@ test('key access permits only the three single-name expiry reads', () => {
 
 test('all unlisted APIs and unapproved provider route families are denied regardless of method', () => {
   for (const path of ['/api/auth/register', '/api/auth/requestPasswordReset', '/api/auth/resetPassword',
-    '/api/agents/chat', '/api/agents/chat/openAI', '/api/agents/chat/resume', '/api/agents/chat/steer',
+    '/api/agents/chat', '/api/agents/chat/openAI', '/api/agents/chat/resume', '/api/agents/chat/steer/deliver',
     '/api/agents/chat/queued-turns', '/api/agents', '/api/agents/v1/chat/completions', '/api/chat/MissionAI',
     '/api/assistants', '/api/files', '/api/files/audio/speech', '/api/images', '/api/actions', '/api/mcp',
     '/api/schedules', '/api/projects', '/api/api-keys', '/api/admin/config', '/api/convos/fork',
@@ -669,9 +693,10 @@ test('CJS wiring checks admission, auth, config and gateway readiness before cha
   const agents = await readFile(new URL('../../api/server/routes/agents/index.js', import.meta.url), 'utf8');
   assert.ok(server.indexOf('app.use(createManagedToolAdmission(') > server.indexOf('app.use(handleJsonParseError)'));
   assert.ok(server.indexOf('app.use(createManagedToolAdmission(') < server.indexOf("app.use('/api/auth'"));
-  assert.ok(agents.indexOf('chatRouter.use(createManagedToolConfigGuard(') > agents.indexOf('chatRouter.use(configMiddleware)'));
-  assert.ok(agents.indexOf('chatRouter.use(createManagedToolConfigGuard(') < agents.indexOf("chatRouter.use('/', chat)"));
+  assert.ok(agents.indexOf('chatRouter.use(managedToolConfigGuard)') > agents.indexOf('chatRouter.use(configMiddleware)'));
+  assert.ok(agents.indexOf('chatRouter.use(managedToolConfigGuard)') < agents.indexOf("chatRouter.use('/', chat)"));
+  assert.ok(agents.indexOf("'/chat/steer',\n  configMiddleware,\n  managedToolConfigGuard,") > 0);
   assert.ok(agents.indexOf('router.use(requireJwtAuth)') < agents.indexOf('chatRouter.use(createManagedGatewayReadiness('));
-  assert.ok(agents.indexOf('chatRouter.use(createManagedToolConfigGuard(') < agents.indexOf('chatRouter.use(createManagedGatewayReadiness('));
+  assert.ok(agents.indexOf('chatRouter.use(managedToolConfigGuard)') < agents.indexOf('chatRouter.use(createManagedGatewayReadiness('));
   assert.ok(agents.indexOf('chatRouter.use(createManagedGatewayReadiness(') < agents.indexOf("chatRouter.use('/', chat)"));
 });

@@ -1048,6 +1048,15 @@ router.post('/chat/abort', configMiddleware, async (req, res, next) => {
  * moderation endpoint), then `moderateText`.
  */
 const steerLimiters = [];
+const managedToolConfigGuard = createManagedToolConfigGuard({
+  enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
+  gatewayURL: process.env.MISSION_AI_GATEWAY_URL,
+  nativeToken: process.env.MISSION_AI_NATIVE_TOKEN,
+  titleConvo: process.env.TITLE_CONVO,
+  toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+  ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
+  toolToken: process.env.MISSION_AI_TOOL_TOKEN,
+});
 if (isEnabled(LIMIT_MESSAGE_IP)) {
   steerLimiters.push(unless(exemptAgentTriggerFromIpLimiter, messageIpLimiter));
 }
@@ -1057,6 +1066,7 @@ if (isEnabled(LIMIT_MESSAGE_USER)) {
 router.post(
   '/chat/steer',
   configMiddleware,
+  managedToolConfigGuard,
   ...steerLimiters,
   createMessageFilterPii({
     onTraversalFailure: reportLocatorTraversalFailure,
@@ -1157,15 +1167,7 @@ const chatRouter = express.Router();
 const useMessageIpLimiter = isEnabled(LIMIT_MESSAGE_IP);
 const useMessageUserLimiter = isEnabled(LIMIT_MESSAGE_USER);
 chatRouter.use(configMiddleware);
-chatRouter.use(createManagedToolConfigGuard({
-  enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
-  gatewayURL: process.env.MISSION_AI_GATEWAY_URL,
-  nativeToken: process.env.MISSION_AI_NATIVE_TOKEN,
-  titleConvo: process.env.TITLE_CONVO,
-  toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
-  ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
-  toolToken: process.env.MISSION_AI_TOOL_TOKEN,
-}));
+chatRouter.use(managedToolConfigGuard);
 chatRouter.use(createManagedProjectGuard({
   enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
   toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',

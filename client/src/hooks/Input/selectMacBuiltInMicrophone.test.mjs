@@ -18,6 +18,14 @@ test('never silently falls back to an iPhone mic', () => {
   assert.equal(selectMacBuiltInMicrophone(devices), undefined);
 });
 
+test('recognizes Chrome’s default label when it names the MacBook mic', () => {
+  const devices = [
+    { kind: 'audioinput', label: 'Default - MacBook Air Microphone', deviceId: 'default-mac' },
+    { kind: 'audioinput', label: 'iPhone Microphone', deviceId: 'iphone' },
+  ];
+  assert.equal(selectMacBuiltInMicrophone(devices)?.deviceId, 'default-mac');
+});
+
 test('opens the MacBook audio track with an exact device constraint', async () => {
   const stream = { getAudioTracks: () => [{ id: 'macbook-track' }] };
   let requested;

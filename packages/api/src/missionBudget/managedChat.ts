@@ -652,6 +652,39 @@ const POST_PATHS = new Set([
   '/api/agents/chat/abort',
 ]);
 
+/** A steer can only add text to an already-owned live generation. The steer
+ * controller verifies that generation's owner and endpoint before enqueueing. */
+function managedSteerBody(value: unknown, action: 'send' | 'cancel' | 'arm'): ObjectValue {
+  const input = object(value);
+  keys(input, action === 'send'
+    ? new Set(['conversationId', 'generationCreatedAt', 'clientSteerId', 'text', 'preempt'])
+    : new Set(['conversationId', 'generationCreatedAt', 'clientSteerId', 'steerId']));
+  const out: ObjectValue = { conversationId: string(input.conversationId) };
+  if (!IDENTIFIER.test(out.conversationId as string)) throw new Error();
+  if (input.generationCreatedAt !== undefined) {
+    out.generationCreatedAt = integer(input.generationCreatedAt, 1, Number.MAX_SAFE_INTEGER);
+  }
+  if (input.clientSteerId !== undefined) {
+    const clientSteerId = string(input.clientSteerId, 128);
+    if (!IDENTIFIER.test(clientSteerId)) throw new Error();
+    out.clientSteerId = clientSteerId;
+  }
+  if (action === 'send') {
+    const text = string(input.text, 16_000).replace(/\0/g, '').trim();
+    if (!text) throw new Error();
+    out.text = text;
+    if (input.preempt !== undefined) {
+      if (typeof input.preempt !== 'boolean') throw new Error();
+      out.preempt = input.preempt;
+    }
+  } else {
+    const steerId = string(input.steerId, 128);
+    if (!IDENTIFIER.test(steerId)) throw new Error();
+    out.steerId = steerId;
+  }
+  return out;
+}
+
 const READ_PATTERNS = [
   /^\/api\/roles\/[A-Za-z0-9_-]{1,128}$/,
   /^\/api\/convos\/(?:gen_title\/)?[A-Za-z0-9_-]{1,256}$/,
@@ -699,6 +732,14 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
         const body = chatBody(req.body);
         if (path !== chatPath(body.endpoint as string)) throw new Error();
         req.body = body;
+        return next();
+      }
+
+      if (method === 'POST' && separator < 0 &&
+          ['/api/agents/chat/steer', '/api/agents/chat/steer/cancel',
+            '/api/agents/chat/steer/arm'].includes(path)) {
+        req.body = managedSteerBody(req.body,
+          path.endsWith('/cancel') ? 'cancel' : path.endsWith('/arm') ? 'arm' : 'send');
         return next();
       }
 

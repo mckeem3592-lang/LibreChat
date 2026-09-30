@@ -2,7 +2,7 @@ export const selectMacBuiltInMicrophone = (devices: MediaDeviceInfo[]): MediaDev
   devices.find(
     (device) =>
       device.kind === 'audioinput' &&
-      /^(?:MacBook (?:Air|Pro) Microphone(?: \(Built-in\))?|Built-in Microphone)$/i.test(
+      /^(?:Default - )?(?:MacBook (?:Air|Pro) Microphone(?: \(Built-in\))?|Built-in Microphone)$/i.test(
         device.label,
       ),
   );
