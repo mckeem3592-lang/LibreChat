@@ -1,5 +1,5 @@
 export * from './app';
-export { createManagedChatAdmission, createManagedChatConfigGuard } from './missionBudget/managedChat';
+export { createManagedChatAdmission, createManagedChatConfigGuard, createManagedGatewayReadiness } from './missionBudget/managedChat';
 export { createManagedToolAdmission, createManagedToolConfigGuard, createManagedResumeConfigGuard, createManagedToolOwnerGuard, createManagedProjectGuard, projectManagedResumeParameters } from './missionBudget/managedTools';
 export { bootstrapMissionAiOwner } from './missionBudget/bootstrap';
 export { createMissionControlProxy } from './missionBudget/control';

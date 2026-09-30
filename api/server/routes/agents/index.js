@@ -3,6 +3,7 @@ const {
   reportLocatorTraversalFailure,
   isEnabled,
   createManagedToolConfigGuard,
+  createManagedGatewayReadiness,
   createManagedProjectGuard,
   GenerationJobManager,
   TERMINAL_PUBLICATION_RECONNECT_ERROR,
@@ -1200,6 +1201,10 @@ if (useMessageUserLimiter) {
   );
 }
 
+chatRouter.use(createManagedGatewayReadiness({
+  enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
+  gatewayURL: process.env.MISSION_AI_GATEWAY_URL,
+}));
 chatRouter.use('/', chat);
 router.use('/chat', chatRouter);
 

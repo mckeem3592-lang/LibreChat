@@ -173,6 +173,11 @@ describe('LangChain provider error text', () => {
       expect(getProviderErrorMessage(error)).toBe('x'.repeat(2000));
     });
 
+    it('does not store an HTML proxy error page as provider text', () => {
+      expect(getProviderErrorMessage(new Error('502 <!DOCTYPE html><html><body>Bad Gateway</body></html>'))).toBeUndefined();
+      expect(getProviderErrorMessage(new Error('502 Bad Gateway'))).toBe('502 Bad Gateway');
+    });
+
     it.each([
       ['a rejection thrown as a string', 'proxy refused the request', 'proxy refused the request'],
       ['an error with nothing to say', new Error('   '), undefined],

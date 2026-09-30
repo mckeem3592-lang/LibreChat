@@ -141,6 +141,11 @@ export function getProviderErrorMessage(
   const message = stripLangChainTroubleshootingUrl(raw.slice(0, limit + TROUBLESHOOTING_LOOKAHEAD))
     .slice(0, limit)
     .trim();
+  // Render and other proxies can return a whole HTML error page, including embedded fonts.
+  // Its markup is not a provider explanation and must not be persisted in chat history.
+  if (/<(?:!doctype\s+html|html(?:\s|>))/i.test(message)) {
+    return undefined;
+  }
   return message.length === 0 ? undefined : message;
 }
 

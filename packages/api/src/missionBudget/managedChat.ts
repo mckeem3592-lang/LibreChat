@@ -33,6 +33,71 @@ type Middleware = (
   next: () => unknown,
 ) => unknown;
 
+type GatewayHealthFetch = (url: string, init: RequestInit) => Promise<Response>;
+
+const GATEWAY_WAKE_DEADLINE_MS = 95_000;
+const GATEWAY_HEALTH_TIMEOUT_MS = 30_000;
+const GATEWAY_HEALTH_RETRY_MS = 3_000;
+
+/** Wake the free gateway with a read-only health request before any paid-model POST.
+ * Never replay a completion: its charge status is unknown after a transport failure. */
+export async function waitForManagedGateway(
+  gatewayURL: string,
+  fetchImpl: GatewayHealthFetch = fetch,
+  now: () => number = Date.now,
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+): Promise<boolean> {
+  let healthURL: string;
+  try {
+    const gateway = new URL(gatewayURL);
+    if (gateway.protocol !== 'https:' || gateway.username || gateway.password ||
+        gateway.search || gateway.hash || gateway.pathname !== '/') return false;
+    healthURL = `${gateway.origin}/health`;
+  } catch { return false; }
+
+  const deadline = now() + GATEWAY_WAKE_DEADLINE_MS;
+  while (now() < deadline) {
+    const remaining = deadline - now();
+    try {
+      const response = await fetchImpl(healthURL, {
+        method: 'GET', redirect: 'error', cache: 'no-store',
+        signal: AbortSignal.timeout(Math.min(remaining, GATEWAY_HEALTH_TIMEOUT_MS)),
+      });
+      if (response.ok && response.headers.get('content-type')?.startsWith('application/json')) {
+        const body: unknown = await response.json();
+        if (body != null && typeof body === 'object' &&
+            !Array.isArray(body) && (body as { ok?: unknown }).ok === true) return true;
+      }
+    } catch { /* A sleeping gateway can reset a connection while waking. */ }
+    const retryRemaining = deadline - now();
+    if (retryRemaining <= 0) break;
+    await wait(Math.min(retryRemaining, GATEWAY_HEALTH_RETRY_MS));
+  }
+  return false;
+}
+
+export function createManagedGatewayReadiness(options: {
+  enabled: boolean;
+  gatewayURL?: string;
+  fetchImpl?: GatewayHealthFetch;
+  now?: () => number;
+  wait?: (ms: number) => Promise<void>;
+}): Middleware {
+  return async (req, res, next) => {
+    if (!options.enabled || req.method !== 'POST' ||
+        !['/api/agents/chat/MissionAIClaude', '/api/agents/chat/MissionAIOpenAI']
+          .includes(req.originalUrl ?? req.url ?? '')) return next();
+    const ready = await waitForManagedGateway(
+      options.gatewayURL ?? '', options.fetchImpl, options.now, options.wait,
+    );
+    if (ready) return next();
+    return res.status(503).json({ error: {
+      code: 'managed_gateway_unavailable',
+      message: 'The paid model gateway is unavailable. Please retry in a moment.',
+    } });
+  };
+}
+
 type PromptKind = 'gateway' | 'paid';
 
 type ApprovedSpec = Readonly<{

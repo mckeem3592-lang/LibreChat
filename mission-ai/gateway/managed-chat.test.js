@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 // The deployment mode is captured when managedChat is imported.
 process.env.MISSION_AI_FREE_BASELINE = 'true';
 process.env.GOOGLE_KEY = 'fake-google-key-for-local-tests';
-const { createManagedChatAdmission, createManagedChatConfigGuard } =
+const { createManagedChatAdmission, createManagedChatConfigGuard, createManagedGatewayReadiness } =
   await import('./generated/managedChat.js');
 
 const options = {
@@ -149,6 +149,52 @@ function invoke(middleware, { method = 'POST', path = '/api/agents/chat/MissionA
 }
 const admission = createManagedChatAdmission(options);
 const configuration = createManagedChatConfigGuard(options);
+
+test('paid requests wait for gateway health after a cold-start error', async () => {
+  let probes = 0;
+  let next = 0;
+  const readiness = createManagedGatewayReadiness({
+    enabled: true,
+    gatewayURL: options.gatewayURL,
+    fetchImpl: async (url, init) => {
+      assert.equal(url, `${options.gatewayURL}/health`);
+      assert.equal(init.method, 'GET');
+      assert.equal(init.redirect, 'error');
+      probes += 1;
+      return probes === 1
+        ? new Response('<!DOCTYPE html><html>502</html>', { status: 502, headers: { 'content-type': 'text/html' } })
+        : Response.json({ ok: true });
+    },
+    wait: async () => {},
+  });
+  await readiness({ method: 'POST', originalUrl: '/api/agents/chat/MissionAIClaude' }, {}, () => { next += 1; });
+  assert.equal(probes, 2);
+  assert.equal(next, 1);
+});
+
+test('gateway readiness leaves free requests untouched and fails closed for paid requests', async () => {
+  let probes = 0;
+  let clock = 0;
+  let next = 0;
+  let status;
+  let body;
+  const readiness = createManagedGatewayReadiness({
+    enabled: true,
+    gatewayURL: options.gatewayURL,
+    fetchImpl: async () => { probes += 1; return Response.json({ ok: false }, { status: 503 }); },
+    now: () => clock,
+    wait: async (ms) => { clock += ms; },
+  });
+  const response = { status(value) { status = value; return this; }, json(value) { body = value; return value; } };
+  await readiness({ method: 'POST', originalUrl: '/api/agents/chat/MissionAI' }, response, () => { next += 1; });
+  assert.equal(next, 1);
+  assert.equal(probes, 0);
+  await readiness({ method: 'POST', originalUrl: '/api/agents/chat/MissionAIClaude' }, response, () => { next += 1; });
+  assert.equal(next, 1);
+  assert.ok(probes > 1);
+  assert.equal(status, 503);
+  assert.equal(body.error.code, 'managed_gateway_unavailable');
+});
 
 test('only the seven reviewed spec/model/endpoint combinations pass both guards', () => {
   for (const [spec, approvedModel, approvedEndpoint] of specs) {
@@ -618,11 +664,14 @@ test('post-config guard also refuses a payload changed after early admission', (
   assert.equal(invoke(configuration, { body: first.req.body }).status, 403);
 });
 
-test('CJS wiring places admission before routers and config validation before chat dispatch', async () => {
+test('CJS wiring checks admission, auth, config and gateway readiness before chat dispatch', async () => {
   const server = await readFile(new URL('../../api/server/index.js', import.meta.url), 'utf8');
   const agents = await readFile(new URL('../../api/server/routes/agents/index.js', import.meta.url), 'utf8');
   assert.ok(server.indexOf('app.use(createManagedToolAdmission(') > server.indexOf('app.use(handleJsonParseError)'));
   assert.ok(server.indexOf('app.use(createManagedToolAdmission(') < server.indexOf("app.use('/api/auth'"));
   assert.ok(agents.indexOf('chatRouter.use(createManagedToolConfigGuard(') > agents.indexOf('chatRouter.use(configMiddleware)'));
   assert.ok(agents.indexOf('chatRouter.use(createManagedToolConfigGuard(') < agents.indexOf("chatRouter.use('/', chat)"));
+  assert.ok(agents.indexOf('router.use(requireJwtAuth)') < agents.indexOf('chatRouter.use(createManagedGatewayReadiness('));
+  assert.ok(agents.indexOf('chatRouter.use(createManagedToolConfigGuard(') < agents.indexOf('chatRouter.use(createManagedGatewayReadiness('));
+  assert.ok(agents.indexOf('chatRouter.use(createManagedGatewayReadiness(') < agents.indexOf("chatRouter.use('/', chat)"));
 });
