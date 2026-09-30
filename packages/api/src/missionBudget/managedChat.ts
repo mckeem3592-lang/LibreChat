@@ -651,6 +651,10 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
         return next();
       }
 
+      if (method === 'GET' && path === '/api/files/speech/config/get' && query === '') {
+        return next();
+      }
+
       if (method === 'GET' && path === '/api/keys') {
         const params = new URLSearchParams(query);
         const requested = params.get('name');

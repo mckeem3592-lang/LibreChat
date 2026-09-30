@@ -375,6 +375,7 @@ test('login, MFA, safe configuration/history and stream lifecycle retain existin
     ['GET', '/api/messages/conversation-id'], ['GET', '/api/messages/conversation-id/message-id'],
     ['GET', '/api/agents/chat/active'], ['GET', '/api/agents/chat/status/stream-id'],
     ['GET', '/api/agents/chat/stream/stream-id?lastEventId=12'],
+    ['GET', '/api/files/speech/config/get'],
   ];
   for (const [method, path] of routes) assert.equal(invoke(admission, { method, path }).next, 1, path);
 });
@@ -490,6 +491,13 @@ test('all unlisted APIs and unapproved provider route families are denied regard
   }
   for (const path of ['/api/files', '/api/mcp', '/api/agents', '/api/admin/config', '/api/api-keys', '/oauth/google']) {
     assert.equal(invoke(admission, { method: 'GET', path }).status, 403, path);
+  }
+  for (const path of ['/api/files/speech/stt', '/api/files/speech/tts',
+    '/api/files/speech/config/get?engineSTT=external', '/api/files/speech/config/get/']) {
+    assert.equal(invoke(admission, { method: 'GET', path }).status, 403, path);
+  }
+  for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+    assert.equal(invoke(admission, { method, path: '/api/files/speech/config/get' }).status, 403);
   }
 });
 

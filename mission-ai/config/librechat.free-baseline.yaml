@@ -47,7 +47,7 @@ summarization:
 
 speech:
   speechTab:
-    speechToText: false
+    speechToText: true
     textToSpeech: false
 
 fileConfig:
