@@ -645,6 +645,12 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
         return next();
       }
 
+      if (method === 'DELETE' && path === '/api/convos/all' && query === '') {
+        const body = req.body == null ? {} : object(req.body);
+        keys(body, new Set());
+        return next();
+      }
+
       if (method === 'GET' && path === '/api/keys') {
         const params = new URLSearchParams(query);
         const requested = params.get('name');

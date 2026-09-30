@@ -409,6 +409,20 @@ test('only a single owner chat deletion reaches the existing authenticated handl
   }
 });
 
+test('owner-wide chat deletion accepts only the confirmed UI request shape', () => {
+  for (const body of [null, {}]) {
+    const result = invoke(admission, { method: 'DELETE', path: '/api/convos/all', body });
+    assert.equal(result.next, 1);
+    assert.equal(result.status, undefined);
+  }
+  for (const body of [{ arg: {} }, { all: true }, [], '']) {
+    assert.equal(invoke(admission, { method: 'DELETE', path: '/api/convos/all', body }).status, 403);
+  }
+  for (const path of ['/api/convos/all/', '/api/convos/all?confirmed=true', '/api/convos/ALL']) {
+    assert.equal(invoke(admission, { method: 'DELETE', path, body: {} }).status, 403);
+  }
+});
+
 test('session recovery permits only the exact stock refresh retry URL', () => {
   for (const path of ['/api/auth/refresh', '/api/auth/refresh?retry=true']) {
     const result = invoke(admission, { method: 'POST', path, body: {} });
