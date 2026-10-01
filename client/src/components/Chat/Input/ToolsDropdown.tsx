@@ -44,7 +44,10 @@ const ToolsDropdown = ({ disabled }: ToolsDropdownProps) => {
     artifactsEnabled,
     fileSearchEnabled,
     skillsEnabled,
-  } = useAgentCapabilities(context?.agentsConfig?.capabilities ?? defaultAgentCapabilities);
+  } = useAgentCapabilities(
+    context?.agentsConfig?.capabilities ??
+      (startupConfig?.interface?.agents === false ? [] : defaultAgentCapabilities),
+  );
 
   const canUseWebSearch = useHasAccess({
     permissionType: PermissionTypes.WEB_SEARCH,

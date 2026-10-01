@@ -597,7 +597,9 @@ function chatBody(value: unknown): ObjectValue {
                (value.length !== 1 || value[0] !== GITHUB_SERVER))) throw new Error();
         } else emptyArray(value);
       }
-      else if (key === 'artifacts' && value === '') continue;
+      else if (key === 'artifacts' && (value === '' ||
+          (approved.name === 'mission-ai-claude-sonnet' &&
+           ['default', 'shadcnui', 'custom'].includes(value as string)))) continue;
       else disabled(value);
     }
   }
@@ -615,7 +617,9 @@ function chatBody(value: unknown): ObjectValue {
     throw new Error();
   }
 
-  if (input.artifacts != null && input.artifacts !== false && input.artifacts !== '') {
+  if (input.artifacts != null && input.artifacts !== false && input.artifacts !== '' &&
+      !(approved.name === 'mission-ai-claude-sonnet' &&
+        ['default', 'shadcnui', 'custom'].includes(input.artifacts as string))) {
     throw new Error();
   }
 

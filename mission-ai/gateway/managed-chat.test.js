@@ -343,6 +343,26 @@ test('representative text UI payload reaches existing auth/controller with inert
   assert.deepEqual(second.req.body, first.req.body);
 });
 
+test('Claude code text survives a stale Artifacts switch without enabling artifacts', () => {
+  const code = '```python\nprint(1 + 1)\n```';
+  for (const mode of ['default', 'shadcnui', 'custom']) {
+    const body = { ...payload(), endpoint: 'MissionAIClaude',
+      model: 'claude-sonnet-5-5', spec: 'mission-ai-claude-sonnet', text: code,
+      artifacts: mode, ephemeralAgent: { ...payload().ephemeralAgent, artifacts: mode } };
+    const first = invoke(admission, { path: '/api/agents/chat/MissionAIClaude', body });
+    assert.equal(first.next, 1, mode);
+    assert.equal(first.req.body.text, code);
+    assert.equal(Object.hasOwn(first.req.body, 'artifacts'), false);
+    assert.equal(Object.hasOwn(first.req.body, 'ephemeralAgent'), false);
+    assert.equal(invoke(configuration, { body: first.req.body }).next, 1);
+  }
+  for (const mode of ['unknown', true, { enabled: true }]) {
+    const body = { ...payload(), endpoint: 'MissionAIClaude',
+      model: 'claude-sonnet-5-5', spec: 'mission-ai-claude-sonnet', artifacts: mode };
+    assert.equal(invoke(admission, { path: '/api/agents/chat/MissionAIClaude', body }).status, 403);
+  }
+});
+
 test('stock generation protocol metadata survives both guards and unsupported versions fail closed', () => {
   const accepted = invoke(admission);
   assert.equal(accepted.next, 1);

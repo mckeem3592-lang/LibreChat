@@ -4,6 +4,7 @@ import { CheckboxButton } from '@librechat/client';
 import { WandSparkles, ChevronDown } from 'lucide-react';
 import { ArtifactModes, defaultAgentCapabilities } from 'librechat-data-provider';
 import { useLocalize, useAgentCapabilities } from '~/hooks';
+import { useGetStartupConfig } from '~/data-provider';
 import { useBadgeRowContext } from '~/Providers';
 import { badgeAccents } from './accents';
 import { cn } from '~/utils';
@@ -16,10 +17,12 @@ interface ArtifactsToggleState {
 function Artifacts() {
   const localize = useLocalize();
   const context = useBadgeRowContext();
+  const { data: startupConfig } = useGetStartupConfig();
   const { toggleState, debouncedChange, isPinned } = context?.artifacts ?? {};
 
   const { artifactsEnabled } = useAgentCapabilities(
-    context?.agentsConfig?.capabilities ?? defaultAgentCapabilities,
+    context?.agentsConfig?.capabilities ??
+      (startupConfig?.interface?.agents === false ? [] : defaultAgentCapabilities),
   );
 
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
