@@ -533,15 +533,9 @@ function chatBody(value: unknown): ObjectValue {
     out.timezone = zone;
   }
 
-  /* A loaded conversation can echo the enforced prompt on follow-up sends.
-   * Admit only the exact reviewed copy, then discard it: model-spec restoration
-   * remains the sole source of the prompt passed to the provider. */
-  if (
-    input.promptPrefix != null &&
-    (!approved.spec.prompt || !reviewedPrompt(approved.spec.prompt, input.promptPrefix))
-  ) {
-    throw new Error();
-  }
+  /* Saved conversations can carry a prompt from an older model spec. It is
+   * never forwarded: the enforced server spec supplies the provider prompt. */
+  if (input.promptPrefix != null) string(input.promptPrefix, 1_000_000);
 
   if (input.maxContextTokens != null) {
     out.maxContextTokens = integer(input.maxContextTokens, 1, 1_000_000);
@@ -595,6 +589,12 @@ function chatBody(value: unknown): ObjectValue {
       if (key === 'mcp') {
         if (approved.name === 'mission-ai-project-manager') {
           sameStrings(value, [GITHUB_SERVER]);
+        } else if (GITHUB_EDITOR && approved.spec.endpoint === CLAUDE_ENDPOINT) {
+          /* A prior Project Manager selection can persist its MCP badge in an
+           * ordinary Claude chat. Admit that one stale selection but drop it. */
+          if (!Array.isArray(value) ||
+              (value.length !== 0 &&
+               (value.length !== 1 || value[0] !== GITHUB_SERVER))) throw new Error();
         } else emptyArray(value);
       }
       else if (key === 'artifacts' && value === '') continue;
@@ -1261,8 +1261,9 @@ export function createManagedChatConfigGuard(
     }
 
     try {
-      req.body = chatBody(req.body);
-      if (GITHUB_EDITOR && object(req.body).spec === 'mission-ai-project-manager' &&
+      const steer = (req.originalUrl ?? req.url) === '/api/agents/chat/steer';
+      req.body = steer ? managedSteerBody(req.body, 'send') : chatBody(req.body);
+      if (!steer && GITHUB_EDITOR && object(req.body).spec === 'mission-ai-project-manager' &&
           (!options.ownerEmail || req.user?.email?.toLowerCase() !==
             options.ownerEmail.toLowerCase())) throw new Error();
     } catch {

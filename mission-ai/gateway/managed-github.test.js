@@ -45,6 +45,38 @@ test('project preset admits only its exact owner-bound paid route', () => {
   assert.equal(run(early, fixture({ ephemeralAgent: { mcp: ['other'] } })).status, 403);
 });
 
+test('ordinary paid Sonnet ignores stale saved prompt and Project Manager tool selection', () => {
+  const early = createManagedToolAdmission(options);
+  const late = createManagedToolConfigGuard(options);
+  for (const ephemeralAgent of [{ mcp: [] }, { mcp: ['github-code-editor'] }]) {
+    const req = fixture({ spec: 'mission-ai-claude-sonnet',
+      promptPrefix: 'an older saved conversation prompt', ephemeralAgent });
+    assert.equal(run(early, req).next, 1);
+    assert.equal(Object.hasOwn(req.body, 'promptPrefix'), false);
+    assert.equal(Object.hasOwn(req.body, 'ephemeralAgent'), false);
+    assert.equal(run(late, req).next, 1);
+  }
+  const fresh = fixture({ spec: 'mission-ai-claude-sonnet', ephemeralAgent: { mcp: [] } });
+  assert.equal(run(early, fresh).next, 1);
+  assert.equal(run(late, fresh).next, 1);
+  for (const mcp of [['another-server'], ['github-code-editor', 'another-server']]) {
+    assert.equal(run(early, fixture({ spec: 'mission-ai-claude-sonnet',
+      ephemeralAgent: { mcp } })).status, 403);
+  }
+});
+
+test('a live steer reaches its text route through both guards', () => {
+  const req = fixture({ conversationId: 'convo1', generationCreatedAt: 1,
+    clientSteerId: 'steer1', text: 'Please adjust the answer.', preempt: true });
+  req.originalUrl = '/api/agents/chat/steer';
+  req.body = { conversationId: req.body.conversationId,
+    generationCreatedAt: req.body.generationCreatedAt,
+    clientSteerId: req.body.clientSteerId, text: req.body.text,
+    preempt: req.body.preempt };
+  assert.equal(run(createManagedToolAdmission(options), req).next, 1);
+  assert.equal(run(createManagedToolConfigGuard(options), req).next, 1);
+});
+
 test('new MCP configuration remains exact and free chats cannot select its tool', () => {
   const late = createManagedToolConfigGuard(options);
   const drift = fixture();
