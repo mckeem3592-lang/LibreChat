@@ -80,11 +80,14 @@ const db = require('~/models');
 const router = Router();
 const managedToolOwner = createManagedToolOwnerGuard({
   enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
-  toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+  toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true' ||
+    process.env.MISSION_AI_GITHUB_EDITOR === 'true',
   ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
 });
 router.use((req, res, next) => {
-  if (process.env.MISSION_AI_MANAGED_CHAT !== 'true' || process.env.MISSION_AI_MANAGED_TOOLS !== 'true') return next();
+  if (process.env.MISSION_AI_MANAGED_CHAT !== 'true' ||
+      (process.env.MISSION_AI_MANAGED_TOOLS !== 'true' &&
+       process.env.MISSION_AI_GITHUB_EDITOR !== 'true')) return next();
   return requireJwtAuth(req, res, () => managedToolOwner(req, res, next));
 });
 

@@ -22,7 +22,8 @@ for variable in $(compgen -e); do
     MISSION_AI_MANAGED_CHAT|MISSION_AI_MANAGED_TOOLS|MISSION_AI_TOOL_TOKEN|MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN|\
     CODEAPI_AUTH_PROVIDER|CODEAPI_JWT_PRIVATE_KEY_BASE64|CODEAPI_JWT_ALGORITHM|CODEAPI_JWT_KID|\
     CODEAPI_JWT_ISSUER|CODEAPI_JWT_AUDIENCE|CODEAPI_JWT_SINGLE_TENANT_ID|MISSION_AI_BOOTSTRAP_OWNER|\
-    MISSION_AI_OWNER_EMAIL|MISSION_AI_OWNER_PASSWORD|MISSION_AI_CONTROL_OWNER_EMAIL|MISSION_AI_FREE_BASELINE)
+    MISSION_AI_OWNER_EMAIL|MISSION_AI_OWNER_PASSWORD|MISSION_AI_CONTROL_OWNER_EMAIL|MISSION_AI_FREE_BASELINE|\
+    MISSION_AI_GITHUB_EDITOR|MISSION_AI_GITHUB_MCP_TOKEN)
       continue ;;
     GOOGLE_KEY)
       [[ ${MISSION_AI_FREE_BASELINE-false} == true ]] ||
@@ -59,9 +60,25 @@ case "${MISSION_AI_FREE_BASELINE-false}" in
       fail 'free baseline requires GOOGLE_KEY without whitespace'
     [[ -z ${MISSION_AI_TOOL_TOKEN-} && -z ${MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN-} ]] ||
       fail 'free baseline does not permit managed tool credentials'
-    managed_config="$repo_dir/mission-ai/config/librechat.free-baseline.yaml"
+    case "${MISSION_AI_GITHUB_EDITOR-false}" in
+      true)
+        [[ -n ${MISSION_AI_CONTROL_OWNER_EMAIL-} ]] ||
+          fail 'GitHub editor requires the reviewed owner binding'
+        github_token="${MISSION_AI_GITHUB_MCP_TOKEN-}"
+        [[ ${#github_token} -ge 60 && $github_token == github_pat_* &&
+           $github_token != *[[:space:]]* ]] ||
+          fail 'GitHub editor requires a fine-grained repository token'
+        managed_config="$repo_dir/mission-ai/config/librechat.github-editor.yaml" ;;
+      false)
+        [[ -z ${MISSION_AI_GITHUB_MCP_TOKEN-} ]] ||
+          fail 'GitHub editor token requires the explicit editor gate'
+        managed_config="$repo_dir/mission-ai/config/librechat.free-baseline.yaml" ;;
+      *) fail 'MISSION_AI_GITHUB_EDITOR must be true or false' ;;
+    esac
     ;;
   false)
+    [[ ${MISSION_AI_GITHUB_EDITOR-false} == false && -z ${MISSION_AI_GITHUB_MCP_TOKEN-} ]] ||
+      fail 'GitHub editor requires the free-baseline managed profile'
     [[ -z ${GOOGLE_KEY-} ]] ||
       fail 'GOOGLE_KEY requires MISSION_AI_FREE_BASELINE=true'
     case "${MISSION_AI_MANAGED_TOOLS-false}" in

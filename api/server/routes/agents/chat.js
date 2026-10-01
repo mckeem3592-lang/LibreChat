@@ -56,13 +56,17 @@ const restoreResumeContext = async (req, res, next) => {
     const streamId = req.body?.conversationId;
     if (streamId) {
       const job = await GenerationJobManager.getJob(streamId);
-      if (process.env.MISSION_AI_MANAGED_CHAT === 'true' && process.env.MISSION_AI_MANAGED_TOOLS === 'true' &&
+      if (process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
+          (process.env.MISSION_AI_MANAGED_TOOLS === 'true' ||
+           process.env.MISSION_AI_GITHUB_EDITOR === 'true') &&
           (!job || job.metadata?.userId !== req.user?.id ||
            (job.metadata?.tenantId != null && job.metadata.tenantId !== req.user?.tenantId))) {
         return res.status(403).json({ error: { code: 'managed_tools_denied' } });
       }
       const resumeContext = job?.metadata?.pendingAction?.resumeContext;
-      if (process.env.MISSION_AI_MANAGED_CHAT === 'true' && process.env.MISSION_AI_MANAGED_TOOLS === 'true' && !resumeContext) {
+      if (process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
+          (process.env.MISSION_AI_MANAGED_TOOLS === 'true' ||
+           process.env.MISSION_AI_GITHUB_EDITOR === 'true') && !resumeContext) {
         return res.status(403).json({ error: { code: 'managed_tools_denied' } });
       }
       applyResumeContext(req.body, resumeContext);
@@ -73,14 +77,18 @@ const restoreResumeContext = async (req, res, next) => {
       // spread), not part of the RESUME_CONTEXT_KEYS allowlist, so merge them back here.
       // Generation params are authoritative, but routing, graph identity, and resume-action
       // fields remain owned by the restored context/request envelope.
-      const managed = process.env.MISSION_AI_MANAGED_CHAT === 'true' && process.env.MISSION_AI_MANAGED_TOOLS === 'true';
+      const managed = process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
+        (process.env.MISSION_AI_MANAGED_TOOLS === 'true' ||
+         process.env.MISSION_AI_GITHUB_EDITOR === 'true');
       applyResumeModelParameters(req.body, managed
         ? projectManagedResumeParameters(resumeContext?.model_parameters)
         : resumeContext?.model_parameters);
     }
   } catch (err) {
     logger.warn('[agents/chat] Failed to restore resume context', getSafeErrorMetadata(err));
-    if (process.env.MISSION_AI_MANAGED_CHAT === 'true' && process.env.MISSION_AI_MANAGED_TOOLS === 'true') {
+    if (process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
+        (process.env.MISSION_AI_MANAGED_TOOLS === 'true' ||
+         process.env.MISSION_AI_GITHUB_EDITOR === 'true')) {
       return res.status(403).json({ error: { code: 'managed_tools_denied' } });
     }
   }

@@ -1,0 +1,360 @@
+# Mission AI multimodel configuration with owner-only GitHub editing agent.
+# This profile is opt-in and must never replace the reviewed free baseline implicitly.
+# Gemini is the only default/free route.
+# OpenAI and Anthropic models are manual-selection paid routes through the guarded gateway.
+version: 1.3.17
+cache: true
+
+interface:
+  modelSelect: true
+  parameters: false
+  multiConvo: false
+  presets: false
+  agents: false
+  remoteAgents:
+    use: false
+    create: false
+    share: false
+    public: false
+  schedules: false
+  skills: false
+  memories: false
+  runCode: false
+  webSearch: false
+  fileSearch: false
+  marketplace:
+    use: false
+  mcpServers:
+    use: true
+    create: false
+    share: false
+    public: false
+  defaultPinnedTools: []
+  contextUsage: true
+  contextCost: false
+
+transactions:
+  enabled: true
+
+balance:
+  enabled: false
+
+memory:
+  disabled: true
+  personalize: false
+
+summarization:
+  enabled: false
+
+speech:
+  speechTab:
+    speechToText: true
+    textToSpeech: false
+
+fileConfig:
+  endpoints:
+    default:
+      disabled: true
+    agents:
+      disabled: true
+    custom:
+      disabled: true
+    MissionAI:
+      disabled: true
+    MissionAIClaude:
+      disabled: true
+    MissionAIOpenAI:
+      disabled: true
+
+endpoints:
+  all:
+    titleConvo: false
+    activityLabel: false
+    activityPhaseLabel: false
+    reasoningLabel: false
+
+  agents:
+    disableBuilder: true
+    allowedProviders:
+      - 'MissionAI'
+      - 'MissionAIClaude'
+      - 'MissionAIOpenAI'
+    capabilities: [tools]
+    toolApproval:
+      enabled: true
+      mode: default
+      allow: []
+      ask: ['*']
+      hooks:
+        - module: './mission-ai/github-code-editor/approval.mjs'
+
+  custom:
+    - name: 'MissionAI'
+      apiKey: '${GOOGLE_KEY}'
+      baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai'
+      models:
+        default:
+          - 'gemini-3.5-flash-lite'
+        fetch: false
+      modelDisplayLabel: 'Mission AI'
+      titleConvo: false
+      addParams:
+        maxRetries: 0
+        timeout: 180000
+      dropParams:
+        - useResponsesApi
+        - temperature
+        - top_p
+        - topP
+        - frequency_penalty
+        - frequencyPenalty
+        - presence_penalty
+        - presencePenalty
+        - seed
+        - user
+        - verbosity
+
+    - name: 'MissionAIClaude'
+      apiKey: '${MISSION_AI_NATIVE_TOKEN}'
+      baseURL: '${MISSION_AI_GATEWAY_URL}/native/openai/v1'
+      models:
+        default:
+          - 'claude-haiku-4-5'
+          - 'claude-sonnet-5-5'
+          - 'claude-opus-5-5'
+        fetch: false
+      modelDisplayLabel: 'Mission AI — Claude'
+      titleConvo: false
+      addParams:
+        maxRetries: 0
+        timeout: 180000
+      dropParams:
+        - useResponsesApi
+        - temperature
+        - top_p
+        - topP
+        - frequency_penalty
+        - frequencyPenalty
+        - presence_penalty
+        - presencePenalty
+        - seed
+        - user
+        - verbosity
+
+    - name: 'MissionAIOpenAI'
+      apiKey: '${MISSION_AI_NATIVE_TOKEN}'
+      baseURL: '${MISSION_AI_GATEWAY_URL}/native/openai-direct/v1'
+      models:
+        default:
+          - 'gpt-6-luna'
+          - 'gpt-6-sol'
+          - 'gpt-6-astra'
+        fetch: false
+      modelDisplayLabel: 'Mission AI — OpenAI'
+      titleConvo: false
+      addParams:
+        maxRetries: 0
+        timeout: 180000
+      dropParams:
+        - useResponsesApi
+        - temperature
+        - top_p
+        - topP
+        - frequency_penalty
+        - frequencyPenalty
+        - presence_penalty
+        - presencePenalty
+        - seed
+        - user
+        - verbosity
+
+modelSpecs:
+  enforce: true
+  prioritize: true
+  list:
+    - name: 'mission-ai-project-manager'
+      label: 'Mission AI Project Manager — Claude Sonnet 5.5 (Paid)'
+      mcpServers: [github-code-editor]
+      preset:
+        endpoint: 'MissionAIClaude'
+        model: 'claude-sonnet-5-5'
+        useResponsesApi: false
+        max_tokens: 4096
+        promptPrefix: |
+          You are the Mission AI Project Manager for mckeem3592-lang/mission-program-hub.
+          Use github-code-editor only for this repository. Explain proposed file changes
+          before invoking a write tool. Every tool execution requires the user's approval.
+          Do not claim a change is live until the GitHub commit and Cloudflare deployment
+          have both been verified.
+
+    - name: 'mission-ai-free'
+      label: 'Mission AI — Gemini 3.5 Flash Lite (Free Baseline)'
+      default: true
+      preset:
+        endpoint: 'MissionAI'
+        model: 'gemini-3.5-flash-lite'
+        useResponsesApi: false
+        max_tokens: 4096
+        promptPrefix: |
+          MISSION AI MASTER GATEWAY v2
+
+          You are the Mission AI routing gate.
+
+          On the first substantive user request in each new conversation, classify the work into exactly one technical tier before doing the work.
+
+          T0 — Simple:
+          Short factual questions, rewriting, extraction, formatting, basic calculations, simple summaries, or other low-complexity tasks.
+
+          T1 — Standard:
+          Normal knowledge work, drafting, moderate analysis, ordinary coding help, troubleshooting, planning, or structured reasoning that a fast low-cost model can reliably handle.
+
+          T2 — Advanced:
+          Complex multi-step debugging, architecture, substantial code changes, difficult technical analysis, large-context synthesis, or work where failure would create significant rework.
+
+          T3 — Expert:
+          Exceptionally difficult reasoning, deep system design, high-complexity research, cross-system engineering, or tasks requiring the strongest approved reasoning capability.
+
+          COST FIREWALL:
+          Always recommend the cheapest approved model capable of reliably completing the task.
+          Never claim to switch models automatically. Model switching is always manual.
+
+          Approved manual routing ladder:
+          - T0: Gemini 3.5 Flash Lite — Free Baseline
+          - T1: Gemini 3.5 Flash Lite — Free Baseline
+          - T2-low: Claude Haiku 4.5 or GPT-6 Luna when sufficient
+          - T2: Claude Sonnet 5.5 or GPT-6 Sol when stronger reasoning is required
+          - T3: Claude Opus 5.5 or GPT-6 Astra for the hardest work
+
+          For T0 or T1, begin the response with:
+          [MISSION AI ROUTE] T# | STAY: Gemini 3.5 Flash Lite | FREE BASELINE
+
+          Then continue immediately with the requested work.
+
+          For T2 or T3, do not begin the substantive work while this free-baseline model is selected.
+          Begin the response with:
+          [MISSION AI ROUTE] T# | MANUAL SWITCH REQUIRED | RECOMMENDED: <cheapest approved model>
+
+          Then give one short sentence explaining why the higher tier is appropriate and stop.
+
+          Do not repeat the routing banner on ordinary follow-up messages in the same conversation unless the scope materially changes enough to require a different tier.
+
+    - name: 'mission-ai-gpt-luna'
+      label: 'Mission AI — GPT-6 Luna (Paid — Manual)'
+      preset:
+        endpoint: 'MissionAIOpenAI'
+        model: 'gpt-6-luna'
+        useResponsesApi: false
+        max_tokens: 4096
+        promptPrefix: |
+          MISSION AI PAID MODEL GUARD v1
+
+          A paid Mission AI model has been selected manually by the user.
+
+          Proceed with the user's requested work using this selected model.
+          Do not claim that Mission AI selected or switched to this paid model automatically.
+          Do not recommend a more expensive model unless the current model is materially insufficient for the requested task.
+          If a cheaper approved model would clearly be sufficient for a future new task, you may mention that fact briefly, but do not interrupt the current task.
+          Keep all provider switching manual.
+
+    - name: 'mission-ai-gpt-sol'
+      label: 'Mission AI — GPT-6 Sol (Paid — Manual)'
+      preset:
+        endpoint: 'MissionAIOpenAI'
+        model: 'gpt-6-sol'
+        useResponsesApi: false
+        max_tokens: 4096
+        promptPrefix: |
+          MISSION AI PAID MODEL GUARD v1
+
+          A paid Mission AI model has been selected manually by the user.
+
+          Proceed with the user's requested work using this selected model.
+          Do not claim that Mission AI selected or switched to this paid model automatically.
+          Do not recommend a more expensive model unless the current model is materially insufficient for the requested task.
+          If a cheaper approved model would clearly be sufficient for a future new task, you may mention that fact briefly, but do not interrupt the current task.
+          Keep all provider switching manual.
+
+    - name: 'mission-ai-gpt-astra'
+      label: 'Mission AI — GPT-6 Astra (Paid — Manual)'
+      preset:
+        endpoint: 'MissionAIOpenAI'
+        model: 'gpt-6-astra'
+        useResponsesApi: false
+        max_tokens: 4096
+        promptPrefix: |
+          MISSION AI PAID MODEL GUARD v1
+
+          A paid Mission AI model has been selected manually by the user.
+
+          Proceed with the user's requested work using this selected model.
+          Do not claim that Mission AI selected or switched to this paid model automatically.
+          Do not recommend a more expensive model unless the current model is materially insufficient for the requested task.
+          If a cheaper approved model would clearly be sufficient for a future new task, you may mention that fact briefly, but do not interrupt the current task.
+          Keep all provider switching manual.
+
+    - name: 'mission-ai-claude-haiku'
+      label: 'Mission AI — Claude Haiku 4.5 (Paid — Manual)'
+      preset:
+        endpoint: 'MissionAIClaude'
+        model: 'claude-haiku-4-5'
+        useResponsesApi: false
+        max_tokens: 4096
+        promptPrefix: |
+          MISSION AI PAID MODEL GUARD v1
+
+          A paid Mission AI model has been selected manually by the user.
+
+          Proceed with the user's requested work using this selected model.
+          Do not claim that Mission AI selected or switched to this paid model automatically.
+          Do not recommend a more expensive model unless the current model is materially insufficient for the requested task.
+          If a cheaper approved model would clearly be sufficient for a future new task, you may mention that fact briefly, but do not interrupt the current task.
+          Keep all provider switching manual.
+
+    - name: 'mission-ai-claude-sonnet'
+      label: 'Mission AI — Claude Sonnet 5.5 (Paid — Manual)'
+      preset:
+        endpoint: 'MissionAIClaude'
+        model: 'claude-sonnet-5-5'
+        useResponsesApi: false
+        max_tokens: 4096
+        promptPrefix: |
+          MISSION AI PAID MODEL GUARD v1
+
+          A paid Mission AI model has been selected manually by the user.
+
+          Proceed with the user's requested work using this selected model.
+          Do not claim that Mission AI selected or switched to this paid model automatically.
+          Do not recommend a more expensive model unless the current model is materially insufficient for the requested task.
+          If a cheaper approved model would clearly be sufficient for a future new task, you may mention that fact briefly, but do not interrupt the current task.
+          Keep all provider switching manual.
+
+    - name: 'mission-ai-claude-opus'
+      label: 'Mission AI — Claude Opus 5.5 (Paid — Manual)'
+      preset:
+        endpoint: 'MissionAIClaude'
+        model: 'claude-opus-5-5'
+        useResponsesApi: false
+        max_tokens: 4096
+        promptPrefix: |
+          MISSION AI PAID MODEL GUARD v1
+
+          A paid Mission AI model has been selected manually by the user.
+
+          Proceed with the user's requested work using this selected model.
+          Do not claim that Mission AI selected or switched to this paid model automatically.
+          Do not recommend a more expensive model unless the current model is materially insufficient for the requested task.
+          If a cheaper approved model would clearly be sufficient for a future new task, you may mention that fact briefly, but do not interrupt the current task.
+          Keep all provider switching manual.
+
+mcpServers:
+  github-code-editor:
+    title: Mission Program Hub GitHub Editor
+    type: stdio
+    command: node
+    args: ['mission-ai/github-code-editor/bridge.mjs']
+    env:
+      MISSION_AI_GITHUB_MCP_TOKEN: '${MISSION_AI_GITHUB_MCP_TOKEN}'
+    chatMenu: false
+    timeout: 120000
+    initTimeout: 30000
+    stderr: ignore

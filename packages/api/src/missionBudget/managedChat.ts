@@ -13,6 +13,7 @@ export interface ManagedChatRequest {
   url?: string;
   body?: unknown;
   config?: unknown;
+  user?: { email?: string };
 }
 
 export interface ManagedChatResponse {
@@ -25,6 +26,7 @@ export interface ManagedChatOptions {
   gatewayURL?: string;
   nativeToken?: string;
   titleConvo?: string;
+  ownerEmail?: string;
 }
 
 type Middleware = (
@@ -98,7 +100,7 @@ export function createManagedGatewayReadiness(options: {
   };
 }
 
-type PromptKind = 'gateway' | 'paid';
+type PromptKind = 'gateway' | 'paid' | 'project';
 
 type ApprovedSpec = Readonly<{
   endpoint: string;
@@ -118,6 +120,8 @@ const RUNTIME_ENV = ((globalThis as unknown as {
 }).process?.env ?? {});
 
 const FREE_BASELINE = RUNTIME_ENV.MISSION_AI_FREE_BASELINE === 'true';
+const GITHUB_EDITOR = FREE_BASELINE && RUNTIME_ENV.MISSION_AI_GITHUB_EDITOR === 'true';
+const GITHUB_SERVER = 'github-code-editor';
 
 const GOOGLE_ENDPOINT = 'MissionAI';
 const CLAUDE_ENDPOINT = 'MissionAIClaude';
@@ -173,7 +177,15 @@ const BASELINE_SPECS: Readonly<Record<string, ApprovedSpec>> = Object.freeze({
 });
 
 const APPROVED_SPECS: Readonly<Record<string, ApprovedSpec>> = FREE_BASELINE
-  ? BASELINE_SPECS
+  ? GITHUB_EDITOR ? Object.freeze({
+      ...BASELINE_SPECS,
+      'mission-ai-project-manager': Object.freeze({
+        endpoint: CLAUDE_ENDPOINT,
+        model: 'claude-sonnet-5-5',
+        default: false,
+        prompt: 'project',
+      }),
+    }) : BASELINE_SPECS
   : Object.freeze({
       'mission-ai-sonnet': Object.freeze({
         endpoint: GOOGLE_ENDPOINT,
@@ -270,9 +282,16 @@ Do not recommend a more expensive model unless the current model is materially i
 If a cheaper approved model would clearly be sufficient for a future new task, you may mention that fact briefly, but do not interrupt the current task.
 Keep all provider switching manual.`;
 
+const PROJECT_MANAGER_PROMPT = `You are the Mission AI Project Manager for mckeem3592-lang/mission-program-hub.
+Use github-code-editor only for this repository. Explain proposed file changes
+before invoking a write tool. Every tool execution requires the user's approval.
+Do not claim a change is live until the GitHub commit and Cloudflare deployment
+have both been verified.`;
+
 function reviewedPrompt(kind: PromptKind, value: unknown): boolean {
   if (typeof value !== 'string') return false;
-  const expected = kind === 'gateway' ? MASTER_GATEWAY_PROMPT : PAID_MODEL_PROMPT;
+  const expected = kind === 'gateway' ? MASTER_GATEWAY_PROMPT :
+    kind === 'project' ? PROJECT_MANAGER_PROMPT : PAID_MODEL_PROMPT;
   return value === expected || value === `${expected}\n`;
 }
 
@@ -573,7 +592,11 @@ function chatBody(value: unknown): ObjectValue {
 
     for (const [key, value] of Object.entries(agent)) {
       if (value == null) continue;
-      if (key === 'mcp') emptyArray(value);
+      if (key === 'mcp') {
+        if (approved.name === 'mission-ai-project-manager') {
+          sameStrings(value, [GITHUB_SERVER]);
+        } else emptyArray(value);
+      }
       else if (key === 'artifacts' && value === '') continue;
       else disabled(value);
     }
@@ -635,6 +658,13 @@ const READ_PATHS = new Set([
   '/api/convos',
   '/api/messages',
   '/api/agents/chat/active',
+]);
+
+const GITHUB_MCP_READ_PATHS = new Set([
+  '/api/mcp/tools', '/api/mcp/servers',
+  '/api/mcp/servers/github-code-editor',
+  '/api/mcp/connection/status',
+  '/api/mcp/connection/status/github-code-editor',
 ]);
 
 const POST_PATHS = new Set([
@@ -825,6 +855,9 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
         return next();
       }
 
+      if (GITHUB_EDITOR && method === 'GET' && query === '' &&
+          GITHUB_MCP_READ_PATHS.has(path)) return next();
+
       const refreshRetry = path === '/api/auth/refresh' && query === 'retry=true';
 
       if (
@@ -944,7 +977,17 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
 
   if (agents.disableBuilder !== true) throw new Error();
   sameStrings(agents.allowedProviders, ENDPOINTS);
-  emptyArray(agents.capabilities);
+  if (GITHUB_EDITOR) {
+    sameStrings(agents.capabilities, ['tools']);
+    const approval = object(agents.toolApproval);
+    if (approval.enabled !== true || approval.mode !== 'default') throw new Error();
+    emptyArray(approval.allow);
+    sameStrings(approval.ask, ['*']);
+    if (!Array.isArray(approval.hooks) || approval.hooks.length !== 1 ||
+        object(approval.hooks[0]).module !== './mission-ai/github-code-editor/approval.mjs') {
+      throw new Error();
+    }
+  } else emptyArray(agents.capabilities);
 
   for (const flag of [
     'titleConvo',
@@ -1079,6 +1122,7 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
         'iconURL',
         'default',
         'preset',
+        ...(GITHUB_EDITOR ? ['mcpServers'] : []),
       ]),
     );
 
@@ -1091,6 +1135,10 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
     seenSpecs.add(name);
 
     const approved = APPROVED_SPECS[name];
+
+    if (name === 'mission-ai-project-manager') {
+      sameStrings(spec.mcpServers, [GITHUB_SERVER]);
+    } else if (spec.mcpServers != null) throw new Error();
 
     if (approved.default) {
       if (spec.default !== true) throw new Error();
@@ -1149,8 +1197,28 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
     throw new Error();
   }
 
-  emptyRecord(config.mcpConfig);
-  emptyRecord(raw.mcpServers);
+  if (GITHUB_EDITOR) {
+    for (const value of [config.mcpConfig, raw.mcpServers]) {
+      const servers = object(value);
+      keys(servers, new Set([GITHUB_SERVER]));
+      if (Object.keys(servers).length !== 1) throw new Error();
+      const server = object(servers[GITHUB_SERVER]);
+      keys(server, new Set(['title', 'type', 'command', 'args', 'env',
+        'chatMenu', 'timeout', 'initTimeout', 'stderr']));
+      if (server.type !== 'stdio' || server.command !== 'node' ||
+          server.chatMenu !== false || server.timeout !== 120000 ||
+          server.initTimeout !== 30000 || server.stderr !== 'ignore') throw new Error();
+      sameStrings(server.args, ['mission-ai/github-code-editor/bridge.mjs']);
+      const env = object(server.env);
+      keys(env, new Set(['MISSION_AI_GITHUB_MCP_TOKEN']));
+      const token = RUNTIME_ENV.MISSION_AI_GITHUB_MCP_TOKEN;
+      if (!token || ![token, '${MISSION_AI_GITHUB_MCP_TOKEN}'].includes(
+        env.MISSION_AI_GITHUB_MCP_TOKEN as string)) throw new Error();
+    }
+  } else {
+    emptyRecord(config.mcpConfig);
+    emptyRecord(raw.mcpServers);
+  }
 
   for (const view of [config.interfaceConfig, raw.interface]) {
     const ui = object(view);
@@ -1169,6 +1237,11 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
     }
 
     emptyArray(ui.defaultPinnedTools);
+    if (GITHUB_EDITOR) {
+      const mcp = object(ui.mcpServers);
+      if (mcp.use !== true || mcp.create !== false || mcp.share !== false ||
+          mcp.public !== false) throw new Error();
+    }
   }
 }
 
@@ -1189,6 +1262,9 @@ export function createManagedChatConfigGuard(
 
     try {
       req.body = chatBody(req.body);
+      if (GITHUB_EDITOR && object(req.body).spec === 'mission-ai-project-manager' &&
+          (!options.ownerEmail || req.user?.email?.toLowerCase() !==
+            options.ownerEmail.toLowerCase())) throw new Error();
     } catch {
       return deny(res);
     }
