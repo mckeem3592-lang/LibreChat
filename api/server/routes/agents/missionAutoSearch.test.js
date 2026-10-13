@@ -49,6 +49,22 @@ test('ordinary prompts, other users, paid models, and regenerations do not searc
   assert.equal(calls, 0);
 });
 
+test('manual free Gemini 2.5 Flash uses the same guarded search', async () => {
+  let calls = 0;
+  const handler = createMissionAutoSearch({ ...options, fetchImpl: async () => {
+    calls++;
+    return { ok: true, json: async () => ({ provider: 'tavily', freeOnly: true,
+      credits: 1, aiCalls: 0, results: [{ title: 'Forecast',
+        url: 'https://weather.gov/forecast', content: 'Sunny.' }] }) };
+  } });
+  const req = request('Search the web for the forecast',
+    { spec: 'mission-ai-gemini25', model: 'gemini-2.5-flash' });
+  await handler(req, {}, () => {});
+  assert.equal(calls, 1);
+  assert.equal(req.body.text, 'Search the web for the forecast');
+  assert.match(req.missionAutoSearchContext, /weather\.gov/);
+});
+
 test('search failure is disclosed and never passed off as live evidence', async () => {
   const handler = createMissionAutoSearch({ ...options,
     fetchImpl: async () => ({ ok: false }) });

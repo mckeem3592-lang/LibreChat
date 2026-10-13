@@ -33,8 +33,8 @@ function createMissionAutoSearch({ enabled, ownerEmail, gatewayURL, token, fetch
     if (!enabled || req.method !== 'POST' ||
         req.originalUrl !== '/api/agents/chat/MissionAI' ||
         req.body?.endpoint !== 'MissionAI' ||
-        req.body?.spec !== 'mission-ai-free' ||
-        req.body?.model !== 'gemini-3.5-flash-lite' ||
+        !((req.body?.spec === 'mission-ai-free' && req.body?.model === 'gemini-3.5-flash-lite') ||
+          (req.body?.spec === 'mission-ai-gemini25' && req.body?.model === 'gemini-2.5-flash')) ||
         req.body?.isRegenerate === true ||
         typeof req.body?.text !== 'string' ||
         req.body.text.length > 2000 ||
