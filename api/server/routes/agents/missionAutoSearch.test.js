@@ -43,13 +43,31 @@ test('time-relative sports questions trigger live search', async () => {
   assert.match(req.missionAutoSearchContext, /Nebraska at Oregon/);
 });
 
+test('shopping search and product follow-up both receive fresh results', async () => {
+  const queries = [];
+  const handler = createMissionAutoSearch({ ...options, fetchImpl: async (_url, init) => {
+    queries.push(JSON.parse(init.body).query);
+    return { ok: true, json: async () => ({ results: [
+      { title: 'Official product', url: 'https://bambulab.com/products/p2s', snippet: 'Bambu Lab P2S printer.' },
+    ] }) };
+  } });
+  const first = request('Conduct a search for Bambu Labs X2D + AMS 2 Pro 3D printers. Any good sales going on?');
+  const second = request('What about a P2S?');
+  await handler(first, {}, () => {});
+  await handler(second, {}, () => {});
+  assert.equal(queries.length, 2);
+  assert.match(queries[0], /X2D.*official store current price/);
+  assert.match(queries[1], /^P2S official product current price sale \d{4}-\d{2}-\d{2}$/);
+  assert.match(second.missionAutoSearchContext, /https:\/\/bambulab\.com\/products\/p2s/);
+});
+
 test('ordinary or paid prompts do not search; failed search is disclosed', async () => {
   let calls = 0;
   const handler = createMissionAutoSearch({ ...options, fetchImpl: async () => {
     calls++;
     return { ok: false };
   } });
-  for (const req of [request('Hello'), request('Search the web', { model: 'claude-sonnet-5-5' }),
+  for (const req of [request('Hello'), request('What about a private report?'), request('Search the web', { model: 'claude-sonnet-5-5' }),
     { ...request('Search the web'), user: { email: 'other@example.test' } }]) {
     await handler(req, {}, () => {});
     assert.equal(req.missionAutoSearchContext, undefined);
