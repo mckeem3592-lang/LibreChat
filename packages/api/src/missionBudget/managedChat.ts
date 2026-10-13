@@ -636,7 +636,9 @@ function chatBody(value: unknown): ObjectValue {
       else if (key === 'artifacts' && (value === '' ||
           (approved.name === 'mission-ai-claude-sonnet' &&
            ['default', 'shadcnui', 'custom'].includes(value as string)))) continue;
-      else disabled(value);
+      else if (key === 'web_search' && GITHUB_EDITOR && value === true) {
+        out.ephemeralAgent = { web_search: true };
+      } else disabled(value);
     }
   }
 
@@ -1257,12 +1259,19 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
   if (GITHUB_EDITOR) {
     const search = object(raw.webSearch);
     keys(search, new Set(['searchProvider', 'scraperProvider', 'rerankerType',
-      'keenableSearchOptions', 'keenableScraperOptions']));
-    if (search.searchProvider !== 'keenable' || search.scraperProvider !== 'keenable' ||
+      'tavilyApiKey', 'tavilySearchOptions', 'keenableScraperOptions']));
+    const tavilyKey = RUNTIME_ENV.TAVILY_API_KEY;
+    if (!tavilyKey || ![tavilyKey, '${TAVILY_API_KEY}'].includes(search.tavilyApiKey as string) ||
+        search.searchProvider !== 'tavily' || search.scraperProvider !== 'keenable' ||
         search.rerankerType !== 'none') throw new Error();
-    const searchOptions = object(search.keenableSearchOptions);
-    keys(searchOptions, new Set(['maxResults', 'timeout']));
-    if (searchOptions.maxResults !== 5 || searchOptions.timeout !== 15000) throw new Error();
+    const searchOptions = object(search.tavilySearchOptions);
+    keys(searchOptions, new Set(['searchDepth', 'maxResults', 'topic', 'includeAnswer',
+      'includeRawContent', 'timeout']));
+    if (searchOptions.searchDepth !== 'basic' || searchOptions.maxResults !== 4 ||
+        searchOptions.topic !== 'general' || searchOptions.includeAnswer !== false ||
+        searchOptions.includeRawContent !== false || searchOptions.timeout !== 15000) {
+      throw new Error();
+    }
     const scraperOptions = object(search.keenableScraperOptions);
     keys(scraperOptions, new Set(['timeout']));
     if (scraperOptions.timeout !== 15000) throw new Error();
@@ -1313,7 +1322,7 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
       if (ui[key] !== false) throw new Error();
     }
 
-    if (ui.webSearch !== false) throw new Error();
+    if (ui.webSearch !== GITHUB_EDITOR) throw new Error();
 
     emptyArray(ui.defaultPinnedTools);
     if (GITHUB_EDITOR) {

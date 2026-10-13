@@ -29,6 +29,12 @@ for variable in $(compgen -e); do
       [[ ${MISSION_AI_FREE_BASELINE-false} == true ]] ||
         fail 'GOOGLE_KEY requires MISSION_AI_FREE_BASELINE=true'
       continue ;;
+    TAVILY_API_KEY)
+      [[ ${MISSION_AI_FREE_BASELINE-false} == true ]] ||
+        fail 'TAVILY_API_KEY requires MISSION_AI_FREE_BASELINE=true'
+      [[ ${!variable} == tvly-* && ${!variable} != *[[:space:]]* ]] ||
+        fail 'TAVILY_API_KEY must be a nonempty Tavily key without whitespace'
+      continue ;;
     OPENAI_*|ANTHROPIC_*|AZURE_*|ASSISTANTS_*|GOOGLE_*|GEMINI_*|BEDROCK_*|AWS_*|VERTEX_*|\
     ANYSCALE_*|APIPIE_*|COHERE_*|DEEPSEEK_*|DATABRICKS_*|FIREWORKS_*|GROQ_*|HUGGINGFACE_*|\
     MISTRAL_*|OPENROUTER_*|PERPLEXITY_*|SHUTTLEAI_*|TOGETHERAI_*|UNIFY_*|XAI_*|\

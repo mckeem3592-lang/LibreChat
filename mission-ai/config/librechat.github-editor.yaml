@@ -20,7 +20,7 @@ interface:
   skills: false
   memories: false
   runCode: false
-  webSearch: false
+  webSearch: true
   fileSearch: false
   marketplace:
     use: false
@@ -410,11 +410,16 @@ mcpServers:
     stderr: ignore
 
 webSearch:
-  searchProvider: keenable
+  searchProvider: tavily
   scraperProvider: keenable
   rerankerType: none
-  keenableSearchOptions:
-    maxResults: 5
+  tavilyApiKey: '${TAVILY_API_KEY}'
+  tavilySearchOptions:
+    searchDepth: basic
+    maxResults: 4
+    topic: general
+    includeAnswer: false
+    includeRawContent: false
     timeout: 15000
   keenableScraperOptions:
     timeout: 15000
