@@ -9,6 +9,8 @@ process.env.MISSION_AI_GITHUB_MCP_TOKEN = 'github_pat_offline_test_token_abcdefg
 process.env.GOOGLE_KEY = 'fake-google-key-for-local-tests';
 const { createManagedToolAdmission, createManagedToolConfigGuard } =
   await import('./generated/managedTools.js');
+const { createManagedChatConfigGuard, createManagedChatAdmission } =
+  await import('./generated/managedChat.js');
 
 const raw = yaml.parse(readFileSync(new URL('../config/librechat.github-editor.yaml', import.meta.url), 'utf8'));
 const options = { enabled: true, toolsEnabled: false, ownerEmail: 'owner@example.test',
@@ -30,6 +32,19 @@ function run(middleware, req) {
     () => { next++; });
   return { next, status, result, req };
 }
+
+test('cached Sonnet uses the reviewed native Anthropic route', () => {
+  const req = fixture({ endpoint: 'MissionAIClaudeCached',
+    spec: 'mission-ai-claude-sonnet', promptCache: true, promptCacheTtl: '5m',
+    ephemeralAgent: { mcp: [] } });
+  req.originalUrl = '/api/agents/chat/MissionAIClaudeCached';
+  assert.equal(run(createManagedChatAdmission(options), req).next, 1);
+  assert.equal(run(createManagedChatConfigGuard(options), req).next, 1);
+  const wrongCache = fixture({ endpoint: 'MissionAIClaudeCached',
+    spec: 'mission-ai-claude-sonnet', promptCache: false, promptCacheTtl: '5m' });
+  wrongCache.originalUrl = '/api/agents/chat/MissionAIClaudeCached';
+  assert.equal(run(createManagedChatAdmission(options), wrongCache).status, 403);
+});
 
 test('project preset admits only its exact owner-bound paid route', () => {
   const early = createManagedToolAdmission(options);

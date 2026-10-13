@@ -87,7 +87,8 @@ export function createManagedGatewayReadiness(options: {
 }): Middleware {
   return async (req, res, next) => {
     if (!options.enabled || req.method !== 'POST' ||
-        !['/api/agents/chat/MissionAIClaude', '/api/agents/chat/MissionAIOpenAI']
+        !['/api/agents/chat/MissionAIClaude', '/api/agents/chat/MissionAIClaudeCached',
+          '/api/agents/chat/MissionAIOpenAI']
           .includes(req.originalUrl ?? req.url ?? '')) return next();
     const ready = await waitForManagedGateway(
       options.gatewayURL ?? '', options.fetchImpl, options.now, options.wait,
@@ -110,7 +111,7 @@ type ApprovedSpec = Readonly<{
 }>;
 
 type ApprovedEndpoint = Readonly<{
-  baseURL: 'google' | 'anthropicGateway' | 'openaiGateway';
+  baseURL: 'google' | 'anthropicGateway' | 'anthropicNativeGateway' | 'openaiGateway';
   apiKey: 'google' | 'native';
   models: readonly string[];
 }>;
@@ -125,10 +126,13 @@ const GITHUB_SERVER = 'github-code-editor';
 
 const GOOGLE_ENDPOINT = 'MissionAI';
 const CLAUDE_ENDPOINT = 'MissionAIClaude';
+const CLAUDE_CACHED_ENDPOINT = 'MissionAIClaudeCached';
 const OPENAI_ENDPOINT = 'MissionAIOpenAI';
 
 const ENDPOINTS: readonly string[] = Object.freeze(
-  FREE_BASELINE ? [GOOGLE_ENDPOINT, CLAUDE_ENDPOINT, OPENAI_ENDPOINT] : [GOOGLE_ENDPOINT],
+  FREE_BASELINE ? GITHUB_EDITOR
+    ? [GOOGLE_ENDPOINT, CLAUDE_ENDPOINT, CLAUDE_CACHED_ENDPOINT, OPENAI_ENDPOINT]
+    : [GOOGLE_ENDPOINT, CLAUDE_ENDPOINT, OPENAI_ENDPOINT] : [GOOGLE_ENDPOINT],
 );
 
 const BASELINE_SPECS: Readonly<Record<string, ApprovedSpec>> = Object.freeze({
@@ -185,6 +189,12 @@ const BASELINE_SPECS: Readonly<Record<string, ApprovedSpec>> = Object.freeze({
 const APPROVED_SPECS: Readonly<Record<string, ApprovedSpec>> = FREE_BASELINE
   ? GITHUB_EDITOR ? Object.freeze({
       ...BASELINE_SPECS,
+      'mission-ai-claude-sonnet': Object.freeze({
+        endpoint: CLAUDE_CACHED_ENDPOINT,
+        model: 'claude-sonnet-5-5',
+        default: false,
+        prompt: 'paid',
+      }),
       'mission-ai-project-manager': Object.freeze({
         endpoint: CLAUDE_ENDPOINT,
         model: 'claude-sonnet-5-5',
@@ -227,8 +237,17 @@ const BASELINE_ENDPOINTS: Readonly<Record<string, ApprovedEndpoint>> = Object.fr
   }),
 });
 
+const GITHUB_ENDPOINTS: Readonly<Record<string, ApprovedEndpoint>> = Object.freeze({
+  ...BASELINE_ENDPOINTS,
+  [CLAUDE_CACHED_ENDPOINT]: Object.freeze({
+    baseURL: 'anthropicNativeGateway',
+    apiKey: 'native',
+    models: Object.freeze(['claude-sonnet-5-5']),
+  }),
+});
+
 const APPROVED_ENDPOINTS: Readonly<Record<string, ApprovedEndpoint>> = FREE_BASELINE
-  ? BASELINE_ENDPOINTS
+  ? GITHUB_EDITOR ? GITHUB_ENDPOINTS : BASELINE_ENDPOINTS
   : Object.freeze({
       [GOOGLE_ENDPOINT]: Object.freeze({
         baseURL: 'anthropicGateway',
@@ -372,6 +391,8 @@ const BODY_FIELDS = new Set([
   'key',
   'timezone',
   'promptPrefix',
+  'promptCache',
+  'promptCacheTtl',
   'max_tokens',
   'maxContextTokens',
   'stop',
@@ -486,6 +507,13 @@ function chatBody(value: unknown): ObjectValue {
     resendFiles: false,
     max_tokens: integer(input.max_tokens ?? 4096, 1, 32768),
   };
+
+  if (own(input, 'promptCache') || own(input, 'promptCacheTtl')) {
+    if (!(GITHUB_EDITOR && approved.name === 'mission-ai-claude-sonnet') ||
+        input.promptCache !== true || input.promptCacheTtl !== '5m') throw new Error();
+    out.promptCache = true;
+    out.promptCacheTtl = '5m';
+  }
 
   if (own(input, 'generationProtocolVersion')) {
     if (input.generationProtocolVersion !== 2) throw new Error();
@@ -927,6 +955,17 @@ function expectedEndpointConfig(
     };
   }
 
+  if (definition.baseURL === 'anthropicNativeGateway') {
+    return {
+      baseURLs: [
+        `${gatewayOrigin}/native/anthropic`,
+        '${MISSION_AI_GATEWAY_URL}/native/anthropic',
+      ],
+      apiKeys: ['${MISSION_AI_NATIVE_TOKEN}'],
+      models: definition.models,
+    };
+  }
+
   return {
     baseURLs: [
       `${gatewayOrigin}/native/openai-direct/v1`,
@@ -1033,6 +1072,7 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
       custom,
       new Set([
         'name',
+        'provider',
         'apiKey',
         'baseURL',
         'models',
@@ -1046,6 +1086,10 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
     );
 
     const name = string(custom.name);
+
+    if (name === CLAUDE_CACHED_ENDPOINT ? custom.provider !== 'anthropic' : custom.provider != null) {
+      throw new Error();
+    }
 
     if (
       !ENDPOINTS.includes(name as (typeof ENDPOINTS)[number]) ||
@@ -1176,6 +1220,7 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
         'model',
         'useResponsesApi',
         'max_tokens',
+        ...(GITHUB_EDITOR ? ['promptCache', 'promptCacheTtl'] : []),
         'promptPrefix',
       ]),
     );
@@ -1189,6 +1234,10 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
     }
 
     integer(preset.max_tokens, 1, 32768);
+
+    if (name === 'mission-ai-claude-sonnet' && GITHUB_EDITOR) {
+      if (preset.promptCache !== true || preset.promptCacheTtl !== '5m') throw new Error();
+    } else if (preset.promptCache != null || preset.promptCacheTtl != null) throw new Error();
 
     if (
       approved.prompt

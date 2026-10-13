@@ -63,6 +63,8 @@ fileConfig:
       disabled: true
     MissionAIClaude:
       disabled: true
+    MissionAIClaudeCached:
+      disabled: true
     MissionAIOpenAI:
       disabled: true
 
@@ -78,6 +80,7 @@ endpoints:
     allowedProviders:
       - 'MissionAI'
       - 'MissionAIClaude'
+      - 'MissionAIClaudeCached'
       - 'MissionAIOpenAI'
     capabilities: [tools, web_search]
     toolApproval:
@@ -124,6 +127,32 @@ endpoints:
           - 'claude-opus-5-5'
         fetch: false
       modelDisplayLabel: 'Mission AI — Claude'
+      titleConvo: false
+      addParams:
+        maxRetries: 0
+        timeout: 180000
+      dropParams:
+        - useResponsesApi
+        - temperature
+        - top_p
+        - topP
+        - frequency_penalty
+        - frequencyPenalty
+        - presence_penalty
+        - presencePenalty
+        - seed
+        - user
+        - verbosity
+
+    - name: 'MissionAIClaudeCached'
+      provider: anthropic
+      apiKey: '${MISSION_AI_NATIVE_TOKEN}'
+      baseURL: '${MISSION_AI_GATEWAY_URL}/native/anthropic'
+      models:
+        default:
+          - 'claude-sonnet-5-5'
+        fetch: false
+      modelDisplayLabel: 'Mission AI — Claude Cached'
       titleConvo: false
       addParams:
         maxRetries: 0
@@ -337,10 +366,12 @@ modelSpecs:
     - name: 'mission-ai-claude-sonnet'
       label: 'Mission AI — Claude Sonnet 5.5 (Paid — Manual)'
       preset:
-        endpoint: 'MissionAIClaude'
+        endpoint: 'MissionAIClaudeCached'
         model: 'claude-sonnet-5-5'
         useResponsesApi: false
         max_tokens: 4096
+        promptCache: true
+        promptCacheTtl: '5m'
         promptPrefix: |
           MISSION AI PAID MODEL GUARD v1
 
