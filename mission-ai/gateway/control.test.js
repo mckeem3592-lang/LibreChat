@@ -38,18 +38,14 @@ test('disabled original deployment and unknown routes cannot reach the gateway',
   }
   assert.equal(calls.length, 0);
 });
-test('search requires the exact chat origin and rejects caller-selected routes/options', async () => {
+test('the removed search proxy is unavailable for every caller', async () => {
   const { calls, handler } = proxy();
   for (const req of [{ ...request('/api/mission-ai/search', 'POST'), get: () => 'https://evil.example.test' },
-    { ...request('/api/mission-ai/search', 'POST'), body: { query: 'q', searchDepth: 'advanced' } }]) {
-    const res = response(); await handler(req, res); assert.ok([400, 403].includes(res.code));
+    { ...request('/api/mission-ai/search', 'POST'), body: { query: 'q', searchDepth: 'advanced' } },
+    request('/api/mission-ai/search', 'POST')]) {
+    const res = response(); await handler(req, res); assert.equal(res.code, 404);
   }
   assert.equal(calls.length, 0);
-  const res = response(); await handler(request('/api/mission-ai/search', 'POST'), res);
-  assert.equal(calls.length, 1); assert.equal(calls[0][0], 'https://gateway.example.test/native/control/search');
-  assert.equal(calls[0][1].redirect, 'error');
-  assert.deepEqual(JSON.parse(calls[0][1].body), { query: 'local fixture', maxResults: 5 });
-  assert.ok(!JSON.stringify(res.body).includes(token));
 });
 test('an unavailable gateway is called once, with private errors replaced', async () => {
   let calls = 0;
