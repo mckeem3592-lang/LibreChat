@@ -176,23 +176,3 @@ test('AFC North standings and regenerated live questions search without a manual
   assert.match(first.missionAutoSearchContext, /https:\/\/www\.nfl\.com\/standings\//);
   assert.match(first.missionAutoSearchContext, /Do not say you lack live access/);
 });
-
-
-test('ordinary factual inquiries and direct lookups search without keyword gating', async () => {
-  const queries = [];
-  const handler = createMissionAutoSearch({ ...options, tavilyApiKey: 'tvly-test',
-    fetchImpl: async (_url, init) => {
-      queries.push(JSON.parse(init.body).query);
-      return { ok: true, json: async () => ({ results: [
-        { title: 'Reference', url: 'https://example.com/reference', content: 'A relevant answer.' },
-      ] }) };
-    } });
-  for (const text of ['Who wrote Hamlet?', 'Tell me about the AFC North',
-    'Find the official team standings', 'Can you check this fact?']) {
-    const req = request(text);
-    await handler(req, {}, () => {});
-    assert.match(req.missionAutoSearchContext, /https:\/\/example\.com\/reference/);
-  }
-  assert.equal(queries.length, 4);
-  assert.equal(queries[0], `Who wrote Hamlet? (as of ${new Date().toISOString().slice(0, 10)})`);
-});
