@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createFreeSearch } from './generated/freeSearch.js';
+import { createFreeSearch, hasRecordedFreePlanProof } from './generated/freeSearch.js';
+
+test('recorded PAYG-off proof stays valid across days and months when the key matches', () => {
+  const now = Date.parse('2026-11-02T12:00:00Z');
+  assert.equal(hasRecordedFreePlanProof('2026-10-13T19:06:08Z', true, now), true);
+  assert.equal(hasRecordedFreePlanProof('2026-10-13T19:06:08Z', false, now), false);
+  assert.equal(hasRecordedFreePlanProof('2026-11-03T00:00:00Z', true, now), false);
+  assert.equal(hasRecordedFreePlanProof('', true, now), false);
+});
 
 const quota = (overrides = {}) => ({ key: { usage: 0, limit: 1000 },
   account: { current_plan: 'Researcher', plan_limit: 1000, plan_usage: 0, paygo_usage: 0, paygo_limit: null }, ...overrides });

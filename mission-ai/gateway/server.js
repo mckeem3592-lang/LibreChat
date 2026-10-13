@@ -16,7 +16,7 @@ import { createPaidHttpHandlers } from './paid-http.js';
 import { createNativeBridge } from './generated/native.js';
 import { createNativeHttp } from './generated/http.js';
 import { createAnthropicHttp } from './generated/anthropicHttp.js';
-import { createFreeSearch, FreeSearchError } from './generated/freeSearch.js';
+import { createFreeSearch, FreeSearchError, hasRecordedFreePlanProof } from './generated/freeSearch.js';
 import { createFreeCreditStore } from './generated/freeCredits.js';
 import { createMissionControlHttp } from './generated/control.js';
 import { defaultUsageLedger } from './usage-ledger.js';
@@ -88,24 +88,13 @@ const freeSearch = createFreeSearch({
     now: () => new Date(),
     randomId: () => crypto.randomUUID(),
   }),
-  freePlanVerified: () => {
-    const verifiedAt = Date.parse(
-      process.env.MISSION_AI_TAVILY_PAYG_OFF_VERIFIED_AT || '',
-    );
-    const age = Date.now() - verifiedAt;
-
-    return (
-      Number.isFinite(age) &&
-      age >= 0 &&
-      age <= 86_400_000 &&
-      new Date(verifiedAt).toISOString().slice(0, 7) ===
-        new Date().toISOString().slice(0, 7) &&
-      safeEqual(
-        crypto.createHash('sha256').update(tavilyKey).digest('hex'),
-        process.env.MISSION_AI_TAVILY_KEY_SHA256 || '',
-      )
-    );
-  },
+  freePlanVerified: () => hasRecordedFreePlanProof(
+    process.env.MISSION_AI_TAVILY_PAYG_OFF_VERIFIED_AT || '',
+    safeEqual(
+      crypto.createHash('sha256').update(tavilyKey).digest('hex'),
+      process.env.MISSION_AI_TAVILY_KEY_SHA256 || '',
+    ),
+  ),
 });
 
 const app = express();

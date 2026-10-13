@@ -13,6 +13,15 @@ interface Dependencies {
 export class FreeSearchError extends Error {
   constructor(public readonly code: string, public readonly status = 503) { super(code); }
 }
+/** Recorded owner verification remains tied to this key; live usage is checked per search. */
+export function hasRecordedFreePlanProof(
+  verifiedAt: string,
+  keyMatches: boolean,
+  now = Date.now(),
+): boolean {
+  const proofTime = Date.parse(verifiedAt);
+  return keyMatches && Number.isFinite(proofTime) && proofTime <= now;
+}
 function fail(code: string, status = 503): never { throw new FreeSearchError(code, status); }
 function object(value: unknown): Json {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail('search_usage_unverified');
