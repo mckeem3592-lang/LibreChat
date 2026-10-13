@@ -26,7 +26,6 @@ const guardSubagentThreadTurn = require('~/server/middleware/validate/subagentTh
 const AgentController = require('~/server/controllers/agents/request');
 const ResumeController = require('~/server/controllers/agents/resume');
 const addTitle = require('~/server/services/Endpoints/agents/title');
-const { createMissionAutoSearch } = require('./missionAutoSearch');
 const { getFiles, getRoleByName, getChatProject } = require('~/models');
 
 const router = express.Router();
@@ -121,12 +120,6 @@ router.use(
   }),
 );
 router.use(moderateText);
-router.use(createMissionAutoSearch({
-  enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
-  ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
-  gatewayURL: process.env.MISSION_AI_GATEWAY_URL,
-  token: process.env.MISSION_AI_NATIVE_TOKEN,
-}));
 router.use(checkAgentAccess);
 router.use(checkAgentResourceAccess);
 router.use(validateConvoAccess);

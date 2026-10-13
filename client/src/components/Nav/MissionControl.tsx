@@ -1,19 +1,18 @@
 import { atom, useAtom } from 'jotai';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react';
 import { Gauge, X } from 'lucide-react';
 import { apiBaseUrl, request } from 'librechat-data-provider';
-import { Button, Input, TooltipAnchor } from '@librechat/client';
+import { Button, TooltipAnchor } from '@librechat/client';
 import { useLocalize } from '~/hooks';
 import { useAuthContext } from '~/hooks/AuthContext';
 import { useGetEndpointsQuery } from '~/data-provider/Endpoints/queries';
 
 const openAtoms = { right: atom(false), bottom: atom(false) };
-const queryAtom = atom('');
 interface Status {
   budget: { spendUsd: number; reservedUsd: number; projectedSpendUsd: number;
     targetUsd: number; economyUsd: number; hardUsd: number };
-  flags: { paidText: boolean; delegation: boolean; images: boolean; freeSearch: boolean };
+  flags: { paidText: boolean; delegation: boolean; images: boolean };
   accountingBlocked: boolean;
   periods?: { todayUsd: number; weekUsd: number; todayEstimatedUsd: number;
     weekEstimatedUsd: number; monthUnallocatedUsd: number; timeZone: string; asOf?: string; monthStart?: string };
@@ -21,11 +20,6 @@ interface Status {
   byModel?: { model: string; spendUsd: number }[];
   byProject?: { project: string; spendUsd: number }[];
   byTask?: { task: string; spendUsd: number }[];
-}
-interface SearchResults {
-  credits: number;
-  remainingCredits: number;
-  results: { title: string; url: string; content: string }[];
 }
 const endpoint = (path: string) => `${apiBaseUrl()}/api/mission-ai/${path}`;
 const dollars = (value: number) => new Intl.NumberFormat(undefined, {
@@ -87,7 +81,6 @@ export default function MissionControl({ side = 'right' }: { side?: 'right' | 'b
   const { user, isAuthenticated } = useAuthContext();
   const { data: endpoints } = useGetEndpointsQuery();
   const [open, setOpen] = useAtom(openAtoms[side]);
-  const [query, setQuery] = useAtom(queryAtom);
   const capabilities = useQuery({
     queryKey: ['mission-ai-capabilities', user?.id],
     queryFn: () => request.get<{ enabled: boolean }>(endpoint('capabilities')),
@@ -98,10 +91,6 @@ export default function MissionControl({ side = 'right' }: { side?: 'right' | 'b
     queryKey: ['mission-ai-status', user?.id], queryFn: () => request.get<Status>(endpoint('status')),
     enabled: isAuthenticated && open && capabilities.data?.enabled === true,
     retry: false, staleTime: Infinity, refetchOnWindowFocus: false,
-  });
-  const search = useMutation({
-    mutationFn: (text: string): Promise<SearchResults> => request.post(endpoint('search'), { query: text, maxResults: 5 }),
-    retry: false,
   });
   if (!isAuthenticated || capabilities.data?.enabled !== true) return null;
   const data = status.data;
@@ -152,27 +141,7 @@ export default function MissionControl({ side = 'right' }: { side?: 'right' | 'b
               <p className="mt-4 text-sm">{localize(data.flags.paidText ? 'com_mission_paid_enabled' : 'com_mission_paid_off')}</p>
               {data.accountingBlocked && <p role="alert">{localize('com_mission_accounting_blocked')}</p>}
               <p className="mt-2 text-sm text-text-secondary">{localize('com_mission_model_policy')}</p>
-              <form className="mt-6 space-y-3" onSubmit={(event) => { event.preventDefault(); if (query.trim() && !search.isLoading && data.flags.freeSearch) search.mutate(query.trim()); }}>
-                <label htmlFor="mission-search" className="block font-semibold">{localize('com_mission_search')}</label>
-                <p className="text-sm text-text-secondary">{localize('com_mission_search_cost')}</p>
-                <Input id="mission-search" value={query} maxLength={2000}
-                  onChange={(event) => setQuery(event.target.value)} disabled={!data.flags.freeSearch || search.isLoading} />
-                <Button type="submit" disabled={!query.trim() || !data.flags.freeSearch || search.isLoading}>
-                  {localize(search.isLoading ? 'com_mission_searching' : 'com_mission_search')}
-                </Button>
-                {!data.flags.freeSearch && <p role="status">{localize('com_mission_search_off')}</p>}
-                {search.isError && <p role="alert">{localize('com_mission_search_failed')}</p>}
-              </form>
             </>}
-            <div aria-live="polite" className="mt-4 space-y-4">
-              {search.data && <p className="text-sm">{localize('com_mission_search_remaining', { count: search.data.remainingCredits })}</p>}
-              {search.data?.results.map((result, index) => (
-                <article key={`${result.url}-${index}`} className="rounded-lg border border-border-light p-4">
-                  <a href={result.url} target="_blank" rel="noopener noreferrer" className="font-semibold underline">{result.title}</a>
-                  <p className="mt-2 whitespace-pre-wrap text-sm text-text-secondary">{result.content}</p>
-                </article>
-              ))}
-            </div>
             {data && <Button variant="outline" className="mr-3 mt-5"
               onClick={() => downloadCostReport(data)}>{localize('com_mission_export_costs')}</Button>}
             <Button variant="outline" className="mt-5" disabled={status.isFetching}

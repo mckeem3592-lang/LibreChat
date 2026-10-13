@@ -129,22 +129,3 @@ endpoints:
     checkpointer:
       type: mongo
       ttl: 86400
-
-# Enable search only after the saved Tavily account is verified Free with PAYG off.
-# Credentials remain Render secrets. A provider label alone cannot guarantee free use.
-webSearch:
-  searchProvider: tavily
-  scraperProvider: tavily
-  rerankerType: none
-  tavilyApiKey: '${TAVILY_API_KEY}'
-  tavilySearchOptions:
-    searchDepth: basic
-    maxResults: 5
-    includeAnswer: false
-    includeImages: false
-    includeRawContent: false
-    timeout: 15000
-  tavilyScraperOptions:
-    extractDepth: basic
-    includeImages: false
-    timeout: 15000

@@ -157,21 +157,11 @@ remain denied. The server restores its paused owner-scoped context before rechec
 the fixed model, workspace and Ask mode; the controller then checks the paused
 generation and fingerprint. An inline identifier does not grant access to a saved agent.
 
-Set `MISSION_AI_SEARCH_ENABLED=true` only after confirming the Tavily Researcher
-plan, a 1,000-credit key cap, and pay-as-you-go off. The gateway's only search
-path is Tavily basic, with no model answer or alternate provider. In the chat
-test service, explicit Gemini web or weather requests receive one guarded search
-before the existing model call; the source excerpts are labeled untrusted and
-included with that turn. The separate controls search still makes no model call.
-It checks current account/key limits before every search and requires a recorded
-PAYG-off verification timestamp (`MISSION_AI_TAVILY_PAYG_OFF_VERIFIED_AT`)
-bound to the saved key's SHA-256 (`MISSION_AI_TAVILY_KEY_SHA256`). The proof
-does not expire daily or at the UTC month boundary. Recheck Tavily and update
-the proof if the key or billing settings change. A null API PAYG limit alone
-is not accepted as proof.
-Free-credit holds live in `MissionAI.free_search_state` and remain blocked after
-crashes or ambiguous usage. These credit holds are separate from the USD ledger.
-Do not clear them or substitute a paid plan to pass a check.
+Web search is disabled in the chat test deployment. The Tavily key and its
+verification values have been cleared from the gateway environment. The Gemini
+chat model can still answer general questions, but its API free tier does not
+provide native Google Search grounding for Gemini 3 models. Live information
+requires a separately configured search source.
 
 ## Mission AI budget
 

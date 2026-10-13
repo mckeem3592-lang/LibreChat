@@ -54,7 +54,6 @@ export interface LoadAgentParams {
   req: {
     user?: { id?: string; role?: string; email?: string };
     config?: AppConfig;
-    missionAutoSearchContext?: string;
     body?: {
       promptPrefix?: string;
       ephemeralAgent?: TEphemeralAgent;
@@ -160,16 +159,8 @@ export async function loadEphemeralAgent(
   const requestPromptPrefix = req.body?.promptPrefix;
   const { promptPrefix: modelPromptPrefix, ...safeModelParameters } =
     model_parameters as ModelParametersWithPromptPrefix;
-  const baseInstructions =
+  const instructions =
     typeof modelPromptPrefix === 'string' ? modelPromptPrefix : requestPromptPrefix;
-  const searchContext = endpoint === 'MissionAI' && model === 'gemini-3.5-flash-lite' &&
-    spec === 'mission-ai-free' && process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
-    Boolean(process.env.MISSION_AI_CONTROL_OWNER_EMAIL?.trim()) &&
-    req.user?.email?.toLowerCase() === process.env.MISSION_AI_CONTROL_OWNER_EMAIL?.trim().toLowerCase() &&
-    typeof req.missionAutoSearchContext === 'string' &&
-    req.missionAutoSearchContext.length <= 2500
-      ? req.missionAutoSearchContext : null;
-  const instructions = searchContext ? `${baseInstructions ?? ''}\n\n${searchContext}` : baseInstructions;
 
   // Get endpoint config for modelDisplayLabel fallback
   const appConfig = req.config;

@@ -37,7 +37,7 @@ export function controlSearchInput(value: unknown): { query: string; maxResults:
         Number(input.maxResults) < 1 || Number(input.maxResults) > 5))) throw new Error();
   return { query: input.query.trim(), maxResults: Number(input.maxResults ?? 5) };
 }
-/** Owner-only, two-route proxy. The browser never receives a gateway credential. */
+/** Owner-only status proxy. The browser never receives a gateway credential. */
 export function createMissionControlProxy(deps: ProxyDependencies): (req: Request, res: Response) => Promise<unknown> {
   return async (req: Request, res: Response): Promise<unknown> => {
     res.setHeader('Cache-Control', 'no-store');
@@ -48,10 +48,8 @@ export function createMissionControlProxy(deps: ProxyDependencies): (req: Reques
       return res.json({ enabled: true });
     }
     const status = req.method === 'GET' && req.originalUrl === '/api/mission-ai/status';
-    const search = req.method === 'POST' && req.originalUrl === '/api/mission-ai/search';
-    if (!status && !search) return error(res, 404, 'control_route_unsupported');
+    if (!status) return error(res, 404, 'control_route_unsupported');
     let gateway: URL;
-    let body;
     try {
       gateway = new URL(deps.gatewayURL);
       const origin = new URL(deps.chatOrigin);
@@ -59,14 +57,11 @@ export function createMissionControlProxy(deps: ProxyDependencies): (req: Reques
           gateway.username || gateway.password || origin.protocol !== 'https:' ||
           origin.pathname !== '/' || origin.search || origin.hash || origin.username || origin.password ||
           deps.token.length < 32) throw new Error();
-      if (search && req.get('origin') !== origin.origin) return error(res, 403, 'control_origin_denied');
-      if (search) body = controlSearchInput(req.body);
-    } catch { return error(res, 400, search ? 'search_input_invalid' : 'control_unavailable'); }
+    } catch { return error(res, 400, 'control_unavailable'); }
     try {
-      const response = await deps.fetchImpl(`${gateway.origin}/native/control/${status ? 'status' : 'search'}`, {
-        method: status ? 'GET' : 'POST', redirect: 'error', signal: AbortSignal.timeout(25_000),
+      const response = await deps.fetchImpl(`${gateway.origin}/native/control/status`, {
+        method: 'GET', redirect: 'error', signal: AbortSignal.timeout(25_000),
         headers: { Authorization: `Bearer ${deps.token}`, 'Content-Type': 'application/json' },
-        ...(body ? { body: JSON.stringify(body) } : {}),
       });
       const result = object(await response.json());
       if (response.status !== 200) {
