@@ -64,19 +64,24 @@ test('ordinary paid Sonnet ignores stale saved prompt and Project Manager tool s
   const early = createManagedToolAdmission(options);
   const late = createManagedToolConfigGuard(options);
   for (const ephemeralAgent of [{ mcp: [] }, { mcp: ['github-code-editor'] }]) {
-    const req = fixture({ spec: 'mission-ai-claude-sonnet',
+    const req = fixture({ endpoint: 'MissionAIClaudeCached', spec: 'mission-ai-claude-sonnet',
       promptPrefix: 'an older saved conversation prompt', ephemeralAgent });
+    req.originalUrl = '/api/agents/chat/MissionAIClaudeCached';
     assert.equal(run(early, req).next, 1);
     assert.equal(Object.hasOwn(req.body, 'promptPrefix'), false);
     assert.equal(Object.hasOwn(req.body, 'ephemeralAgent'), false);
     assert.equal(run(late, req).next, 1);
   }
-  const fresh = fixture({ spec: 'mission-ai-claude-sonnet', ephemeralAgent: { mcp: [] } });
+  const fresh = fixture({ endpoint: 'MissionAIClaudeCached',
+    spec: 'mission-ai-claude-sonnet', ephemeralAgent: { mcp: [] } });
+  fresh.originalUrl = '/api/agents/chat/MissionAIClaudeCached';
   assert.equal(run(early, fresh).next, 1);
   assert.equal(run(late, fresh).next, 1);
   for (const mcp of [['another-server'], ['github-code-editor', 'another-server']]) {
-    assert.equal(run(early, fixture({ spec: 'mission-ai-claude-sonnet',
-      ephemeralAgent: { mcp } })).status, 403);
+    const invalid = fixture({ endpoint: 'MissionAIClaudeCached',
+      spec: 'mission-ai-claude-sonnet', ephemeralAgent: { mcp } });
+    invalid.originalUrl = '/api/agents/chat/MissionAIClaudeCached';
+    assert.equal(run(early, invalid).status, 403);
   }
 });
 
