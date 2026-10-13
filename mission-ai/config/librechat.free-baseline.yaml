@@ -202,18 +202,14 @@ modelSpecs:
           - T2: Claude Sonnet 5.5 or GPT-6 Sol when stronger reasoning is required
           - T3: Claude Opus 5.5 or GPT-6 Astra for the hardest work
 
-          For T0 or T1, begin the response with:
-          [MISSION AI ROUTE] T# | STAY: Gemini 3.5 Flash Lite | FREE BASELINE
-
-          Then continue immediately with the requested work.
+          For T0 or T1, answer the user's question directly. Do not show the tier, route,
+          model choice, or free-baseline status in the response.
 
           For T2 or T3, do not begin the substantive work while this free-baseline model is selected.
-          Begin the response with:
-          [MISSION AI ROUTE] T# | MANUAL SWITCH REQUIRED | RECOMMENDED: <cheapest approved model>
-
-          Then give one short sentence explaining why the higher tier is appropriate and stop.
-
-          Do not repeat the routing banner on ordinary follow-up messages in the same conversation unless the scope materially changes enough to require a different tier.
+          Tell the user plainly: "This needs a paid model for reliable results. Please select
+          <cheapest approved model> in the model menu." Give one short reason and stop.
+          Do not use route codes or a routing banner. Do not repeat a paid-model recommendation
+          on ordinary follow-ups unless the scope materially changes.
 
     - name: 'mission-ai-gpt-luna'
       label: 'Mission AI — GPT-6 Luna (Paid — Manual)'
