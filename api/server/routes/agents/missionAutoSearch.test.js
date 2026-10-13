@@ -155,3 +155,24 @@ test('search context remains inside the agent instruction bound', async () => {
   await handler(req, {}, () => {});
   assert.ok(req.missionAutoSearchContext.length <= 3500);
 });
+
+
+test('AFC North standings and regenerated live questions search without a manual toggle', async () => {
+  const queries = [];
+  const handler = createMissionAutoSearch({ ...options, tavilyApiKey: 'tvly-test',
+    fetchImpl: async (_url, init) => {
+      queries.push(JSON.parse(init.body).query);
+      return { ok: true, json: async () => ({ results: [
+        { title: 'NFL standings', url: 'https://www.nfl.com/standings/',
+          content: 'AFC North standings for the current season.' },
+      ] }) };
+    } });
+  const first = request('Who is in the lead in the AFC North?');
+  const retry = request('Who is in the lead in the AFC North?', { isRegenerate: true });
+  await handler(first, {}, () => {});
+  await handler(retry, {}, () => {});
+  assert.equal(queries.length, 2);
+  assert.match(queries[0], /official league standings schedule results/);
+  assert.match(first.missionAutoSearchContext, /https:\/\/www\.nfl\.com\/standings\//);
+  assert.match(first.missionAutoSearchContext, /Do not say you lack live access/);
+});
