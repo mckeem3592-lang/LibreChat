@@ -162,10 +162,8 @@ export async function loadEphemeralAgent(
     model_parameters as ModelParametersWithPromptPrefix;
   const baseInstructions =
     typeof modelPromptPrefix === 'string' ? modelPromptPrefix : requestPromptPrefix;
-  const managedFreeGemini = (model === 'gemini-3.5-flash-lite' && spec === 'mission-ai-free') ||
-    (model === 'gemini-2.5-flash' && spec === 'mission-ai-gemini25');
-  const searchContext = endpoint === 'MissionAI' && managedFreeGemini &&
-    process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
+  const searchContext = endpoint === 'MissionAI' && model === 'gemini-3.5-flash-lite' &&
+    spec === 'mission-ai-free' && process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
     Boolean(process.env.MISSION_AI_CONTROL_OWNER_EMAIL?.trim()) &&
     req.user?.email?.toLowerCase() === process.env.MISSION_AI_CONTROL_OWNER_EMAIL?.trim().toLowerCase() &&
     typeof req.missionAutoSearchContext === 'string' &&
