@@ -30,8 +30,9 @@ test('an explicit weather request gets one guarded basic search and cited contex
   await handler(req, {}, () => { next++; });
   assert.equal(calls, 1);
   assert.equal(next, 1);
-  assert.match(req.body.text, /https:\/\/weather\.gov\/forecast/);
-  assert.match(req.body.text, /untrusted source excerpts/);
+  assert.equal(req.body.text, 'What is the weather today in Colorado Springs?');
+  assert.match(req.missionAutoSearchContext, /https:\/\/weather\.gov\/forecast/);
+  assert.match(req.missionAutoSearchContext, /untrusted source excerpts/);
 });
 
 test('ordinary prompts, other users, paid models, and regenerations do not search', async () => {
@@ -43,6 +44,7 @@ test('ordinary prompts, other users, paid models, and regenerations do not searc
     const original = req.body.text;
     await handler(req, {}, () => {});
     assert.equal(req.body.text, original);
+    assert.equal(req.missionAutoSearchContext, undefined);
   }
   assert.equal(calls, 0);
 });
@@ -52,6 +54,7 @@ test('search failure is disclosed and never passed off as live evidence', async 
     fetchImpl: async () => ({ ok: false }) });
   const req = request('Search the web for the current forecast');
   await handler(req, {}, () => {});
-  assert.match(req.body.text, /Live web search is unavailable/);
-  assert.doesNotMatch(req.body.text, /Live web results/);
+  assert.equal(req.body.text, 'Search the web for the current forecast');
+  assert.match(req.missionAutoSearchContext, /Live web search is unavailable/);
+  assert.doesNotMatch(req.missionAutoSearchContext, /Live web results/);
 });
