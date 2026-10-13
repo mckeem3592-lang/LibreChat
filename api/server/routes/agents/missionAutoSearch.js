@@ -5,7 +5,7 @@ const SEARCH_URL = 'https://api.keenable.ai/v1/search/public';
 function sourceLines(payload) {
   if (!payload || !Array.isArray(payload.results)) return null;
   const lines = [];
-  for (const item of payload.results.slice(0, 3)) {
+  for (const item of payload.results.slice(0, 4)) {
     if (!item || typeof item.title !== 'string' || typeof item.url !== 'string') continue;
     const snippet = typeof item.snippet === 'string' ? item.snippet : item.description;
     if (typeof snippet !== 'string') continue;
@@ -30,11 +30,20 @@ function createMissionAutoSearch({ enabled, ownerEmail, fetchImpl = fetch }) {
         req.user?.email?.toLowerCase() !== ownerEmail.toLowerCase()) return next();
 
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const now = new Date();
+      const today = now.toISOString().slice(0, 10);
+      let query = `${req.body.text} (as of ${today})`;
+      if (/\bthis\s+weekend\b/i.test(req.body.text)) {
+        const saturday = new Date(now);
+        const day = now.getUTCDay();
+        saturday.setUTCDate(now.getUTCDate() + (day === 0 ? -1 : (6 - day + 7) % 7));
+        const date = saturday.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'long', day: 'numeric', year: 'numeric' });
+        query = `${req.body.text.replace(/\bthis\s+weekend\b/i, date)} official schedule opponent`;
+      }
       const response = await fetchImpl(SEARCH_URL, {
         method: 'POST', redirect: 'error', signal: AbortSignal.timeout(15000),
         headers: { 'Content-Type': 'application/json', 'X-Keenable-Title': 'Mission AI LibreChat' },
-        body: JSON.stringify({ query: `${req.body.text} (as of ${today})`, max_results: 3 }),
+        body: JSON.stringify({ query, max_results: 4 }),
       });
       if (!response.ok) throw new Error('search_unavailable');
       const lines = sourceLines(await response.json());

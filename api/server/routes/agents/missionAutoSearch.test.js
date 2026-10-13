@@ -16,7 +16,7 @@ test('live-data question injects bounded keyless results without changing user t
     calls++;
     assert.equal(url, 'https://api.keenable.ai/v1/search/public');
     assert.equal(init.headers['X-Keenable-Title'], 'Mission AI LibreChat');
-    assert.deepEqual(JSON.parse(init.body), { query: `Current weather in Colorado Springs? (as of ${new Date().toISOString().slice(0, 10)})`, max_results: 3 });
+    assert.deepEqual(JSON.parse(init.body), { query: `Current weather in Colorado Springs? (as of ${new Date().toISOString().slice(0, 10)})`, max_results: 4 });
     return { ok: true, json: async () => ({ results: [
       { title: 'Forecast', url: 'https://weather.gov/forecast', snippet: 'Sunny and 70 F.' },
     ] }) };
@@ -32,7 +32,7 @@ test('time-relative sports questions trigger live search', async () => {
   let calls = 0;
   const handler = createMissionAutoSearch({ ...options, fetchImpl: async (_url, init) => {
     calls++;
-    assert.match(JSON.parse(init.body).query, /^who do the oregon ducks play this weekend\? \(as of \d{4}-\d{2}-\d{2}\)$/);
+    assert.match(JSON.parse(init.body).query, /^who do the oregon ducks play [A-Z][a-z]+ \d{1,2}, \d{4}\? official schedule opponent$/);
     return { ok: true, json: async () => ({ results: [
       { title: 'Oregon schedule', url: 'https://goducks.com/sports/football/schedule/2026', snippet: 'Oct 17: Nebraska at Oregon.' },
     ] }) };

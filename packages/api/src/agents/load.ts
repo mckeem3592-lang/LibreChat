@@ -167,7 +167,7 @@ export async function loadEphemeralAgent(
     Boolean(process.env.MISSION_AI_CONTROL_OWNER_EMAIL?.trim()) &&
     req.user?.email?.toLowerCase() === process.env.MISSION_AI_CONTROL_OWNER_EMAIL?.trim().toLowerCase() &&
     typeof req.missionAutoSearchContext === 'string' &&
-    req.missionAutoSearchContext.length <= 2500
+    req.missionAutoSearchContext.length <= 3500
       ? req.missionAutoSearchContext : null;
   const instructions = searchContext ? `${baseInstructions ?? ''}\n\n${searchContext}` : baseInstructions;
 
