@@ -6,6 +6,8 @@ const NEWS_INTENT = /\b(?:news|headlines?)\b/i;
 const SPORTS_INTENT = /\b(?:standings?|scores?|scoreboard|playoffs?|afc|nfc|nfl|nba|wnba|nhl|mlb|ncaa|football|basketball|baseball|hockey)\b/i;
 const KEENABLE_URL = 'https://api.keenable.ai/v1/search/public';
 const TAVILY_URL = 'https://api.tavily.com/search';
+const NFL_DIVISION = /\b(AFC|NFC)\s+(NORTH|SOUTH|EAST|WEST)\b/i;
+const STANDINGS_QUESTION = /\b(?:standings?|lead|leader|first|rank(?:ing)?s?|record)\b/i;
 const ROUTES = {
   MissionAI: { 'mission-ai-free': 'gemini-3.5-flash-lite' },
   MissionAIClaude: {
@@ -69,6 +71,49 @@ async function searchKeenable(fetchImpl, query) {
   return sourceLines(await response.json());
 }
 
+/** Read the current NFL table itself; search excerpts can contain prior-week records. */
+async function officialNflDivision(fetchImpl, text, now) {
+  const match = text.match(NFL_DIVISION);
+  if (!match || !STANDINGS_QUESTION.test(text)) return null;
+  const division = (match[1] + ' ' + match[2]).toUpperCase();
+  const season = now.getUTCMonth() < 6 ? now.getUTCFullYear() - 1 : now.getUTCFullYear();
+  const url = 'https://www.nfl.com/standings/division/' + season + '/REG';
+  const response = await fetchImpl(url, {
+    method: 'GET', redirect: 'error', signal: AbortSignal.timeout(10000),
+    headers: { Accept: 'text/html' },
+  });
+  if (!response.ok) throw new Error('official_standings_unavailable');
+  const html = await response.text();
+  if (html.length > 4_000_000) throw new Error('official_standings_too_large');
+  let heading = null;
+  for (const candidate of html.matchAll(/<th\b[^>]*aria-label=["\x27]Division name["\x27][^>]*>([\s\S]*?)<\/th>/gi)) {
+    const label = candidate[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    if (label === division) { heading = candidate; break; }
+  }
+  if (!heading) throw new Error('official_division_missing');
+  const start = html.lastIndexOf('<table', heading.index);
+  const end = html.indexOf('</table>', heading.index);
+  if (start < 0 || end < 0 || end - start > 250_000) throw new Error('official_table_missing');
+  const table = html.slice(start, end);
+  const body = /<tbody\b[^>]*>([\s\S]*?)<\/tbody>/i.exec(table)?.[1];
+  if (!body) throw new Error('official_rows_missing');
+  const rows = [];
+  for (const item of body.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const row = item[1];
+    const team = /aria-label=["\x27]Go to ([A-Za-z .-]{2,80}) info page\.["\x27]/i.exec(row)?.[1];
+    const cells = [...row.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)];
+    if (!team || cells.length < 4) continue;
+    const record = cells.slice(1, 4).map((cell) => cell[1].replace(/<[^>]*>/g, '').trim());
+    if (record.some((value) => !/^(?:[0-9]|1[0-9]|20)$/.test(value))) continue;
+    rows.push(team + ' ' + record.join('-'));
+  }
+  if (rows.length !== 4) throw new Error('official_records_incomplete');
+  return 'Official NFL ' + division + ' regular-season table for ' + season +
+    ' (retrieved ' + now.toISOString().slice(0, 10) + ' UTC): ' + rows.join('; ') +
+    '. Source: ' + url + '. The first team is listed as the division leader. ' +
+    'Answer from this table, cite the full URL, and do not substitute a search snippet.';
+}
+
 function createMissionAutoSearch({ enabled, ownerEmail, tavilyApiKey = process.env.TAVILY_API_KEY, fetchImpl = fetch }) {
   return async (req, _res, next) => {
     const endpoint = req.body?.endpoint;
@@ -86,6 +131,15 @@ function createMissionAutoSearch({ enabled, ownerEmail, tavilyApiKey = process.e
     try {
       const now = new Date();
       const today = now.toISOString().slice(0, 10);
+      if (NFL_DIVISION.test(req.body.text) && STANDINGS_QUESTION.test(req.body.text)) {
+        try {
+          req.missionAutoSearchContext = await officialNflDivision(fetchImpl, req.body.text, now);
+        } catch {
+          req.missionAutoSearchContext = 'The official NFL standings table could not be retrieved. ' +
+            'Do not name a current division leader from cached search snippets.';
+        }
+        return next();
+      }
       let query = req.body.text + ' (as of ' + today + ')';
       const productFollowup = req.body.text.match(PRODUCT_FOLLOWUP);
       if (productFollowup) query = productFollowup[1] + ' official product current price sale ' + today;

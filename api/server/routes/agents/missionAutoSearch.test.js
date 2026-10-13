@@ -176,3 +176,42 @@ test('AFC North standings and regenerated live questions search without a manual
   assert.match(first.missionAutoSearchContext, /https:\/\/www\.nfl\.com\/standings\//);
   assert.match(first.missionAutoSearchContext, /Do not say you lack live access/);
 });
+
+
+test('official NFL table overrides stale search snippets for division leaders', async () => {
+  const table = (division, entries) => '<table><thead><tr>' +
+    '<th aria-label="Division name">' + division + '</th></tr></thead><tbody>' +
+    entries.map(([name, w, l]) => '<tr><td><a aria-label="Go to ' + name +
+      ' info page.">' + name + '</a></td><td>' + w + '</td><td>' + l +
+      '</td><td>0</td></tr>').join('') + '</tbody></table>';
+  const html = table('AFC EAST', [
+    ['Buffalo Bills', 4, 1], ['New York Jets', 2, 3],
+    ['Miami Dolphins', 0, 5], ['New England Patriots', 3, 2],
+  ]) + table('AFC NORTH', [
+    ['Baltimore Ravens', 4, 1], ['Cleveland Browns', 3, 2],
+    ['Pittsburgh Steelers', 3, 2], ['Cincinnati Bengals', 3, 2],
+  ]);
+  const urls = [];
+  const handler = createMissionAutoSearch({ ...options, tavilyApiKey: 'tvly-test',
+    fetchImpl: async (url) => {
+      urls.push(url);
+      return { ok: true, text: async () => html };
+    } });
+  const req = request('Who is in the lead in the AFC North?');
+  await handler(req, {}, () => {});
+  const now = new Date();
+  const season = now.getUTCMonth() < 6 ? now.getUTCFullYear() - 1 : now.getUTCFullYear();
+  assert.deepEqual(urls, ['https://www.nfl.com/standings/division/' + season + '/REG']);
+  assert.match(req.missionAutoSearchContext, /Baltimore Ravens 4-1-0/);
+  assert.doesNotMatch(req.missionAutoSearchContext, /Buffalo Bills/);
+  assert.match(req.missionAutoSearchContext, /Source: https:\/\/www\.nfl\.com\/standings\//);
+});
+
+test('unavailable official standings do not become a confident cached answer', async () => {
+  const handler = createMissionAutoSearch({ ...options, tavilyApiKey: 'tvly-test',
+    fetchImpl: async () => ({ ok: false, status: 403 }) });
+  const req = request('Who is in the lead in the AFC North?');
+  await handler(req, {}, () => {});
+  assert.match(req.missionAutoSearchContext, /could not be retrieved/);
+  assert.match(req.missionAutoSearchContext, /Do not name a current division leader/);
+});
