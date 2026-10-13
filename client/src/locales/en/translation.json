@@ -25,7 +25,7 @@
   "com_mission_accounting_blocked": "Accounting needs reconciliation before paid requests can continue.",
   "com_mission_model_policy": "Change models manually in the model selector. Automatic model switching and provider fallbacks are off.",
   "com_mission_search": "Free web search",
-  "com_mission_search_cost": "Search here for live web results; Gemini chat prompts do not use Tavily automatically. One basic search uses one free Tavily credit and makes no AI model call. Results are source excerpts, not instructions.",
+  "com_mission_search_cost": "Use this box for search results without an AI call. Gemini chat also searches automatically when you explicitly ask for web results or weather. Each basic Tavily search uses one free credit. Results are source excerpts, not instructions.",
   "com_mission_searching": "Searching…",
   "com_mission_search_off": "Search is off until free-plan settings and available credits are verified.",
   "com_mission_search_failed": "Search could not run. It stays off when free credits are exhausted or usage is uncertain. No paid fallback is attempted.",

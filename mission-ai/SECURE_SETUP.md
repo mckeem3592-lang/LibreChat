@@ -157,8 +157,12 @@ remain denied. The server restores its paused owner-scoped context before rechec
 the fixed model, workspace and Ask mode; the controller then checks the paused
 generation and fingerprint. An inline identifier does not grant access to a saved agent.
 
-Keep `MISSION_AI_SEARCH_ENABLED=false` until search acceptance. The gateway's
-only search path is Tavily basic, with no model answer or alternate provider.
+Set `MISSION_AI_SEARCH_ENABLED=true` only after confirming the Tavily Researcher
+plan, a 1,000-credit key cap, and pay-as-you-go off. The gateway's only search
+path is Tavily basic, with no model answer or alternate provider. In the chat
+test service, explicit Gemini web or weather requests receive one guarded search
+before the existing model call; the source excerpts are labeled untrusted and
+included with that turn. The separate controls search still makes no model call.
 It checks current account/key limits before every search and requires a recorded
 PAYG-off verification timestamp (`MISSION_AI_TAVILY_PAYG_OFF_VERIFIED_AT`)
 bound to the saved key's SHA-256 (`MISSION_AI_TAVILY_KEY_SHA256`). The proof
