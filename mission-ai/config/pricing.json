@@ -6,6 +6,15 @@
     "inputOverheadTokens": 1024
   },
   "models": {
+    "gpt-4o": {
+      "provider": "openai",
+      "input": 2.5,
+      "cachedInput": 1.25,
+      "cacheWrite": 2.5,
+      "output": 10,
+      "verifiedOn": "2026-10-13",
+      "source": "https://developers.openai.com/api/docs/models/gpt-4o"
+    },
     "gpt-6-luna": {
       "provider": "openai",
       "input": 0.1,

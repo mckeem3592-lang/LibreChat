@@ -148,6 +148,7 @@ const APPROVED_ANTHROPIC_MODELS = new Set([
 ]);
 
 const APPROVED_OPENAI_MODELS = new Set([
+  'gpt-4o',
   'gpt-6-luna',
   'gpt-6-sol',
   'gpt-6-astra',

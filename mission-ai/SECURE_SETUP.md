@@ -157,11 +157,12 @@ remain denied. The server restores its paused owner-scoped context before rechec
 the fixed model, workspace and Ask mode; the controller then checks the paused
 generation and fingerprint. An inline identifier does not grant access to a saved agent.
 
-Web search is disabled in the chat test deployment. The Tavily key and its
-verification values have been cleared from the gateway environment. The Gemini
-chat model can still answer general questions, but its API free tier does not
-provide native Google Search grounding for Gemini 3 models. Live information
-requires a separately configured search source.
+The chat test deployment uses LibreChat's native `web_search` tool with
+Keenable's keyless public search and page-fetch endpoints. The Gemini model
+spec equips the tool automatically; its prompt asks for a search on live
+questions and citations from returned sources. Public endpoints have rate
+limits, so a search can still fail. Gemini 3 native Google Search grounding is
+not enabled on this free-tier API key. Tavily is not configured.
 
 ## Mission AI budget
 
