@@ -1,7 +1,7 @@
 import { createInterface } from 'node:readline';
 
 const readOnlyTools = new Set([
-  'mac.active_app', 'mac.screenshot', 'browser.list_tabs', 'browser.get_state',
+  'mac.active_app', 'mac.screenshot', 'browser.list_tabs', 'browser.get_state', 'file.list',
 ]);
 let awaitingApproval = false;
 

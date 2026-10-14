@@ -114,6 +114,7 @@ const KNOWN_DEVICE_CAPABILITIES = new Set([
   'mac.control',
   'browser.direct_tabs',
   'browser.page_extension',
+  'files.scoped',
 ]);
 
 function safeEqual(a, b) {
@@ -558,7 +559,7 @@ const deviceMcp = createMissionMcpNodeHandler({
   ...mcpOptions,
   allowedTools: new Set(['mission_readiness', 'browser_list_tabs', 'browser_open_new_tab',
     'browser_close_tabs', 'browser_get_state', 'browser_click', 'browser_type',
-    'browser_scroll', 'browser_open_url']),
+    'browser_scroll', 'browser_open_url', 'file_list', 'file_move']),
 });
 
 /* -------------------------------------------------------------------------- */

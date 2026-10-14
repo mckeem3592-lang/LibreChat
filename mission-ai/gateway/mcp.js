@@ -428,6 +428,41 @@ export function createMissionMcpNodeHandler({
     );
 
     registerTool(
+      'file_list',
+      {
+        description: 'List up to 200 entries in the paired device Desktop, Documents, or Downloads folder. Hidden files and symlink paths are excluded.',
+        inputSchema: z.object({
+          deviceId: z.string().optional(),
+          root: z.enum(['Desktop', 'Documents', 'Downloads']),
+          directory: z.string().max(2000).optional(),
+        }),
+      },
+      async ({ deviceId, root, directory = '' }) => {
+        try { return textResult(await invoke(deviceId || 'mac-primary', 'file.list', { root, directory })); }
+        catch (error) { return errorResult(error); }
+      },
+    );
+
+    registerTool(
+      'file_move',
+      {
+        description: 'Move one file between Desktop, Documents, and Downloads on the paired device after user approval. Existing destinations are never replaced.',
+        inputSchema: z.object({
+          deviceId: z.string().optional(),
+          sourceRoot: z.enum(['Desktop', 'Documents', 'Downloads']),
+          sourcePath: z.string().min(1).max(2000),
+          destinationRoot: z.enum(['Desktop', 'Documents', 'Downloads']),
+          destinationPath: z.string().min(1).max(2000),
+        }),
+      },
+      async ({ deviceId, sourceRoot, sourcePath, destinationRoot, destinationPath }) => {
+        try { return textResult(await invoke(deviceId || 'mac-primary', 'file.move',
+          { sourceRoot, sourcePath, destinationRoot, destinationPath })); }
+        catch (error) { return errorResult(error); }
+      },
+    );
+
+    registerTool(
       'mac_active_app',
       {
         description: 'Return the frontmost application on the paired personal Mac.',

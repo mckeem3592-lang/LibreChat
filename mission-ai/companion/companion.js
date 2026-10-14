@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
+import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { readFile, unlink } from 'node:fs/promises';
 import { promisify } from 'node:util';
@@ -9,6 +10,7 @@ import { normalizeMacControlError } from './permission-errors.js';
 import { reconnectDelayMs } from './reconnect-policy.js';
 import { requireManualApproval } from './approval-gate.js';
 import { createScreenshotGeometryStore } from './screenshot-geometry.js';
+import { createScopedFiles } from './scoped-files.js';
 import { validateInputTarget, waitForInputTarget, inputTargetScript } from './foreground-guard.js';
 import {
   normalizeCloseTabRequest,
@@ -43,6 +45,7 @@ const allowedApps = new Set(
 );
 
 const screenshotGeometry = createScreenshotGeometryStore();
+const scopedFiles = createScopedFiles(os.homedir());
 let extensionSocket = null;
 let gatewaySocket = null;
 let gatewayConnected = false;
@@ -53,6 +56,7 @@ function currentCapabilities() {
   return [
     ...(process.platform === 'darwin' ? ['mac.control', 'browser.direct_tabs'] : []),
     ...(extensionSocket?.readyState === WebSocket.OPEN ? ['browser.page_extension'] : []),
+    'files.scoped',
   ];
 }
 
@@ -368,6 +372,10 @@ async function dispatch(tool, args, deadlineMs) {
     case 'browser.scroll':
     case 'browser.open_url':
       return await callBrowser(tool, args);
+    case 'file.list':
+      return await scopedFiles.list(args);
+    case 'file.move':
+      return await scopedFiles.move(args);
     default:
       throw new Error('tool_not_allowed');
   }
