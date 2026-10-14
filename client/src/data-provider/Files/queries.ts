@@ -11,6 +11,7 @@ import {
 } from '~/utils';
 import { isEphemeralAgent } from '~/common';
 import store from '~/store';
+import { useGetStartupConfig } from '../Endpoints/queries';
 
 export const useGetFiles = <TData = t.TFile[] | boolean>(
   config?: UseQueryOptions<t.TFile[], unknown, TData>,
@@ -46,6 +47,7 @@ export const useGetAgentFiles = <TData = t.TFile[]>(
 export const useGetFileConfig = <TData = t.TFileConfig>(
   config?: UseQueryOptions<t.TFileConfig, unknown, TData>,
 ): QueryObserverResult<TData, unknown> => {
+  const { data: startupConfig } = useGetStartupConfig({ enabled: false });
   return useQuery<t.TFileConfig, unknown, TData>(
     [QueryKeys.fileConfig],
     () => dataService.getFileConfig(),
@@ -53,6 +55,9 @@ export const useGetFileConfig = <TData = t.TFileConfig>(
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
       refetchOnMount: false,
+      // The startup request uses the same authenticated app config. Keep uploads
+      // available if the separate file-config request is slow or fails.
+      initialData: startupConfig?.fileConfig,
       ...config,
     },
   );
