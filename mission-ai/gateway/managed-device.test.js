@@ -103,3 +103,17 @@ test('a reviewed Claude device action can resume only with its device tool', () 
   req.body.ephemeralAgent.mcp = ['github-code-editor'];
   assert.equal(run(createManagedToolAdmission(options), req).status, 403);
 });
+
+test('Project Manager can approve its paired Chrome action on the native route', () => {
+  const req = fixture();
+  req.originalUrl = '/api/agents/chat/resume';
+  req.body = { conversationId: 'convo1', generationCreatedAt: 1,
+    endpoint: 'MissionAIClaudeCached', endpointType: 'custom', model: 'claude-sonnet-5-5',
+    spec: 'mission-ai-project-manager', actionId: 'action1',
+    decisions: [{ tool_call_id: 'call1', decision: 'approve', scope: 'once' }],
+    ephemeralAgent: { mcp: ['github-code-editor', 'mission-ai-device'] } };
+  assert.equal(run(createManagedToolAdmission(options), req).next, 1);
+  assert.equal(run(createManagedToolConfigGuard(options), req).next, 1);
+  req.body.ephemeralAgent.mcp = ['github-code-editor'];
+  assert.equal(run(createManagedToolAdmission(options), req).status, 403);
+});
