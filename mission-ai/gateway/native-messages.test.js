@@ -72,9 +72,16 @@ test('LibreChat model maximum is reduced to the gateway output ceiling before re
   assert.equal(normalized.body.max_tokens, 32768);
   assert.throws(() => normalizeAnthropicMessages(request({ max_tokens: 131073 })), /native_request_invalid/);
 });
+test('LibreChat adaptive display is normalized to supported low-effort thinking', () => {
+  const result = normalizeAnthropicMessages(request({
+    thinking: { type: 'adaptive', display: 'summarized' },
+  }));
+  assert.deepEqual(result.body.thinking, { type: 'between_tools' });
+  assert.deepEqual(result.body.output_config, { effort: 'low' });
+});
 test('paid server tools, fallback settings, cache variants and orphan results fail before reservation', async () => {
   for (const extra of [{ fallbacks: 'default' }, { model: 'claude-opus-5-5' }, { service_tier: 'auto' },
-    { thinking: { type: 'adaptive' } }, { output_config: { effort: 'high' } },
+    { thinking: { type: 'enabled', budget_tokens: 1000 } }, { output_config: { effort: 'high' } },
     { tools: [{ type: 'web_search_20250305', name: 'web_search' }] },
     { tools: [{ ...tool, cache_control: { type: 'ephemeral', ttl: '24h' } }] },
     { tool_choice: { type: 'any' } }, { max_tokens: null },

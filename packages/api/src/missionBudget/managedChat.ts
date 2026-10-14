@@ -123,6 +123,8 @@ const RUNTIME_ENV = ((globalThis as unknown as {
 const FREE_BASELINE = RUNTIME_ENV.MISSION_AI_FREE_BASELINE === 'true';
 const GITHUB_EDITOR = FREE_BASELINE && RUNTIME_ENV.MISSION_AI_GITHUB_EDITOR === 'true';
 const GITHUB_SERVER = 'github-code-editor';
+const DEVICE_MCP = GITHUB_EDITOR && RUNTIME_ENV.MISSION_AI_DEVICE_MCP_ENABLED === 'true';
+const DEVICE_SERVER = 'mission-ai-device';
 
 const GOOGLE_ENDPOINT = 'MissionAI';
 const CLAUDE_ENDPOINT = 'MissionAIClaude';
@@ -634,7 +636,7 @@ function chatBody(value: unknown): ObjectValue {
            * ordinary Claude chat. Admit that one stale selection but drop it. */
           if (!Array.isArray(value) ||
               (value.length !== 0 &&
-               (value.length !== 1 || value[0] !== GITHUB_SERVER))) throw new Error();
+               (value.length !== 1 || ![GITHUB_SERVER, ...(DEVICE_MCP ? [DEVICE_SERVER] : [])].includes(value[0])))) throw new Error();
         } else emptyArray(value);
       }
       else if (key === 'artifacts' && (value === '' ||
@@ -902,7 +904,9 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
       }
 
       if (GITHUB_EDITOR && method === 'GET' && query === '' &&
-          GITHUB_MCP_READ_PATHS.has(path)) return next();
+          (GITHUB_MCP_READ_PATHS.has(path) ||
+           (DEVICE_MCP && ['/api/mcp/servers/mission-ai-device',
+             '/api/mcp/connection/status/mission-ai-device'].includes(path)))) return next();
 
       const refreshRetry = path === '/api/auth/refresh' && query === 'retry=true';
 
@@ -1203,6 +1207,8 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
 
     if (name === 'mission-ai-project-manager') {
       sameStrings(spec.mcpServers, [GITHUB_SERVER]);
+    } else if (DEVICE_MCP && name === 'mission-ai-claude-sonnet') {
+      sameStrings(spec.mcpServers, [DEVICE_SERVER]);
     } else if (spec.mcpServers != null) throw new Error();
 
     if (approved.default) {
@@ -1291,8 +1297,8 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
   if (GITHUB_EDITOR) {
     for (const value of [config.mcpConfig, raw.mcpServers]) {
       const servers = object(value);
-      keys(servers, new Set([GITHUB_SERVER]));
-      if (Object.keys(servers).length !== 1) throw new Error();
+      keys(servers, new Set([GITHUB_SERVER, ...(DEVICE_MCP ? [DEVICE_SERVER] : [])]));
+      if (Object.keys(servers).length !== (DEVICE_MCP ? 2 : 1)) throw new Error();
       const server = object(servers[GITHUB_SERVER]);
       keys(server, new Set(['title', 'type', 'command', 'args', 'env',
         'chatMenu', 'timeout', 'initTimeout', 'stderr']));
@@ -1305,6 +1311,18 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
       const token = RUNTIME_ENV.MISSION_AI_GITHUB_MCP_TOKEN;
       if (!token || ![token, '${MISSION_AI_GITHUB_MCP_TOKEN}'].includes(
         env.MISSION_AI_GITHUB_MCP_TOKEN as string)) throw new Error();
+      if (DEVICE_MCP) {
+        const device = object(servers[DEVICE_SERVER]);
+        keys(device, new Set(['title', 'type', 'url', 'headers', 'timeout', 'chatMenu']));
+        if (device.title !== 'Mission AI Device' || device.type !== 'streamable-http' ||
+            device.url !== '${MISSION_AI_GATEWAY_URL}/mcp/device' ||
+            device.timeout !== 120000 || device.chatMenu !== false) throw new Error();
+        const headers = object(device.headers);
+        keys(headers, new Set(['Authorization']));
+        const deviceToken = RUNTIME_ENV.MISSION_AI_DEVICE_MCP_TOKEN;
+        if (!deviceToken || deviceToken.length < 32 ||
+            ![`Bearer ${deviceToken}`, 'Bearer ${MISSION_AI_DEVICE_MCP_TOKEN}'].includes(headers.Authorization as string)) throw new Error();
+      }
     }
   } else {
     emptyRecord(config.mcpConfig);
@@ -1355,7 +1373,8 @@ export function createManagedChatConfigGuard(
     try {
       const steer = (req.originalUrl ?? req.url) === '/api/agents/chat/steer';
       req.body = steer ? managedSteerBody(req.body, 'send') : chatBody(req.body);
-      if (!steer && GITHUB_EDITOR && object(req.body).spec === 'mission-ai-project-manager' &&
+      if (!steer && GITHUB_EDITOR && (object(req.body).spec === 'mission-ai-project-manager' ||
+          (DEVICE_MCP && object(req.body).spec === 'mission-ai-claude-sonnet')) &&
           (!options.ownerEmail || req.user?.email?.toLowerCase() !==
             options.ownerEmail.toLowerCase())) throw new Error();
     } catch {

@@ -6,6 +6,10 @@ export default function githubEditorApproval() {
         (name.includes('push_files') || name.includes('create_branch'))) {
       return { decision: 'ask', reason: 'Review the Mission Program Hub GitHub change.' };
     }
+    if (name.includes('mission-ai-device') &&
+        !['mission_readiness', 'browser_list_tabs', 'browser_get_state'].some((tool) => name.endsWith(tool))) {
+      return { decision: 'ask', reason: 'Review the Mission AI device action.' };
+    }
     return {};
   };
 }

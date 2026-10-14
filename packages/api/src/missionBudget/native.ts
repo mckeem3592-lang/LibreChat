@@ -97,7 +97,6 @@ function keys(value: JsonObject, allowed: readonly string[] | Set<string>): void
   const permitted = allowed instanceof Set ? allowed : new Set(allowed);
   const unsupported = Object.keys(value).filter((key) => !permitted.has(key));
   if (unsupported.length) {
-    console.error('Mission AI native OpenAI rejected field names:', unsupported);
     fail('native_field_unsupported');
   }
 }

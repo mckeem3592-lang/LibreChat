@@ -5,7 +5,6 @@ const MAX_BYTES = 1_048_576;
 const MAX_REQUEST_BYTES = 12_582_912;
 const MAX_IMAGE_BYTES = 4_194_304;
 function fail(code = 'native_request_invalid', status = 400): never {
-  if (code === 'native_field_unsupported') console.error('Mission AI Anthropic rejected field at', new Error().stack?.split('\n')[2]?.trim());
   throw new NativeBridgeError(code, status);
 }
 function record(value: unknown): Json {
@@ -16,7 +15,6 @@ function record(value: unknown): Json {
 function keys(value: Json, allowed: string[]): void {
   const unsupported = Object.keys(value).filter((key) => !allowed.includes(key));
   if (unsupported.length) {
-    console.error('Mission AI Anthropic rejected field names:', unsupported);
     fail('native_field_unsupported');
   }
 }
@@ -100,8 +98,11 @@ export function normalizeAnthropicMessages(value: unknown): {
   if (body.stream !== undefined && typeof body.stream !== 'boolean') fail();
   if (body.service_tier !== undefined && body.service_tier !== 'standard_only') fail('native_tier_unsupported');
   if (body.thinking !== undefined) {
-    const thinking = record(body.thinking); keys(thinking, ['type']);
-    if (thinking.type !== 'between_tools') fail('native_field_unsupported');
+    const thinking = record(body.thinking); keys(thinking, ['type', 'display']);
+    if (!['between_tools', 'adaptive'].includes(String(thinking.type)) ||
+        (thinking.display !== undefined && !['summarized', 'omitted', 'updates'].includes(String(thinking.display)))) {
+      fail('native_field_unsupported');
+    }
   }
   if (body.output_config !== undefined) {
     const output = record(body.output_config); keys(output, ['effort']);

@@ -23,7 +23,7 @@ for variable in $(compgen -e); do
     CODEAPI_AUTH_PROVIDER|CODEAPI_JWT_PRIVATE_KEY_BASE64|CODEAPI_JWT_ALGORITHM|CODEAPI_JWT_KID|\
     CODEAPI_JWT_ISSUER|CODEAPI_JWT_AUDIENCE|CODEAPI_JWT_SINGLE_TENANT_ID|MISSION_AI_BOOTSTRAP_OWNER|\
     MISSION_AI_OWNER_EMAIL|MISSION_AI_OWNER_PASSWORD|MISSION_AI_CONTROL_OWNER_EMAIL|MISSION_AI_FREE_BASELINE|\
-    MISSION_AI_GITHUB_EDITOR|MISSION_AI_GITHUB_MCP_TOKEN)
+    MISSION_AI_GITHUB_EDITOR|MISSION_AI_GITHUB_MCP_TOKEN|MISSION_AI_DEVICE_MCP_ENABLED|MISSION_AI_DEVICE_MCP_TOKEN)
       continue ;;
     GOOGLE_KEY)
       [[ ${MISSION_AI_FREE_BASELINE-false} == true ]] ||
@@ -74,10 +74,23 @@ case "${MISSION_AI_FREE_BASELINE-false}" in
         [[ ${#github_token} -ge 60 && $github_token == github_pat_* &&
            $github_token != *[[:space:]]* ]] ||
           fail 'GitHub editor requires a fine-grained repository token'
-        managed_config="$repo_dir/mission-ai/config/librechat.github-editor.yaml" ;;
+        case "${MISSION_AI_DEVICE_MCP_ENABLED-false}" in
+          true)
+            device_token="${MISSION_AI_DEVICE_MCP_TOKEN-}"
+            [[ ${#device_token} -ge 32 && $device_token != *[[:space:]]* &&
+               $device_token != "$native_token" ]] ||
+              fail 'device MCP requires a distinct private token'
+            managed_config="$repo_dir/mission-ai/config/librechat.github-device.yaml" ;;
+          false)
+            [[ -z ${MISSION_AI_DEVICE_MCP_TOKEN-} ]] || fail 'device token requires the explicit device MCP gate'
+            managed_config="$repo_dir/mission-ai/config/librechat.github-editor.yaml" ;;
+          *) fail 'MISSION_AI_DEVICE_MCP_ENABLED must be true or false' ;;
+        esac ;;
       false)
         [[ -z ${MISSION_AI_GITHUB_MCP_TOKEN-} ]] ||
           fail 'GitHub editor token requires the explicit editor gate'
+        [[ ${MISSION_AI_DEVICE_MCP_ENABLED-false} == false && -z ${MISSION_AI_DEVICE_MCP_TOKEN-} ]] ||
+          fail 'device MCP requires the GitHub editor profile'
         managed_config="$repo_dir/mission-ai/config/librechat.free-baseline.yaml" ;;
       *) fail 'MISSION_AI_GITHUB_EDITOR must be true or false' ;;
     esac
@@ -85,6 +98,8 @@ case "${MISSION_AI_FREE_BASELINE-false}" in
   false)
     [[ ${MISSION_AI_GITHUB_EDITOR-false} == false && -z ${MISSION_AI_GITHUB_MCP_TOKEN-} ]] ||
       fail 'GitHub editor requires the free-baseline managed profile'
+    [[ ${MISSION_AI_DEVICE_MCP_ENABLED-false} == false && -z ${MISSION_AI_DEVICE_MCP_TOKEN-} ]] ||
+      fail 'device MCP requires the free-baseline GitHub editor profile'
     [[ -z ${GOOGLE_KEY-} ]] ||
       fail 'GOOGLE_KEY requires MISSION_AI_FREE_BASELINE=true'
     case "${MISSION_AI_MANAGED_TOOLS-false}" in
