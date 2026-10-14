@@ -57,6 +57,15 @@ test('native continuation retains signature and paired result, including an empt
   assert.equal(normalized.body.messages[1].content[0].signature, 'synthetic-signed-block');
   assert.equal(normalized.body.messages[2].content[0].content, '');
 });
+test('client user metadata is validated and removed before the provider request', async () => {
+  const f = await fixture();
+  await f.bridge.handle(request({ metadata: { user_id: 'local-user-id' } }));
+  assert.equal(Object.hasOwn(JSON.parse(f.events[1].init.body), 'metadata'), false);
+  const denied = await fixture();
+  await assert.rejects(denied.bridge.handle(request({ metadata: { extra: 'private' } })),
+    /native_field_unsupported/);
+  assert.deepEqual(denied.events, []);
+});
 test('paid server tools, fallback settings, cache variants and orphan results fail before reservation', async () => {
   for (const extra of [{ fallbacks: 'default' }, { model: 'claude-opus-5-5' }, { service_tier: 'auto' },
     { thinking: { type: 'adaptive' } }, { output_config: { effort: 'high' } },

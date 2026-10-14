@@ -81,7 +81,13 @@ export function normalizeAnthropicMessages(value: unknown): {
   // Snapshot before the ledger's first await; callers cannot alter the approved request.
   const body = record(JSON.parse(serialized));
   keys(body, ['model', 'messages', 'system', 'max_tokens', 'stream', 'service_tier',
-    'thinking', 'output_config', 'tools', 'tool_choice', 'stop_sequences']);
+    'thinking', 'output_config', 'tools', 'tool_choice', 'stop_sequences', 'metadata']);
+  if (body.metadata !== undefined) {
+    const metadata = record(body.metadata);
+    keys(metadata, ['user_id']);
+    if (metadata.user_id !== undefined) text(metadata.user_id, 256);
+    delete body.metadata;
+  }
   if (body.model !== 'claude-sonnet-5-5') fail('native_model_unsupported');
   const outputLimit = body.max_tokens;
   if (typeof outputLimit !== 'number' || !Number.isSafeInteger(outputLimit) ||

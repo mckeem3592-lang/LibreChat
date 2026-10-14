@@ -50,8 +50,7 @@ let reconnectTimer = null;
 
 function currentCapabilities() {
   return [
-    'mac.control',
-    'browser.direct_tabs',
+    ...(process.platform === 'darwin' ? ['mac.control', 'browser.direct_tabs'] : []),
     ...(extensionSocket?.readyState === WebSocket.OPEN ? ['browser.page_extension'] : []),
   ];
 }
@@ -316,6 +315,9 @@ function callBrowser(tool, args = {}) {
 async function dispatch(tool, args, deadlineMs) {
   // Execute the same immutable arguments shown in the local preview.
   args = structuredClone(args || {});
+  if (tool.startsWith('mac.') && process.platform !== 'darwin') {
+    throw new Error('tool_not_available_on_device');
+  }
   const inputTarget = ['mac.type', 'mac.key'].includes(tool)
     ? validateInputTarget(args, allowedApps) : null;
   if (inputTarget && (await activeApp()).name !== inputTarget) throw new Error('input_target_not_active');
@@ -323,10 +325,12 @@ async function dispatch(tool, args, deadlineMs) {
   if (tool === 'mac.click') {
     mappedClick = screenshotGeometry.resolve(args, await mainDisplay());
   }
-  await requireManualApproval(tool, mappedClick || args, {
-    deadlineMs,
-    isConnected: () => gatewayConnected && gatewaySocket?.readyState === WebSocket.OPEN,
-  });
+  if (process.env.MISSION_AI_APPROVAL_MODE !== 'chat') {
+    await requireManualApproval(tool, mappedClick || args, {
+      deadlineMs,
+      isConnected: () => gatewayConnected && gatewaySocket?.readyState === WebSocket.OPEN,
+    });
+  }
   if (inputTarget) await waitForInputTarget(inputTarget, activeApp, deadlineMs);
   if (!['mac.active_app', 'mac.screenshot', 'mac.click', 'browser.list_tabs', 'browser.get_state'].includes(tool)) screenshotGeometry.clear();
   switch (tool) {
@@ -347,14 +351,16 @@ async function dispatch(tool, args, deadlineMs) {
     case 'mac.key':
       return await keyMac(args);
     case 'browser.list_tabs':
-      return await chromeListTabs();
+      return extensionSocket?.readyState === WebSocket.OPEN
+        ? await callBrowser(tool, args) : await chromeListTabs();
     case 'browser.activate_tab':
-      return await chromeActivateTab(args);
+      throw new Error('foreground_activation_disabled');
     case 'browser.close_tabs':
-      return await chromeCloseTabs(args);
+      return extensionSocket?.readyState === WebSocket.OPEN
+        ? await callBrowser(tool, args) : await chromeCloseTabs(args);
     case 'browser.open_url_direct':
     case 'browser.open_new_tab':
-      return await chromeOpenUrl(args);
+      return await callBrowser('browser.open_new_tab', args);
     case 'browser.get_state':
     case 'browser.click':
     case 'browser.type':

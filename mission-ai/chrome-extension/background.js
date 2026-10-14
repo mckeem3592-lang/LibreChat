@@ -81,6 +81,21 @@ async function activeTab({ requireWeb = false } = {}) {
   return tab;
 }
 
+function requestedTabId(value) {
+  const id = Number(value);
+  if (!Number.isSafeInteger(id) || id < 0) throw new Error('invalid_tab_id');
+  return id;
+}
+
+async function selectedTab(args, { requireWeb = false, useSnapshot = false } = {}) {
+  const id = useSnapshot ? latestSnapshot?.tabId : args?.tabId;
+  const tab = id == null ? await activeTab({ requireWeb }) :
+    await chrome.tabs.get(requestedTabId(id));
+  if (!tab?.id) throw new Error('tab_not_found');
+  if (requireWeb && !pageUrlAllowed(tab.url)) throw new Error('tab_url_not_allowed');
+  return tab;
+}
+
 async function execInTab(tab, func, args = []) {
   const [result] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
@@ -99,17 +114,47 @@ function requireCurrentSnapshot(args, tab) {
 }
 
 async function execute(tool, args) {
+  if (tool === 'browser.list_tabs') {
+    const tabs = await chrome.tabs.query({});
+    return { tabs: tabs.filter((tab) => pageUrlAllowed(tab.url)).slice(0, 200)
+      .map((tab) => ({ windowId: String(tab.windowId), tabId: String(tab.id),
+        title: tab.title || '', url: tab.url, active: tab.active === true })) };
+  }
+
+  if (tool === 'browser.open_new_tab') {
+    const url = new URL(String(args.url || ''));
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('url_not_allowed');
+    const tab = await chrome.tabs.create({ url: url.toString(), active: false });
+    return { windowId: String(tab.windowId), tabId: String(tab.id), url: tab.url,
+      openedByMissionAI: true };
+  }
+
+  if (tool === 'browser.close_tabs') {
+    if (args.confirm !== true || !Array.isArray(args.tabs) ||
+        args.tabs.length < 1 || args.tabs.length > 100) throw new Error('confirmation_required');
+    for (const item of args.tabs) {
+      const tab = await chrome.tabs.get(requestedTabId(item.tabId));
+      if (String(tab.windowId) !== String(item.windowId) ||
+          tab.url !== item.expectedUrl) throw new Error('tab_stale');
+      await chrome.tabs.remove(tab.id);
+    }
+    latestSnapshot = null;
+    return { closed: args.tabs.length };
+  }
+
   if (tool === 'browser.open_url') {
     const url = new URL(String(args.url || ''));
     if (!['http:', 'https:'].includes(url.protocol)) throw new Error('url_not_allowed');
-    const tab = await activeTab();
+    const tab = args.tabId == null ? null : await selectedTab(args);
     latestSnapshot = null;
-    await chrome.tabs.update(tab.id, { url: url.toString() });
-    return { url: url.toString() };
+    const result = tab ? await chrome.tabs.update(tab.id, { url: url.toString() }) :
+      await chrome.tabs.create({ url: url.toString(), active: false });
+    return { windowId: String(result.windowId), tabId: String(result.id),
+      url: url.toString(), openedByMissionAI: tab == null };
   }
 
   if (tool === 'browser.get_state') {
-    const tab = await activeTab({ requireWeb: true });
+    const tab = await selectedTab(args, { requireWeb: true });
     const page = await execInTab(tab, () => {
       const keyFor = (el) => {
         const tag = el.tagName.toLowerCase();
@@ -165,7 +210,7 @@ async function execute(tool, args) {
   }
 
   if (tool === 'browser.click') {
-    const tab = await activeTab({ requireWeb: true });
+    const tab = await selectedTab(args, { requireWeb: true, useSnapshot: true });
     const snapshot = requireCurrentSnapshot(args, tab);
     const index = Number(args.index);
     const expectedKey = String(args.elementKey || '');
@@ -203,7 +248,7 @@ async function execute(tool, args) {
   }
 
   if (tool === 'browser.type') {
-    const tab = await activeTab({ requireWeb: true });
+    const tab = await selectedTab(args, { requireWeb: true, useSnapshot: true });
     const snapshot = requireCurrentSnapshot(args, tab);
     const index = Number(args.index);
     const expectedKey = String(args.elementKey || '');
@@ -253,7 +298,7 @@ async function execute(tool, args) {
   }
 
   if (tool === 'browser.scroll') {
-    const tab = await activeTab({ requireWeb: true });
+    const tab = await selectedTab(args, { requireWeb: true, useSnapshot: true });
     latestSnapshot = null;
     return await execInTab(tab, (x, y) => {
       window.scrollBy({ left: x, top: y, behavior: 'auto' });

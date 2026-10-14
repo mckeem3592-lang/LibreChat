@@ -16,10 +16,10 @@ test('Chrome extension uses native messaging with a deterministic identity', asy
   ]);
   const manifest = JSON.parse(manifestRaw);
 
-  assert.equal(manifest.version, '0.3.0');
+  assert.equal(manifest.version, '0.4.0');
   assert.ok(manifest.permissions.includes('nativeMessaging'));
   assert.ok(!manifest.permissions.includes('offscreen'));
-  assert.equal(manifest.host_permissions, undefined);
+  assert.deepEqual(manifest.host_permissions, ['http://*/*', 'https://*/*']);
   assert.ok(typeof manifest.key === 'string' && manifest.key.length > 100);
   assert.ok(background.includes("chrome.runtime.connectNative(NATIVE_HOST)"));
   assert.ok(background.includes("com.missionai.browser_bridge"));
