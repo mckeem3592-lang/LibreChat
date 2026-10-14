@@ -35,11 +35,12 @@ export default function useUploadOptions() {
     data: fileConfig = null,
     isError: isFileConfigError,
     isPaused: isFileConfigPaused,
-    isSuccess: isFileConfigLoaded,
   } = useGetFileConfig({
     select: (data) => mergeFileConfig(data),
   });
-  /** Destination checks read this config, so callers can tell "not viable" from "not known yet". */
+  /** The authenticated startup response can seed a policy even when the separate
+   * file-config refresh has failed. */
+  const isFileConfigLoaded = fileConfig != null;
   const isConfigPending = !isFileConfigLoaded && !isFileConfigError && !isFileConfigPaused;
 
   /**
