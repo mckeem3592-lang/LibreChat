@@ -377,6 +377,11 @@ const PARAM_LIMITS: Readonly<Record<string, readonly [number, number]>> = {
   frequency_penalty: [-2, 2],
 };
 
+const CHAT_FILE_FIELDS = new Set([
+  'file_id', 'filepath', 'filename', 'type', 'llmDeliveryPath',
+  'height', 'width', 'bytes', 'source', 'temp_file_id', 'tool_resource',
+]);
+
 const BODY_FIELDS = new Set([
   ...ID_FIELDS,
   ...BOOL_FIELDS,
@@ -414,6 +419,7 @@ const BODY_FIELDS = new Set([
   'codeEnvironmentMode',
   'expectedPredecessorCreatedAt',
   'generationProtocolVersion',
+  'files',
 ]);
 
 function object(value: unknown): ObjectValue {
@@ -560,6 +566,36 @@ function chatBody(value: unknown): ObjectValue {
       }
       out[key] = value;
     }
+  }
+
+  if (input.files != null) {
+    if (!Array.isArray(input.files) || input.files.length === 0 || input.files.length > 5) {
+      throw new Error();
+    }
+    out.files = input.files.map((entry: unknown) => {
+      const file = object(entry);
+      keys(file, CHAT_FILE_FIELDS);
+      const fileId = string(file.file_id);
+      if (!IDENTIFIER.test(fileId)) throw new Error();
+      const attachment: ObjectValue = { file_id: fileId };
+      for (const key of ['filepath', 'filename', 'type', 'source', 'tool_resource'] as const) {
+        if (file[key] != null) attachment[key] = string(file[key], key === 'filepath' ? 2048 : 256);
+      }
+      if (file.temp_file_id != null) {
+        const tempId = string(file.temp_file_id);
+        if (!IDENTIFIER.test(tempId)) throw new Error();
+        attachment.temp_file_id = tempId;
+      }
+      if (file.llmDeliveryPath != null) {
+        const delivery = string(file.llmDeliveryPath, 32);
+        if (!['text', 'file', 'none'].includes(delivery)) throw new Error();
+        attachment.llmDeliveryPath = delivery;
+      }
+      for (const key of ['height', 'width', 'bytes'] as const) {
+        if (file[key] != null) attachment[key] = integer(file[key], 0, 1_000_000_000);
+      }
+      return attachment;
+    });
   }
 
   if (input.sender != null && input.sender !== 'User') throw new Error();
