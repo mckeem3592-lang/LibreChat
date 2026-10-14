@@ -588,7 +588,7 @@ function chatBody(value: unknown): ObjectValue {
       }
       if (file.llmDeliveryPath != null) {
         const delivery = string(file.llmDeliveryPath, 32);
-        if (!['text', 'file', 'none'].includes(delivery)) throw new Error();
+        if (!['text', 'provider', 'none'].includes(delivery)) throw new Error();
         attachment.llmDeliveryPath = delivery;
       }
       for (const key of ['height', 'width', 'bytes'] as const) {
