@@ -26,11 +26,14 @@ let mockFileConfig = defaultFileConfig;
 let mockAgentsMap: Record<string, Partial<Agent>> = {};
 let mockAgentQueryData: Partial<Agent> | undefined;
 let mockFileConfigLoaded = true;
+let mockFileConfigDataPresent = true;
 
 jest.mock('~/data-provider', () => ({
   useGetEndpointsQuery: () => ({ data: mockEndpointsConfig }),
   useGetFileConfig: ({ select }: { select?: (data: unknown) => unknown }) => ({
-    data: select != null ? select(mockFileConfig) : mockFileConfig,
+    data: mockFileConfigDataPresent
+      ? (select != null ? select(mockFileConfig) : mockFileConfig)
+      : null,
     isSuccess: mockFileConfigLoaded,
   }),
   useGetAgentByIdQuery: () => ({ data: mockAgentQueryData }),
@@ -86,6 +89,7 @@ describe('AttachFileChat', () => {
     mockAgentQueryData = undefined;
     mockAttachFileMenuProps = {};
     mockFileConfigLoaded = true;
+    mockFileConfigDataPresent = true;
   });
 
   describe('rendering decisions', () => {
@@ -313,17 +317,28 @@ describe('AttachFileChat upload config gating', () => {
     mockAgentsMap = {};
     mockAgentQueryData = undefined;
     mockAttachFileMenuProps = {};
+    mockFileConfigDataPresent = true;
   });
 
-  it('leaves the attach menu inert until the file config resolves', () => {
+  it('leaves the attach menu inert' until the file config resolves', () => {
     /* The menu is an action, not just a display: offering the chooser here submits an
      * explicit destination a unified deployment would have inferred, and after a failed
      * fetch it would keep offering it. */
     mockFileConfigLoaded = false;
+    mockFileConfigDataPresent = false;
 
     renderComponent({ endpoint: EModelEndpoint.agents });
 
     expect(mockAttachFileMenuProps.disabled).toBe(true);
+  });
+
+  it('uses the authenticated startup policy while the separate query fails', () => {
+    mockFileConfigLoaded = false;
+    mockFileConfigDataPresent = true;
+
+    renderComponent({ endpoint: EModelEndpoint.agents });
+
+    expect(mockAttachFileMenuProps.disabled).toBe(false);
   });
 
   it('enables it once the config lands', () => {
