@@ -5,6 +5,7 @@ const MAX_BYTES = 1_048_576;
 const MAX_REQUEST_BYTES = 12_582_912;
 const MAX_IMAGE_BYTES = 4_194_304;
 function fail(code = 'native_request_invalid', status = 400): never {
+  if (code === 'native_request_invalid') console.error('Mission AI native Anthropic invalid shape at', new Error().stack?.split('\n')[2]?.trim());
   throw new NativeBridgeError(code, status);
 }
 function record(value: unknown): Json {
