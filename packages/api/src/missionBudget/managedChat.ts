@@ -869,6 +869,15 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
         return next();
       }
 
+      // The normal file router still enforces login, role permissions, size limits,
+      // content policy, and ownership. Admit only its exact upload and management
+      // paths here so the managed chat guard does not block those checks first.
+      if (query === '' && (
+        (method === 'GET' && (path === '/api/files' || path === '/api/files/config')) ||
+        (method === 'POST' && (path === '/api/files' || path === '/api/files/usage')) ||
+        (method === 'DELETE' && path === '/api/files')
+      )) return next();
+
       if (method === 'GET' && path === '/api/files/speech/config/get' && query === '') {
         return next();
       }
