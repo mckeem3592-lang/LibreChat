@@ -36,6 +36,7 @@ export function createMissionMcpNodeHandler({
   search,
   getSearchStatus,
   audit = auditEvent,
+  allowedTools,
 }) {
   const handler = createMcpHandler(() => {
     const server = new McpServer({
@@ -44,6 +45,7 @@ export function createMissionMcpNodeHandler({
     });
 
     const registerTool = (name, config, toolHandler) => {
+      if (allowedTools && !allowedTools.has(name)) return;
       server.registerTool(name, config, async (input) => {
         const startedAt = Date.now();
         let result;

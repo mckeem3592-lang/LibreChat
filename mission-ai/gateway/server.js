@@ -32,6 +32,7 @@ import { createMongoAcceptanceStore } from './paid-acceptance.js';
 const PORT = Number(process.env.PORT || 8787);
 const DEVICE_TOKEN = process.env.MISSION_AI_DEVICE_TOKEN || '';
 const TOOL_TOKEN = process.env.MISSION_AI_TOOL_TOKEN || '';
+const DEVICE_MCP_TOKEN = process.env.MISSION_AI_DEVICE_MCP_TOKEN || '';
 const CODE_API_URL = (process.env.MISSION_AI_CODE_API_URL || '').replace(/\/$/, '');
 const CODE_BRIDGE_ADMIN_TOKEN =
   process.env.MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN || '';
@@ -134,6 +135,18 @@ function requireToolAuth(req, res, next) {
     return;
   }
 
+  next();
+}
+
+function requireDeviceMcpAuth(req, res, next) {
+  const auth = req.get('authorization') || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (DEVICE_MCP_TOKEN.length < 32 ||
+      [TOOL_TOKEN, DEVICE_TOKEN, nativeToken].includes(DEVICE_MCP_TOKEN) ||
+      !safeEqual(token, DEVICE_MCP_TOKEN)) {
+    res.status(401).json({ error: 'unauthorized' });
+    return;
+  }
   next();
 }
 
@@ -525,7 +538,7 @@ function currentReadiness() {
   });
 }
 
-const missionMcp = createMissionMcpNodeHandler({
+const mcpOptions = {
   invoke,
   getReadiness: currentReadiness,
   getDashboard: queryMissionDashboard,
@@ -539,6 +552,13 @@ const missionMcp = createMissionMcpNodeHandler({
   generateImage: approvedImage,
   search: freeSearch.search,
   getSearchStatus: freeSearch.status,
+};
+const missionMcp = createMissionMcpNodeHandler(mcpOptions);
+const deviceMcp = createMissionMcpNodeHandler({
+  ...mcpOptions,
+  allowedTools: new Set(['mission_readiness', 'browser_list_tabs', 'browser_open_new_tab',
+    'browser_close_tabs', 'browser_get_state', 'browser_click', 'browser_type',
+    'browser_scroll', 'browser_open_url']),
 });
 
 /* -------------------------------------------------------------------------- */
@@ -559,6 +579,15 @@ app.use(
     limit: '12mb',
   }),
 );
+
+app.use(
+  '/mcp/device',
+  requireDeviceMcpAuth,
+  express.json({ limit: '12mb' }),
+);
+app.all('/mcp/device', (req, res) => {
+  void deviceMcp(req, res, req.body);
+});
 
 app.use(
   '/mcp',
@@ -1282,6 +1311,7 @@ app.all('/mcp', (req, res) => {
     req.body,
   );
 });
+
 
 /* -------------------------------------------------------------------------- */
 /*                              WEBSOCKET                                     */

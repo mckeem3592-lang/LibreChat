@@ -90,3 +90,23 @@ test('MCP streamable HTTP initializes, lists tools, calls readiness, and audits 
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test('device MCP catalog exposes browser tools without paid delegation or desktop focus tools', async () => {
+  const allowedTools = new Set(['mission_readiness', 'browser_list_tabs', 'browser_get_state']);
+  const handler = createMissionMcpNodeHandler({
+    allowedTools,
+    invoke: async () => ({ tabs: [] }),
+    getReadiness: async () => ({ ok: true }),
+    audit: () => {},
+  });
+  const { server, url } = await listen(handler);
+  const client = new Client({ name: 'mission-ai-device-test', version: '1.0.0' });
+  try {
+    await client.connect(new StreamableHTTPClientTransport(url));
+    const names = (await client.listTools()).tools.map((tool) => tool.name);
+    assert.deepEqual(names.sort(), [...allowedTools].sort());
+  } finally {
+    await client.close().catch(() => {});
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
