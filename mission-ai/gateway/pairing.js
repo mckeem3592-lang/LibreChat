@@ -9,6 +9,22 @@ function safeEqual(a, b) {
   return left.length === right.length && crypto.timingSafeEqual(left, right);
 }
 
+export function deviceCredential(masterToken, deviceId) {
+  if (typeof masterToken !== 'string' || masterToken.length < 32 ||
+      typeof deviceId !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(deviceId)) {
+    throw new Error('invalid_device_id');
+  }
+  return crypto.createHmac('sha256', masterToken).update(`mission-ai-device-v1:${deviceId}`).digest('base64url');
+}
+
+export function authorizeDeviceCredential(token, masterToken, deviceId) {
+  if (!token || !masterToken || !deviceId) return false;
+  // Existing Mac installations retain their credential during the migration.
+  if (deviceId === 'mac-primary' && safeEqual(token, masterToken)) return true;
+  try { return safeEqual(token, deviceCredential(masterToken, deviceId)); }
+  catch { return false; }
+}
+
 function allowedAttempt(key, now = Date.now()) {
   const windowMs = 10 * 60 * 1000;
   const current = attempts.get(key);
@@ -20,7 +36,7 @@ function allowedAttempt(key, now = Date.now()) {
   return current.count <= 5;
 }
 
-export function pairDevice({ code, remoteAddress = '' } = {}) {
+export function pairDevice({ code, deviceId, remoteAddress = '' } = {}) {
   const expected = process.env.MISSION_AI_PAIR_CODE || '';
   const deviceToken = process.env.MISSION_AI_DEVICE_TOKEN || '';
   const expiresAt = Date.parse(process.env.MISSION_AI_PAIR_EXPIRES_AT || '');
@@ -31,8 +47,10 @@ export function pairDevice({ code, remoteAddress = '' } = {}) {
   if (consumed) throw new Error('pairing_consumed');
   if (!safeEqual(code || '', expected)) throw new Error('pairing_invalid');
 
+  const credential = deviceCredential(deviceToken, deviceId);
+
   consumed = true;
-  return { deviceToken };
+  return { deviceToken: credential };
 }
 
 export function resetPairingForTests() {

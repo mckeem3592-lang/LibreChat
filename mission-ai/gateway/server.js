@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import http from 'node:http';
 import express from 'express';
 import WebSocket, { WebSocketServer } from 'ws';
-import { pairDevice } from './pairing.js';
+import { pairDevice, authorizeDeviceCredential } from './pairing.js';
 import { providerStatus } from './providers.js';
 import { handleRoute } from './route-handler.js';
 import { buildReadiness } from './readiness.js';
@@ -786,6 +786,7 @@ app.post('/pair', async (req, res) => {
   try {
     const result = pairDevice({
       code: String(req.body?.code || ''),
+      deviceId: String(req.body?.deviceId || ''),
       remoteAddress:
         req.ip ||
         req.socket.remoteAddress ||
@@ -1319,10 +1320,7 @@ server.on(
 
     if (
       !deviceId ||
-      !safeEqual(
-        token,
-        DEVICE_TOKEN,
-      )
+      !authorizeDeviceCredential(token, DEVICE_TOKEN, deviceId)
     ) {
       socket.write(
         'HTTP/1.1 401 Unauthorized\r\n\r\n',

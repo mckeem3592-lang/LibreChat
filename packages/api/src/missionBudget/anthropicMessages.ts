@@ -91,6 +91,7 @@ export function normalizeAnthropicMessages(value: unknown): {
   }
   if (body.model !== 'claude-sonnet-5-5') fail('native_model_unsupported');
   const outputLimit = body.max_tokens;
+  console.error('Mission AI native Anthropic output token limit shape:', typeof outputLimit, typeof outputLimit === 'number' ? outputLimit : null);
   if (typeof outputLimit !== 'number' || !Number.isSafeInteger(outputLimit) ||
       outputLimit < 1 || outputLimit > 32768) fail();
   if (body.stream !== undefined && typeof body.stream !== 'boolean') fail();
