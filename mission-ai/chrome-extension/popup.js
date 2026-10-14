@@ -1,4 +1,5 @@
 const status = document.getElementById('status');
+document.getElementById('version').textContent = `Version ${chrome.runtime.getManifest().version}`;
 
 function refresh() {
   chrome.runtime.sendMessage({ type: 'mission-ai-status' }, (response) => {
