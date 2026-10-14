@@ -24,7 +24,7 @@ for variable in $(compgen -e); do
     CODEAPI_JWT_ISSUER|CODEAPI_JWT_AUDIENCE|CODEAPI_JWT_SINGLE_TENANT_ID|MISSION_AI_BOOTSTRAP_OWNER|\
     MISSION_AI_OWNER_EMAIL|MISSION_AI_OWNER_PASSWORD|MISSION_AI_CONTROL_OWNER_EMAIL|MISSION_AI_FREE_BASELINE|\
     MISSION_AI_GITHUB_EDITOR|MISSION_AI_GITHUB_MCP_TOKEN|MISSION_AI_DEVICE_MCP_ENABLED|MISSION_AI_DEVICE_MCP_TOKEN|\
-    MISSION_AI_FREE_TITLES)
+    MISSION_AI_FREE_TITLES|LOCAL_MCP_PUBLIC_URL|LOCAL_MCP_TOKEN)
       continue ;;
     GOOGLE_KEY)
       [[ ${MISSION_AI_FREE_BASELINE-false} == true ]] ||
@@ -56,6 +56,14 @@ done
   fail 'MISSION_AI_MANAGED_CHAT must explicitly enable the managed API guard'
 [[ ${MISSION_AI_FREE_TITLES-false} == true || ${MISSION_AI_FREE_TITLES-false} == false ]] ||
   fail 'MISSION_AI_FREE_TITLES must be true or false'
+
+[[ ${LOCAL_MCP_PUBLIC_URL-} == https://version-departure-blatantly.ngrok-free.dev/mcp ]] ||
+  fail 'LOCAL_MCP_PUBLIC_URL must match the reviewed static ngrok endpoint'
+local_mcp_token="${LOCAL_MCP_TOKEN-}"
+[[ ${#local_mcp_token} -ge 40 && $local_mcp_token != *[[:space:]]* &&
+   $local_mcp_token != "${MISSION_AI_NATIVE_TOKEN-}" &&
+   $local_mcp_token != "${MISSION_AI_DEVICE_MCP_TOKEN-}" ]] ||
+  fail 'LOCAL_MCP_TOKEN must be a distinct private token of at least 40 characters'
 
 native_token="${MISSION_AI_NATIVE_TOKEN-}"
 [[ ${#native_token} -ge 32 && $native_token != *[[:space:]]* ]] ||
