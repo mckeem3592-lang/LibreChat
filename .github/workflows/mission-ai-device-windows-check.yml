@@ -1,0 +1,34 @@
+name: Mission AI Windows companion check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-companion:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse installer and compile Chrome native host
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'mission-ai/companion/install-windows.ps1'),
+            [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count) { $errors | Out-String | Write-Error; exit 1 }
+          Add-Type -Path 'mission-ai/companion/NativeHostLauncher.cs' `
+            -OutputAssembly (Join-Path $env:RUNNER_TEMP 'MissionAINativeHost.exe') `
+            -OutputType ConsoleApplication
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check packaged JavaScript
+        shell: pwsh
+        run: |
+          Get-ChildItem mission-ai/companion/*.js | ForEach-Object { node --check $_.FullName }
+          Set-Location mission-ai/companion
+          npm ci --omit=dev --no-audit --no-fund

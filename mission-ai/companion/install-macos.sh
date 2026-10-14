@@ -51,7 +51,7 @@ if ! security find-generic-password -a "$USER" -s "$DEVICE_SERVICE" -w >/dev/nul
 fi
 
 cd "$ROOT_DIR"
-npm install --omit=dev
+npm ci --omit=dev --no-audit --no-fund
 
 mkdir -p "$HOME/Library/LaunchAgents" "$LOG_DIR"
 
@@ -95,6 +95,7 @@ cat > "$PLIST" <<PLIST
     <key>MISSION_AI_GATEWAY_URL</key><string>$MISSION_AI_GATEWAY_URL</string>
     <key>MISSION_AI_DEVICE_ID</key><string>${MISSION_AI_DEVICE_ID:-mac-primary}</string>
     <key>MISSION_AI_BROWSER_PORT</key><string>${MISSION_AI_BROWSER_PORT:-8766}</string>
+    <key>MISSION_AI_APPROVAL_MODE</key><string>chat</string>
     <key>MISSION_AI_ALLOWED_APPS</key><string>${MISSION_AI_ALLOWED_APPS:-Google Chrome,Finder,Microsoft Excel,Microsoft Word,Microsoft PowerPoint}</string>
   </dict>
   <key>RunAtLoad</key><true/>

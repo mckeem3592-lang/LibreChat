@@ -17,7 +17,7 @@ import {
 } from './direct-tabs.js';
 
 const execFileAsync = promisify(execFile);
-const GATEWAY_URL = process.env.MISSION_AI_GATEWAY_URL || '';
+const GATEWAY_URL = process.env.MISSION_AI_GATEWAY_URL || 'https://mission-ai-gateway-mckee.onrender.com';
 const DEVICE_TOKEN =
   process.env.MISSION_AI_DEVICE_TOKEN || (await readSecret('mission-ai-device-token'));
 let BROWSER_TOKEN =
@@ -26,7 +26,8 @@ if (!BROWSER_TOKEN) {
   BROWSER_TOKEN = crypto.randomBytes(32).toString('base64url');
   await writeSecret('mission-ai-browser-token', BROWSER_TOKEN);
 }
-const DEVICE_ID = process.env.MISSION_AI_DEVICE_ID || 'mac-primary';
+const DEVICE_ID = process.env.MISSION_AI_DEVICE_ID ||
+  (process.platform === 'win32' ? 'windows-work' : 'mac-primary');
 const BROWSER_PORT = Number(process.env.MISSION_AI_BROWSER_PORT || 8766);
 const MAX_MESSAGE_BYTES = 1_000_000;
 
@@ -325,7 +326,7 @@ async function dispatch(tool, args, deadlineMs) {
   if (tool === 'mac.click') {
     mappedClick = screenshotGeometry.resolve(args, await mainDisplay());
   }
-  if (process.env.MISSION_AI_APPROVAL_MODE !== 'chat') {
+  if (process.env.MISSION_AI_APPROVAL_MODE !== 'chat' && process.platform !== 'win32') {
     await requireManualApproval(tool, mappedClick || args, {
       deadlineMs,
       isConnected: () => gatewayConnected && gatewaySocket?.readyState === WebSocket.OPEN,
@@ -387,18 +388,18 @@ const browserServer = http.createServer(async (req, res) => {
     loopback &&
     safeEqual(healthToken, BROWSER_TOKEN)
   ) {
-    const accessibility = await activeApp()
+    const accessibility = process.platform === 'darwin' ? await activeApp()
       .then(() => ({ ok: true }))
       .catch((error) => ({
         ok: false,
         error: error instanceof Error ? error.message : 'accessibility_error',
-      }));
-    const screenRecording = await screenshot()
+      })) : { ok: false, error: 'mac_only' };
+    const screenRecording = process.platform === 'darwin' ? await screenshot()
       .then(() => ({ ok: true }))
       .catch((error) => ({
         ok: false,
         error: error instanceof Error ? error.message : 'screen_recording_error',
-      }));
+      })) : { ok: false, error: 'mac_only' };
     res.setHeader('cache-control', 'no-store');
     res.setHeader('content-type', 'application/json');
     res.end(
