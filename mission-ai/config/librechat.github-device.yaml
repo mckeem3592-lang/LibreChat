@@ -204,9 +204,9 @@ modelSpecs:
   list:
     - name: 'mission-ai-project-manager'
       label: 'Mission AI Project Manager — Claude Sonnet 5.5 (Paid)'
-      mcpServers: [github-code-editor]
+      mcpServers: [github-code-editor, mission-ai-device]
       preset:
-        endpoint: 'MissionAIClaude'
+        endpoint: 'MissionAIClaudeCached'
         model: 'claude-sonnet-5-5'
         useResponsesApi: false
         max_tokens: 4096
