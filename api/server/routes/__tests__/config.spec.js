@@ -354,6 +354,17 @@ describe('GET /api/config', () => {
       expect(response.body.codeEnvironmentDecisionVersion).toBeUndefined();
     });
 
+    it('includes the effective upload policy only for authenticated startup', async () => {
+      const fileConfig = { endpoints: { default: { fileLimit: 5 } } };
+      mockGetAppConfig.mockResolvedValue({ ...baseAppConfig, fileConfig });
+
+      const authenticated = await request(createApp(mockUser)).get('/api/config');
+      const anonymous = await request(createApp()).get('/api/config');
+
+      expect(authenticated.body.fileConfig).toEqual(fileConfig);
+      expect(anonymous.body).not.toHaveProperty('fileConfig');
+    });
+
     it('does not advertise conversation moves unless the effective policy enables them', async () => {
       mockGetAppConfig.mockResolvedValue(baseAppConfig);
       const app = createApp(mockUser);
