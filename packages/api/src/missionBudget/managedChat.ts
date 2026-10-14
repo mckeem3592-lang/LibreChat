@@ -125,6 +125,7 @@ const GITHUB_EDITOR = FREE_BASELINE && RUNTIME_ENV.MISSION_AI_GITHUB_EDITOR === 
 const GITHUB_SERVER = 'github-code-editor';
 const DEVICE_MCP = GITHUB_EDITOR && RUNTIME_ENV.MISSION_AI_DEVICE_MCP_ENABLED === 'true';
 const DEVICE_SERVER = 'mission-ai-device';
+const DOCUMENT_SERVER = 'mission-ai-local-documents';
 const DEVICE_SPECS = new Set([
   'mission-ai-gpt-luna', 'mission-ai-gpt-4o', 'mission-ai-gpt-sol',
   'mission-ai-gpt-astra', 'mission-ai-claude-haiku',
@@ -634,7 +635,7 @@ function chatBody(value: unknown): ObjectValue {
       if (value == null) continue;
       if (key === 'mcp') {
         if (approved.name === 'mission-ai-project-manager') {
-          sameStrings(value, [GITHUB_SERVER, ...(DEVICE_MCP ? [DEVICE_SERVER] : [])]);
+          sameStrings(value, [GITHUB_SERVER, ...(DEVICE_MCP ? [DEVICE_SERVER, DOCUMENT_SERVER] : [])]);
         } else if (GITHUB_EDITOR && (approved.spec.endpoint === CLAUDE_ENDPOINT ||
             approved.name === 'mission-ai-claude-sonnet' ||
             DEVICE_MCP && DEVICE_SPECS.has(approved.name))) {
@@ -644,7 +645,7 @@ function chatBody(value: unknown): ObjectValue {
               (value.length !== 0 &&
                (value.length !== 1 || ![...(approved.spec.endpoint === CLAUDE_ENDPOINT ||
                  approved.name === 'mission-ai-claude-sonnet' ? [GITHUB_SERVER] : []),
-                 ...(DEVICE_MCP ? [DEVICE_SERVER] : [])].includes(value[0])))) throw new Error();
+                 ...(DEVICE_MCP ? [DEVICE_SERVER, DOCUMENT_SERVER] : [])].includes(value[0])))) throw new Error();
         } else emptyArray(value);
       }
       else if (key === 'artifacts' && (value === '' ||
@@ -1214,9 +1215,9 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
     if (spec.webSearch != null) throw new Error();
 
     if (name === 'mission-ai-project-manager') {
-      sameStrings(spec.mcpServers, [GITHUB_SERVER, ...(DEVICE_MCP ? [DEVICE_SERVER] : [])]);
+      sameStrings(spec.mcpServers, [GITHUB_SERVER, ...(DEVICE_MCP ? [DEVICE_SERVER, DOCUMENT_SERVER] : [])]);
     } else if (DEVICE_MCP && DEVICE_SPECS.has(name)) {
-      sameStrings(spec.mcpServers, [DEVICE_SERVER]);
+      sameStrings(spec.mcpServers, [DEVICE_SERVER, DOCUMENT_SERVER]);
     } else if (spec.mcpServers != null) throw new Error();
 
     if (approved.default) {
@@ -1305,8 +1306,8 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
   if (GITHUB_EDITOR) {
     for (const value of [config.mcpConfig, raw.mcpServers]) {
       const servers = object(value);
-      keys(servers, new Set([GITHUB_SERVER, ...(DEVICE_MCP ? [DEVICE_SERVER] : [])]));
-      if (Object.keys(servers).length !== (DEVICE_MCP ? 2 : 1)) throw new Error();
+      keys(servers, new Set([GITHUB_SERVER, ...(DEVICE_MCP ? [DEVICE_SERVER, DOCUMENT_SERVER] : [])]));
+      if (Object.keys(servers).length !== (DEVICE_MCP ? 3 : 1)) throw new Error();
       const server = object(servers[GITHUB_SERVER]);
       keys(server, new Set(['title', 'type', 'command', 'args', 'env',
         'chatMenu', 'timeout', 'initTimeout', 'stderr']));
@@ -1330,6 +1331,23 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
         const deviceToken = RUNTIME_ENV.MISSION_AI_DEVICE_MCP_TOKEN;
         if (!deviceToken || deviceToken.length < 32 ||
             ![`Bearer ${deviceToken}`, 'Bearer ${MISSION_AI_DEVICE_MCP_TOKEN}'].includes(headers.Authorization as string)) throw new Error();
+
+        const documents = object(servers[DOCUMENT_SERVER]);
+        keys(documents, new Set(['title', 'type', 'url', 'headers',
+          'requiresOAuth', 'timeout', 'chatMenu']));
+        const documentsURL = RUNTIME_ENV.LOCAL_MCP_PUBLIC_URL;
+        const documentsToken = RUNTIME_ENV.LOCAL_MCP_TOKEN;
+        if (!documentsURL || !documentsURL.startsWith('https://') ||
+            !documentsToken || documentsToken.length < 32 ||
+            documents.title !== 'Mission AI Local Documents' ||
+            documents.type !== 'streamable-http' ||
+            ![documentsURL, '${LOCAL_MCP_PUBLIC_URL}'].includes(documents.url as string) ||
+            documents.requiresOAuth !== false || documents.timeout !== 120000 ||
+            documents.chatMenu !== false) throw new Error();
+        const documentHeaders = object(documents.headers);
+        keys(documentHeaders, new Set(['Authorization']));
+        if (![ `Bearer ${documentsToken}`, 'Bearer ${LOCAL_MCP_TOKEN}' ]
+            .includes(documentHeaders.Authorization as string)) throw new Error();
       }
     }
   } else {
