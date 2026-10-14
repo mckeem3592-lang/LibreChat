@@ -87,7 +87,7 @@ endpoints:
       enabled: true
       mode: bypass
       allow: []
-      ask: ['mcp:*:*']
+      ask: []
       hooks:
         - module: './mission-ai/github-code-editor/approval.mjs'
 

@@ -1043,7 +1043,7 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
     const approval = object(agents.toolApproval);
     if (approval.enabled !== true || approval.mode !== 'bypass') throw new Error();
     emptyArray(approval.allow);
-    sameStrings(approval.ask, ['mcp:*:*']);
+    sameStrings(approval.ask, DEVICE_MCP ? [] : ['mcp:*:*']);
     if (!Array.isArray(approval.hooks) || approval.hooks.length !== 1 ||
         object(approval.hooks[0]).module !== './mission-ai/github-code-editor/approval.mjs') {
       throw new Error();
