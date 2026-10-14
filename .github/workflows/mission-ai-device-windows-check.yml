@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Parse installer and compile Chrome native host
-        shell: pwsh
+        shell: powershell
         run: |
           $tokens = $null
           $errors = $null
