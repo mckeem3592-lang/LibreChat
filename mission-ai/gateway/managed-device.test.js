@@ -71,6 +71,25 @@ test('OpenAI and other Claude paid presets retain the owner-bound device bridge'
   }
 });
 
+test('Project Manager uses native Claude tools and the paired Chrome device', () => {
+  const spec = raw.modelSpecs.list.find((item) => item.name === 'mission-ai-project-manager');
+  assert.equal(spec.preset.endpoint, 'MissionAIClaudeCached');
+  assert.deepEqual(spec.mcpServers, ['github-code-editor', 'mission-ai-device']);
+  const req = fixture();
+  req.body.spec = 'mission-ai-project-manager';
+  req.body.ephemeralAgent.mcp = ['github-code-editor', 'mission-ai-device'];
+  delete req.body.promptCache;
+  delete req.body.promptCacheTtl;
+  assert.equal(run(createManagedToolAdmission(options), req).next, 1);
+  assert.equal(run(createManagedToolConfigGuard(options), req).next, 1);
+  const other = fixture('other@example.test');
+  other.body.spec = 'mission-ai-project-manager';
+  other.body.ephemeralAgent.mcp = ['github-code-editor', 'mission-ai-device'];
+  delete other.body.promptCache;
+  delete other.body.promptCacheTtl;
+  assert.equal(run(createManagedToolConfigGuard(options), other).status, 403);
+});
+
 test('a reviewed Claude device action can resume only with its device tool', () => {
   const req = fixture();
   req.originalUrl = '/api/agents/chat/resume';
