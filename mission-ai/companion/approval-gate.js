@@ -1,7 +1,14 @@
 import { createInterface } from 'node:readline';
 
 const readOnlyTools = new Set([
-  'mac.active_app', 'mac.screenshot', 'browser.list_tabs', 'browser.get_state', 'file.list',
+  'mac.active_app', 'mac.screenshot', 'browser.list_tabs', 'browser.get_state',
+  'file.list', 'file.read',
+]);
+const autonomousTools = new Set([
+  'browser.activate_tab', 'browser.open_new_tab', 'browser.open_url_direct',
+  'browser.close_tabs', 'browser.click', 'browser.type', 'browser.scroll',
+  'browser.open_url', 'file.move', 'file.write',
+  'mac.open_app', 'mac.click', 'mac.type', 'mac.key',
 ]);
 let awaitingApproval = false;
 
@@ -11,7 +18,8 @@ export async function requireManualApproval(tool, args, {
   deadlineMs,
   isConnected = () => true,
 } = {}) {
-  if (readOnlyTools.has(tool)) return;
+  if (readOnlyTools.has(tool) || (autonomousTools.has(tool) &&
+      (process.env.MISSION_AI_AUTONOMOUS_TOOLS || '').split(',').includes(tool))) return;
   // launchd, redirected pipes and remote tool arguments cannot grant approval.
   // Print private previews only to an interactive local terminal, never logs.
   if (!input.isTTY || !output.isTTY) throw new Error('local_manual_approval_required');

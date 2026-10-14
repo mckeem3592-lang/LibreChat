@@ -32,6 +32,18 @@ const DEVICE_ID = process.env.MISSION_AI_DEVICE_ID ||
   (process.platform === 'win32' ? 'windows-work' : 'mac-primary');
 const BROWSER_PORT = Number(process.env.MISSION_AI_BROWSER_PORT || 8766);
 const MAX_MESSAGE_BYTES = 1_000_000;
+let configuredFileRoots = {};
+if (process.platform === 'win32') {
+  try {
+    const settings = JSON.parse(await readFile(new URL('./settings.json', import.meta.url), 'utf8'));
+    if (!process.env.MISSION_AI_AUTONOMOUS_TOOLS && Array.isArray(settings.autonomousTools) &&
+        settings.autonomousTools.every(value => typeof value === 'string')) {
+      process.env.MISSION_AI_AUTONOMOUS_TOOLS = settings.autonomousTools.join(',');
+    }
+    if (settings.fileRoots && typeof settings.fileRoots === 'object' &&
+        !Array.isArray(settings.fileRoots)) configuredFileRoots = settings.fileRoots;
+  } catch { /* An uninstalled companion keeps per-action approval. */ }
+}
 
 if (!GATEWAY_URL || !DEVICE_TOKEN) {
   throw new Error('MISSION_AI_GATEWAY_URL and a paired Mission AI device credential are required');
@@ -45,7 +57,7 @@ const allowedApps = new Set(
 );
 
 const screenshotGeometry = createScreenshotGeometryStore();
-const scopedFiles = createScopedFiles(os.homedir());
+const scopedFiles = createScopedFiles(os.homedir(), configuredFileRoots);
 let extensionSocket = null;
 let gatewaySocket = null;
 let gatewayConnected = false;
@@ -374,6 +386,10 @@ async function dispatch(tool, args, deadlineMs) {
       return await callBrowser(tool, args);
     case 'file.list':
       return await scopedFiles.list(args);
+    case 'file.read':
+      return await scopedFiles.read(args);
+    case 'file.write':
+      return await scopedFiles.write(args);
     case 'file.move':
       return await scopedFiles.move(args);
     default:

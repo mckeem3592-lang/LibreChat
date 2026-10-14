@@ -1,8 +1,10 @@
 import path from 'node:path';
-import { realpath, readdir, stat } from 'node:fs/promises';
+import crypto from 'node:crypto';
+import { lstat, readFile, realpath, readdir, stat, writeFile } from 'node:fs/promises';
 
 const ROOTS = new Set(['Desktop', 'Documents', 'Downloads']);
 const HIDDEN = /(^|[\\/])\./;
+const MAX_TEXT_BYTES = 1_000_000;
 
 function name(value) {
   if (typeof value !== 'string' || !ROOTS.has(value)) throw new Error('file_root_not_allowed');
@@ -19,9 +21,14 @@ function inside(root, candidate) {
   return candidate === root || candidate.startsWith(root + path.sep);
 }
 
-export function createScopedFiles(homeDirectory) {
+export function createScopedFiles(homeDirectory, configuredRoots = {}) {
   async function rootDirectory(rootName) {
-    return realpath(path.join(homeDirectory, name(rootName)));
+    const root = name(rootName);
+    const configured = configuredRoots[root];
+    if (configured != null && (typeof configured !== 'string' || !path.isAbsolute(configured))) {
+      throw new Error('file_root_not_allowed');
+    }
+    return realpath(configured || path.join(homeDirectory, root));
   }
   async function resolveExisting(rootName, relativePath, directory = false) {
     const root = await rootDirectory(rootName);
@@ -40,6 +47,38 @@ export function createScopedFiles(homeDirectory) {
       return { root, directory, entries: entries.filter(item => !item.name.startsWith('.'))
         .slice(0, 200).map(item => ({ name: item.name, type: item.isDirectory() ? 'directory' :
           item.isFile() ? 'file' : 'other' })) };
+    },
+    async read({ root, path: relativePath }) {
+      const { resolved, info } = await resolveExisting(root, relativePath);
+      if (info.size > MAX_TEXT_BYTES) throw new Error('file_too_large');
+      const bytes = await readFile(resolved);
+      if (bytes.includes(0)) throw new Error('binary_file_not_supported');
+      return { root, path: relativePath,
+        text: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+        sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
+    },
+    async write({ root, path: relativePath, text, expectedSha256 }) {
+      if (typeof text !== 'string' || Buffer.byteLength(text) > MAX_TEXT_BYTES) {
+        throw new Error('text_too_long');
+      }
+      const rootPath = await rootDirectory(root);
+      const destination = path.join(rootPath, relative(relativePath));
+      const parent = await realpath(path.dirname(destination));
+      if (!inside(rootPath, parent) || parent !== path.dirname(destination)) {
+        throw new Error('file_path_not_allowed');
+      }
+      let exists = false;
+      try { await lstat(destination); exists = true; }
+      catch (error) { if (error?.code !== 'ENOENT') throw error; }
+      if (exists) {
+        const current = await resolveExisting(root, relativePath);
+        const bytes = await readFile(current.resolved);
+        const hash = crypto.createHash('sha256').update(bytes).digest('hex');
+        if (!expectedSha256 || hash !== expectedSha256) throw new Error('file_changed');
+      } else if (expectedSha256) throw new Error('file_missing');
+      await writeFile(destination, text, { flag: exists ? 'w' : 'wx' });
+      return { root, path: relativePath,
+        sha256: crypto.createHash('sha256').update(text).digest('hex') };
     },
     async move({ sourceRoot, sourcePath, destinationRoot, destinationPath }) {
       const source = await resolveExisting(sourceRoot, sourcePath);

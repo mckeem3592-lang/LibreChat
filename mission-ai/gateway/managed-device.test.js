@@ -47,6 +47,30 @@ test('only the owner can use the reviewed Claude device profile', () => {
   assert.equal(run(late, drift).status, 503);
 });
 
+test('OpenAI and other Claude paid presets retain the owner-bound device bridge', () => {
+  const early = createManagedToolAdmission(options);
+  const late = createManagedToolConfigGuard(options);
+  for (const [spec, endpoint, model] of [
+    ['mission-ai-gpt-luna', 'MissionAIOpenAI', 'gpt-6-luna'],
+    ['mission-ai-claude-opus', 'MissionAIClaude', 'claude-opus-5-5'],
+  ]) {
+    const req = fixture();
+    req.originalUrl = `/api/agents/chat/${endpoint}`;
+    Object.assign(req.body, { spec, endpoint, model });
+    delete req.body.promptCache;
+    delete req.body.promptCacheTtl;
+    assert.equal(run(early, req).next, 1);
+    assert.equal(run(late, req).next, 1);
+    const other = fixture('other@example.test');
+    other.originalUrl = req.originalUrl;
+    Object.assign(other.body, { spec, endpoint, model });
+    delete other.body.promptCache;
+    delete other.body.promptCacheTtl;
+    assert.equal(run(early, other).next, 1);
+    assert.equal(run(late, other).status, 403);
+  }
+});
+
 test('a reviewed Claude device action can resume only with its device tool', () => {
   const req = fixture();
   req.originalUrl = '/api/agents/chat/resume';

@@ -3,9 +3,12 @@ import { stdin, stdout } from 'node:process';
 import { writeSecret } from './keychain.js';
 
 if (process.platform !== 'win32') throw new Error('windows_only');
-const prompt = readline.createInterface({ input: stdin, output: stdout });
-const code = (await prompt.question('Mission AI one-time pairing code: ')).trim();
-prompt.close();
+let code = (process.env.MISSION_AI_PAIR_CODE || '').trim();
+if (!code) {
+  const prompt = readline.createInterface({ input: stdin, output: stdout });
+  code = (await prompt.question('Mission AI one-time pairing code: ')).trim();
+  prompt.close();
+}
 if (!code || code.length > 512) throw new Error('invalid_pairing_code');
 const response = await fetch('https://mission-ai-gateway-mckee.onrender.com/pair', {
   method: 'POST', headers: { 'content-type': 'application/json' },

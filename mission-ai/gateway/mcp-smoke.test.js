@@ -110,3 +110,31 @@ test('device MCP catalog exposes browser tools without paid delegation or deskto
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test('device MCP routes scoped text tools to the configured Windows device', async () => {
+  const previous = process.env.MISSION_AI_DEFAULT_DEVICE_ID;
+  process.env.MISSION_AI_DEFAULT_DEVICE_ID = 'windows-work';
+  const calls = [];
+  const handler = createMissionMcpNodeHandler({
+    allowedTools: new Set(['file_read', 'file_write']),
+    invoke: async (...args) => { calls.push(args); return { ok: true }; },
+    audit: () => {},
+  });
+  const { server, url } = await listen(handler);
+  const client = new Client({ name: 'mission-ai-file-test', version: '1.0.0' });
+  try {
+    await client.connect(new StreamableHTTPClientTransport(url));
+    assert.deepEqual((await client.listTools()).tools.map(tool => tool.name).sort(),
+      ['file_read', 'file_write']);
+    await client.callTool({ name: 'file_read', arguments: { root: 'Documents', path: 'notes.txt' } });
+    await client.callTool({ name: 'file_write', arguments: { root: 'Documents',
+      path: 'notes.txt', text: 'updated', expectedSha256: 'a'.repeat(64) } });
+    assert.deepEqual(calls.map(([device, tool]) => [device, tool]),
+      [['windows-work', 'file.read'], ['windows-work', 'file.write']]);
+  } finally {
+    await client.close().catch(() => {});
+    await new Promise(resolve => server.close(resolve));
+    if (previous === undefined) delete process.env.MISSION_AI_DEFAULT_DEVICE_ID;
+    else process.env.MISSION_AI_DEFAULT_DEVICE_ID = previous;
+  }
+});

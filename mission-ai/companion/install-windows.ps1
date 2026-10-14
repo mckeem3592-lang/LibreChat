@@ -16,10 +16,20 @@ Get-ChildItem -Path $source -File | Where-Object { $_.Extension -in '.js', '.jso
   ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $destination -Force }
 Get-ChildItem -Path $extensionSource -File |
   ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $extensionDestination -Force }
+$localNode = Join-Path $destination 'node.exe'
+if ($node -ne $localNode) { Copy-Item -LiteralPath $node -Destination $localNode -Force }
+$node = $localNode
 
 Set-Location $destination
-& (Get-Command npm.cmd -ErrorAction Stop).Source ci --omit=dev --no-audit --no-fund
-if ($LASTEXITCODE -ne 0) { throw 'Companion dependency installation failed.' }
+$bundledWs = Join-Path $source 'node_modules\ws'
+if (Test-Path -LiteralPath (Join-Path $bundledWs 'package.json')) {
+  $moduleDestination = Join-Path $destination 'node_modules'
+  New-Item -ItemType Directory -Force -Path $moduleDestination | Out-Null
+  Copy-Item -LiteralPath $bundledWs -Destination (Join-Path $moduleDestination 'ws') -Recurse -Force
+} else {
+  & (Get-Command npm.cmd -ErrorAction Stop).Source ci --omit=dev --no-audit --no-fund
+  if ($LASTEXITCODE -ne 0) { throw 'Companion dependency installation failed.' }
+}
 
 $hasCredential = & $node --input-type=module -e 'import {readSecret} from "./keychain.js"; process.stdout.write((await readSecret("mission-ai-device-token")) ? "yes" : "no")'
 if ($hasCredential -ne 'yes' -or $env:MISSION_AI_REPAIR_PAIR -eq 'true') {
@@ -44,6 +54,18 @@ $manifestPath = Join-Path $destination 'com.missionai.browser_bridge.json'
 [System.IO.File]::WriteAllText($manifestPath, $manifest, (New-Object System.Text.UTF8Encoding($false)))
 $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\Google\Chrome\NativeMessagingHosts\com.missionai.browser_bridge')
 try { $key.SetValue('', $manifestPath) } finally { $key.Close() }
+
+$settings = @{
+  autonomousTools = @('browser.activate_tab', 'browser.open_new_tab', 'browser.open_url_direct',
+    'browser.close_tabs', 'browser.click', 'browser.type', 'browser.scroll', 'browser.open_url',
+    'file.move', 'file.write')
+  fileRoots = @{
+    Desktop = [Environment]::GetFolderPath('Desktop')
+    Documents = [Environment]::GetFolderPath('MyDocuments')
+    Downloads = (Join-Path $env:USERPROFILE 'Downloads')
+  }
+} | ConvertTo-Json -Depth 3
+[System.IO.File]::WriteAllText((Join-Path $destination 'settings.json'), $settings)
 
 $action = New-ScheduledTaskAction -Execute $node -Argument ('"' + (Join-Path $destination 'companion.js') + '"') -WorkingDirectory $destination
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User ([Security.Principal.WindowsIdentity]::GetCurrent().Name)

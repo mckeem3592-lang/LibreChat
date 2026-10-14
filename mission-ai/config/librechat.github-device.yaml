@@ -274,6 +274,7 @@ modelSpecs:
 
     - name: 'mission-ai-gpt-luna'
       label: 'Mission AI — GPT-6 Luna (Paid — Manual)'
+      mcpServers: [mission-ai-device]
       preset:
         endpoint: 'MissionAIOpenAI'
         model: 'gpt-6-luna'
@@ -292,6 +293,7 @@ modelSpecs:
 
     - name: 'mission-ai-gpt-4o'
       label: 'Mission AI — GPT-4o (Paid — Manual)'
+      mcpServers: [mission-ai-device]
       preset:
         endpoint: 'MissionAIOpenAI'
         model: 'gpt-4o'
@@ -310,6 +312,7 @@ modelSpecs:
 
     - name: 'mission-ai-gpt-sol'
       label: 'Mission AI — GPT-6 Sol (Paid — Manual)'
+      mcpServers: [mission-ai-device]
       preset:
         endpoint: 'MissionAIOpenAI'
         model: 'gpt-6-sol'
@@ -328,6 +331,7 @@ modelSpecs:
 
     - name: 'mission-ai-gpt-astra'
       label: 'Mission AI — GPT-6 Astra (Paid — Manual)'
+      mcpServers: [mission-ai-device]
       preset:
         endpoint: 'MissionAIOpenAI'
         model: 'gpt-6-astra'
@@ -346,6 +350,7 @@ modelSpecs:
 
     - name: 'mission-ai-claude-haiku'
       label: 'Mission AI — Claude Haiku 4.5 (Paid — Manual)'
+      mcpServers: [mission-ai-device]
       preset:
         endpoint: 'MissionAIClaude'
         model: 'claude-haiku-4-5'
@@ -385,6 +390,7 @@ modelSpecs:
 
     - name: 'mission-ai-claude-opus'
       label: 'Mission AI — Claude Opus 5.5 (Paid — Manual)'
+      mcpServers: [mission-ai-device]
       preset:
         endpoint: 'MissionAIClaude'
         model: 'claude-opus-5-5'

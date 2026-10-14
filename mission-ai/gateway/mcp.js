@@ -24,6 +24,9 @@ function errorResult(error) {
   };
 }
 
+const defaultDeviceId = deviceId =>
+  deviceId || process.env.MISSION_AI_DEFAULT_DEVICE_ID || 'mac-primary';
+
 export function createMissionMcpNodeHandler({
   invoke,
   getReadiness,
@@ -239,7 +242,7 @@ export function createMissionMcpNodeHandler({
       },
       async ({ deviceId }) => {
         try {
-          return textResult(await invoke(deviceId || 'mac-primary', 'browser.list_tabs', {}));
+          return textResult(await invoke(defaultDeviceId(deviceId), 'browser.list_tabs', {}));
         } catch (error) {
           return errorResult(error);
         }
@@ -249,7 +252,7 @@ export function createMissionMcpNodeHandler({
     registerTool(
       'browser_activate_tab',
       {
-        description: 'Activate a specific Google Chrome tab by stable Chrome window and tab IDs using direct macOS Chrome automation.',
+        description: 'Activate a specific Google Chrome tab by stable window and tab IDs on the paired device.',
         inputSchema: z.object({
           deviceId: z.string().optional(),
           windowId: z.string().min(1),
@@ -259,7 +262,7 @@ export function createMissionMcpNodeHandler({
       async ({ deviceId, windowId, tabId }) => {
         try {
           return textResult(
-            await invoke(deviceId || 'mac-primary', 'browser.activate_tab', {
+            await invoke(defaultDeviceId(deviceId), 'browser.activate_tab', {
               windowId,
               tabId,
             }),
@@ -273,7 +276,7 @@ export function createMissionMcpNodeHandler({
     registerTool(
       'browser_open_new_tab',
       {
-        description: 'Open an HTTP or HTTPS URL in a new background Chrome tab on the selected paired device.',
+        description: 'Open an HTTP or HTTPS URL in a new background Chrome tab on the paired device. Record the returned tab IDs and close that tab when the task is complete.',
         inputSchema: z.object({
           deviceId: z.string().optional(),
           url: z.string().url(),
@@ -282,7 +285,7 @@ export function createMissionMcpNodeHandler({
       async ({ deviceId, url }) => {
         try {
           return textResult(
-            await invoke(deviceId || 'mac-primary', 'browser.open_new_tab', { url }),
+            await invoke(defaultDeviceId(deviceId), 'browser.open_new_tab', { url }),
           );
         } catch (error) {
           return errorResult(error);
@@ -309,7 +312,7 @@ export function createMissionMcpNodeHandler({
       async ({ deviceId, confirm, tabs }) => {
         try {
           return textResult(
-            await invoke(deviceId || 'mac-primary', 'browser.close_tabs', {
+            await invoke(defaultDeviceId(deviceId), 'browser.close_tabs', {
               confirm,
               tabs,
             }),
@@ -328,7 +331,7 @@ export function createMissionMcpNodeHandler({
       },
       async ({ deviceId, tabId }) => {
         try {
-          return textResult(await invoke(deviceId || 'mac-primary', 'browser.get_state', { tabId }));
+          return textResult(await invoke(defaultDeviceId(deviceId), 'browser.get_state', { tabId }));
         } catch (error) {
           return errorResult(error);
         }
@@ -349,7 +352,7 @@ export function createMissionMcpNodeHandler({
       async ({ deviceId, snapshotId, elementKey, index }) => {
         try {
           return textResult(
-            await invoke(deviceId || 'mac-primary', 'browser.click', {
+            await invoke(defaultDeviceId(deviceId), 'browser.click', {
               snapshotId,
               elementKey,
               index,
@@ -376,7 +379,7 @@ export function createMissionMcpNodeHandler({
       async ({ deviceId, snapshotId, elementKey, index, text }) => {
         try {
           return textResult(
-            await invoke(deviceId || 'mac-primary', 'browser.type', {
+            await invoke(defaultDeviceId(deviceId), 'browser.type', {
               snapshotId,
               elementKey,
               index,
@@ -401,7 +404,7 @@ export function createMissionMcpNodeHandler({
       },
       async ({ deviceId, x = 0, y = 600 }) => {
         try {
-          return textResult(await invoke(deviceId || 'mac-primary', 'browser.scroll', { x, y }));
+          return textResult(await invoke(defaultDeviceId(deviceId), 'browser.scroll', { x, y }));
         } catch (error) {
           return errorResult(error);
         }
@@ -420,7 +423,7 @@ export function createMissionMcpNodeHandler({
       },
       async ({ deviceId, url, tabId }) => {
         try {
-          return textResult(await invoke(deviceId || 'mac-primary', 'browser.open_url', { url, tabId }));
+          return textResult(await invoke(defaultDeviceId(deviceId), 'browser.open_url', { url, tabId }));
         } catch (error) {
           return errorResult(error);
         }
@@ -438,7 +441,7 @@ export function createMissionMcpNodeHandler({
         }),
       },
       async ({ deviceId, root, directory = '' }) => {
-        try { return textResult(await invoke(deviceId || 'mac-primary', 'file.list', { root, directory })); }
+        try { return textResult(await invoke(defaultDeviceId(deviceId), 'file.list', { root, directory })); }
         catch (error) { return errorResult(error); }
       },
     );
@@ -456,11 +459,33 @@ export function createMissionMcpNodeHandler({
         }),
       },
       async ({ deviceId, sourceRoot, sourcePath, destinationRoot, destinationPath }) => {
-        try { return textResult(await invoke(deviceId || 'mac-primary', 'file.move',
+        try { return textResult(await invoke(defaultDeviceId(deviceId), 'file.move',
           { sourceRoot, sourcePath, destinationRoot, destinationPath })); }
         catch (error) { return errorResult(error); }
       },
     );
+
+    registerTool('file_read', {
+      description: 'Read one UTF-8 text file up to 1 MB within Desktop, Documents, or Downloads on the paired device. Its content enters the selected model context.',
+      inputSchema: z.object({ deviceId: z.string().optional(),
+        root: z.enum(['Desktop', 'Documents', 'Downloads']),
+        path: z.string().min(1).max(2000) }),
+    }, async ({ deviceId, root, path }) => {
+      try { return textResult(await invoke(defaultDeviceId(deviceId), 'file.read', { root, path })); }
+      catch (error) { return errorResult(error); }
+    });
+
+    registerTool('file_write', {
+      description: 'Create or update one UTF-8 text file up to 1 MB within Desktop, Documents, or Downloads. An update requires the sha256 from the latest read.',
+      inputSchema: z.object({ deviceId: z.string().optional(),
+        root: z.enum(['Desktop', 'Documents', 'Downloads']),
+        path: z.string().min(1).max(2000), text: z.string().max(1_000_000),
+        expectedSha256: z.string().regex(/^[a-f0-9]{64}$/).optional() }),
+    }, async ({ deviceId, root, path, text, expectedSha256 }) => {
+      try { return textResult(await invoke(defaultDeviceId(deviceId), 'file.write',
+        { root, path, text, expectedSha256 })); }
+      catch (error) { return errorResult(error); }
+    });
 
     registerTool(
       'mac_active_app',
@@ -470,7 +495,7 @@ export function createMissionMcpNodeHandler({
       },
       async ({ deviceId }) => {
         try {
-          return textResult(await invoke(deviceId || 'mac-primary', 'mac.active_app', {}));
+          return textResult(await invoke(defaultDeviceId(deviceId), 'mac.active_app', {}));
         } catch (error) {
           return errorResult(error);
         }
@@ -488,7 +513,7 @@ export function createMissionMcpNodeHandler({
       },
       async ({ deviceId, name }) => {
         try {
-          return textResult(await invoke(deviceId || 'mac-primary', 'mac.open_app', { name }));
+          return textResult(await invoke(defaultDeviceId(deviceId), 'mac.open_app', { name }));
         } catch (error) {
           return errorResult(error);
         }
@@ -503,7 +528,7 @@ export function createMissionMcpNodeHandler({
       },
       async ({ deviceId }) => {
         try {
-          const result = await invoke(deviceId || 'mac-primary', 'mac.screenshot', {});
+          const result = await invoke(defaultDeviceId(deviceId), 'mac.screenshot', {});
           if (!result?.base64 || !result?.mimeType) return textResult(result);
           return {
             content: [{ type: 'image', data: result.base64, mimeType: result.mimeType },
@@ -528,7 +553,7 @@ export function createMissionMcpNodeHandler({
       },
       async ({ deviceId, screenshotId, x, y }) => {
         try {
-          return textResult(await invoke(deviceId || 'mac-primary', 'mac.click', { screenshotId, x, y }));
+          return textResult(await invoke(defaultDeviceId(deviceId), 'mac.click', { screenshotId, x, y }));
         } catch (error) {
           return errorResult(error);
         }
@@ -547,7 +572,7 @@ export function createMissionMcpNodeHandler({
       },
       async ({ deviceId, text, expectedApp }) => {
         try {
-          return textResult(await invoke(deviceId || 'mac-primary', 'mac.type', { text, expectedApp }));
+          return textResult(await invoke(defaultDeviceId(deviceId), 'mac.type', { text, expectedApp }));
         } catch (error) {
           return errorResult(error);
         }
@@ -566,7 +591,7 @@ export function createMissionMcpNodeHandler({
       },
       async ({ deviceId, key, expectedApp }) => {
         try {
-          return textResult(await invoke(deviceId || 'mac-primary', 'mac.key', { key, expectedApp }));
+          return textResult(await invoke(defaultDeviceId(deviceId), 'mac.key', { key, expectedApp }));
         } catch (error) {
           return errorResult(error);
         }

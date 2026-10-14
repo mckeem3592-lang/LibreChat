@@ -1,15 +1,16 @@
 # Local mutation approval
 
-Mac and Chrome mutations require a text-only local terminal preview of the exact
-tool and arguments, followed by exactly `y` and Enter for that one operation.
-Approval cannot arrive in remote tool arguments. It expires with the request;
-concurrent mutations are rejected. Read-only inventory/state/screenshot calls
-remain available.
+The Windows and Mac installers allow a fixed set of browser actions and scoped
+file writes and moves to run in the background. The Windows list is saved in the
+per-user bridge settings; the Mac list is in its LaunchAgent. Local file access
+stays within Desktop, Documents, and Downloads. Remote tool arguments cannot
+extend the list.
 
-The launchd background companion has no interactive terminal, so it fails closed
-with `local_manual_approval_required`. It must not start a foreground terminal or
-silently bypass this checkpoint. A user-controlled interactive session will be
-needed for mutation validation. This document does not authorize starting it.
+Other mutations require a text-only local terminal preview of the exact tool
+and arguments, followed by exactly `y` and Enter for that one operation.
+Approval expires with the request; concurrent mutations are rejected. A hidden
+background companion has no interactive terminal, so those operations fail with
+`local_manual_approval_required`.
 
 The code-worker installer now integrates this shared checkpoint into the pinned
 worker before coding dispatch. Its build and synthetic daemon-refusal test are

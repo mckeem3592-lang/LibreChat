@@ -557,9 +557,11 @@ const mcpOptions = {
 const missionMcp = createMissionMcpNodeHandler(mcpOptions);
 const deviceMcp = createMissionMcpNodeHandler({
   ...mcpOptions,
-  allowedTools: new Set(['mission_readiness', 'browser_list_tabs', 'browser_open_new_tab',
+  allowedTools: new Set(['mission_readiness', 'browser_list_tabs', 'browser_activate_tab', 'browser_open_new_tab',
     'browser_close_tabs', 'browser_get_state', 'browser_click', 'browser_type',
-    'browser_scroll', 'browser_open_url', 'file_list', 'file_move']),
+    'browser_scroll', 'browser_open_url', 'file_list', 'file_read', 'file_write',
+    'file_move', 'mac_active_app', 'mac_open_app', 'mac_screenshot', 'mac_click',
+    'mac_type', 'mac_key']),
 });
 
 /* -------------------------------------------------------------------------- */

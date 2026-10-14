@@ -125,6 +125,11 @@ const GITHUB_EDITOR = FREE_BASELINE && RUNTIME_ENV.MISSION_AI_GITHUB_EDITOR === 
 const GITHUB_SERVER = 'github-code-editor';
 const DEVICE_MCP = GITHUB_EDITOR && RUNTIME_ENV.MISSION_AI_DEVICE_MCP_ENABLED === 'true';
 const DEVICE_SERVER = 'mission-ai-device';
+const DEVICE_SPECS = new Set([
+  'mission-ai-gpt-luna', 'mission-ai-gpt-4o', 'mission-ai-gpt-sol',
+  'mission-ai-gpt-astra', 'mission-ai-claude-haiku',
+  'mission-ai-claude-sonnet', 'mission-ai-claude-opus',
+]);
 
 const GOOGLE_ENDPOINT = 'MissionAI';
 const CLAUDE_ENDPOINT = 'MissionAIClaude';
@@ -631,12 +636,15 @@ function chatBody(value: unknown): ObjectValue {
         if (approved.name === 'mission-ai-project-manager') {
           sameStrings(value, [GITHUB_SERVER]);
         } else if (GITHUB_EDITOR && (approved.spec.endpoint === CLAUDE_ENDPOINT ||
-            approved.name === 'mission-ai-claude-sonnet')) {
+            approved.name === 'mission-ai-claude-sonnet' ||
+            DEVICE_MCP && DEVICE_SPECS.has(approved.name))) {
           /* A prior Project Manager selection can persist its MCP badge in an
            * ordinary Claude chat. Admit that one stale selection but drop it. */
           if (!Array.isArray(value) ||
               (value.length !== 0 &&
-               (value.length !== 1 || ![GITHUB_SERVER, ...(DEVICE_MCP ? [DEVICE_SERVER] : [])].includes(value[0])))) throw new Error();
+               (value.length !== 1 || ![...(approved.spec.endpoint === CLAUDE_ENDPOINT ||
+                 approved.name === 'mission-ai-claude-sonnet' ? [GITHUB_SERVER] : []),
+                 ...(DEVICE_MCP ? [DEVICE_SERVER] : [])].includes(value[0])))) throw new Error();
         } else emptyArray(value);
       }
       else if (key === 'artifacts' && (value === '' ||
@@ -1207,7 +1215,7 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
 
     if (name === 'mission-ai-project-manager') {
       sameStrings(spec.mcpServers, [GITHUB_SERVER]);
-    } else if (DEVICE_MCP && name === 'mission-ai-claude-sonnet') {
+    } else if (DEVICE_MCP && DEVICE_SPECS.has(name)) {
       sameStrings(spec.mcpServers, [DEVICE_SERVER]);
     } else if (spec.mcpServers != null) throw new Error();
 
@@ -1374,7 +1382,7 @@ export function createManagedChatConfigGuard(
       const steer = (req.originalUrl ?? req.url) === '/api/agents/chat/steer';
       req.body = steer ? managedSteerBody(req.body, 'send') : chatBody(req.body);
       if (!steer && GITHUB_EDITOR && (object(req.body).spec === 'mission-ai-project-manager' ||
-          (DEVICE_MCP && object(req.body).spec === 'mission-ai-claude-sonnet')) &&
+          (DEVICE_MCP && DEVICE_SPECS.has(String(object(req.body).spec)))) &&
           (!options.ownerEmail || req.user?.email?.toLowerCase() !==
             options.ownerEmail.toLowerCase())) throw new Error();
     } catch {

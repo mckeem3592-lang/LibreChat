@@ -106,6 +106,7 @@ cat > "$PLIST" <<PLIST
     <key>MISSION_AI_BROWSER_PORT</key><string>${MISSION_AI_BROWSER_PORT:-8766}</string>
     <key>MISSION_AI_APPROVAL_MODE</key><string>chat</string>
     <key>MISSION_AI_ALLOWED_APPS</key><string>${MISSION_AI_ALLOWED_APPS:-Google Chrome,Finder,Microsoft Excel,Microsoft Word,Microsoft PowerPoint}</string>
+    <key>MISSION_AI_AUTONOMOUS_TOOLS</key><string>browser.activate_tab,browser.open_new_tab,browser.open_url_direct,browser.close_tabs,browser.click,browser.type,browser.scroll,browser.open_url,file.move,file.write,mac.open_app,mac.click,mac.type,mac.key</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
