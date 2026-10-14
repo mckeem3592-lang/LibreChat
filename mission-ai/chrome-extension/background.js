@@ -3,6 +3,9 @@ import { createSnapshot, pageUrlAllowed, validateSnapshot } from './browser-snap
 const NATIVE_HOST = 'com.missionai.browser_bridge';
 let latestSnapshot = null;
 let nativePort = null;
+let directSocket = null;
+let directConnecting = false;
+let directKeepalive = null;
 let transportConnected = false;
 let lastConnectionError = 'native_host_not_connected';
 let reconnectTimer = null;
@@ -22,6 +25,65 @@ function scheduleReconnect() {
   }, delay);
 }
 
+async function handleBrowserTool(message, send) {
+  if (message?.type !== 'browser_tool' || typeof message.id !== 'string') return;
+  try {
+    send({ type: 'browser_result', id: message.id, ok: true,
+      result: await execute(message.tool, message.args || {}) });
+  } catch (error) {
+    send({ type: 'browser_result', id: message.id, ok: false,
+      error: error instanceof Error ? error.message : 'browser_error' });
+  }
+}
+
+async function connectDirect() {
+  if (directConnecting || directSocket) return;
+  directConnecting = true;
+  try {
+    const response = await fetch('http://127.0.0.1:8766/browser/pair', {
+      cache: 'no-store', signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) throw new Error('local_bridge_pair_failed');
+    const { browserToken } = await response.json();
+    if (typeof browserToken !== 'string' || !/^[A-Za-z0-9_-]{32,}$/.test(browserToken)) {
+      throw new Error('local_bridge_token_invalid');
+    }
+    const socket = new WebSocket(`ws://127.0.0.1:8766/browser?token=${encodeURIComponent(browserToken)}`);
+    directSocket = socket;
+    socket.onopen = () => {
+      transportConnected = true;
+      lastConnectionError = null;
+      reconnectAttempt = 0;
+      directKeepalive = setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'ping' }));
+      }, 20_000);
+    };
+    socket.onmessage = (event) => {
+      try {
+        handleBrowserTool(JSON.parse(event.data), result => {
+          if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(result));
+        });
+      } catch { /* Ignore malformed local transport messages. */ }
+    };
+    socket.onerror = () => { lastConnectionError = 'local_bridge_websocket_failed'; };
+    socket.onclose = () => {
+      if (directKeepalive) clearInterval(directKeepalive);
+      directKeepalive = null;
+      if (directSocket !== socket) return;
+      directSocket = null;
+      transportConnected = false;
+      lastConnectionError ||= 'local_bridge_disconnected';
+      scheduleReconnect();
+    };
+  } catch (error) {
+    transportConnected = false;
+    lastConnectionError = error instanceof Error ? error.message : 'local_bridge_unavailable';
+    scheduleReconnect();
+  } finally {
+    directConnecting = false;
+  }
+}
+
 function connectNative() {
   if (nativePort) return;
   try {
@@ -29,7 +91,7 @@ function connectNative() {
     nativePort = port;
     lastConnectionError = 'connecting_native_host';
 
-    port.onMessage.addListener(async (message) => {
+    port.onMessage.addListener((message) => {
       if (message?.type === 'status') {
         transportConnected = message.connected === true;
         lastConnectionError = transportConnected ? null : (message.error || 'native_host_disconnected');
@@ -37,24 +99,7 @@ function connectNative() {
         return;
       }
 
-      if (message?.type !== 'browser_tool' || typeof message.id !== 'string') return;
-
-      try {
-        const result = await execute(message.tool, message.args || {});
-        port.postMessage({
-          type: 'browser_result',
-          id: message.id,
-          ok: true,
-          result,
-        });
-      } catch (error) {
-        port.postMessage({
-          type: 'browser_result',
-          id: message.id,
-          ok: false,
-          error: error instanceof Error ? error.message : 'browser_error',
-        });
-      }
+      handleBrowserTool(message, result => port.postMessage(result));
     });
 
     port.onDisconnect.addListener(() => {
@@ -62,7 +107,7 @@ function connectNative() {
       if (nativePort === port) nativePort = null;
       transportConnected = false;
       lastConnectionError = error;
-      scheduleReconnect();
+      connectDirect();
     });
 
     port.postMessage({ type: 'ping' });
@@ -70,7 +115,7 @@ function connectNative() {
     nativePort = null;
     transportConnected = false;
     lastConnectionError = error instanceof Error ? error.message : 'native_host_connect_failed';
-    scheduleReconnect();
+    connectDirect();
   }
 }
 
@@ -332,6 +377,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (nativePort) {
       try { nativePort.disconnect(); } catch {}
       nativePort = null;
+    }
+    if (directSocket) {
+      const socket = directSocket;
+      directSocket = null;
+      socket.close();
     }
     connectNative();
     sendResponse({ ok: true });
