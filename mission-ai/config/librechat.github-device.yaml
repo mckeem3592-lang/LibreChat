@@ -219,7 +219,7 @@ modelSpecs:
   list:
     - name: 'mission-ai-project-manager'
       label: 'Mission AI Project Manager — Claude Sonnet 5.5 (Paid)'
-      mcpServers: [github-code-editor, mission-ai-device]
+      mcpServers: [github-code-editor, mission-ai-device, mission-ai-local-documents]
       preset:
         endpoint: 'MissionAIClaudeCached'
         model: 'claude-sonnet-5-5'
@@ -289,7 +289,7 @@ modelSpecs:
 
     - name: 'mission-ai-gpt-luna'
       label: 'Mission AI — GPT-6 Luna (Paid — Manual)'
-      mcpServers: [mission-ai-device]
+      mcpServers: [mission-ai-device, mission-ai-local-documents]
       preset:
         endpoint: 'MissionAIOpenAI'
         model: 'gpt-6-luna'
@@ -308,7 +308,7 @@ modelSpecs:
 
     - name: 'mission-ai-gpt-4o'
       label: 'Mission AI — GPT-4o (Paid — Manual)'
-      mcpServers: [mission-ai-device]
+      mcpServers: [mission-ai-device, mission-ai-local-documents]
       preset:
         endpoint: 'MissionAIOpenAI'
         model: 'gpt-4o'
@@ -327,7 +327,7 @@ modelSpecs:
 
     - name: 'mission-ai-gpt-sol'
       label: 'Mission AI — GPT-6 Sol (Paid — Manual)'
-      mcpServers: [mission-ai-device]
+      mcpServers: [mission-ai-device, mission-ai-local-documents]
       preset:
         endpoint: 'MissionAIOpenAI'
         model: 'gpt-6-sol'
@@ -346,7 +346,7 @@ modelSpecs:
 
     - name: 'mission-ai-gpt-astra'
       label: 'Mission AI — GPT-6 Astra (Paid — Manual)'
-      mcpServers: [mission-ai-device]
+      mcpServers: [mission-ai-device, mission-ai-local-documents]
       preset:
         endpoint: 'MissionAIOpenAI'
         model: 'gpt-6-astra'
@@ -365,7 +365,7 @@ modelSpecs:
 
     - name: 'mission-ai-claude-haiku'
       label: 'Mission AI — Claude Haiku 4.5 (Paid — Manual)'
-      mcpServers: [mission-ai-device]
+      mcpServers: [mission-ai-device, mission-ai-local-documents]
       preset:
         endpoint: 'MissionAIClaude'
         model: 'claude-haiku-4-5'
@@ -384,7 +384,7 @@ modelSpecs:
 
     - name: 'mission-ai-claude-sonnet'
       label: 'Mission AI — Claude Sonnet 5.5 (Paid — Manual)'
-      mcpServers: [mission-ai-device]
+      mcpServers: [mission-ai-device, mission-ai-local-documents]
       preset:
         endpoint: 'MissionAIClaudeCached'
         model: 'claude-sonnet-5-5'
@@ -405,7 +405,7 @@ modelSpecs:
 
     - name: 'mission-ai-claude-opus'
       label: 'Mission AI — Claude Opus 5.5 (Paid — Manual)'
-      mcpServers: [mission-ai-device]
+      mcpServers: [mission-ai-device, mission-ai-local-documents]
       preset:
         endpoint: 'MissionAIClaude'
         model: 'claude-opus-5-5'
@@ -423,6 +423,15 @@ modelSpecs:
           Keep all provider switching manual.
 
 mcpServers:
+  mission-ai-local-documents:
+    title: Mission AI Local Documents
+    type: streamable-http
+    url: '${LOCAL_MCP_PUBLIC_URL}'
+    headers:
+      Authorization: 'Bearer ${LOCAL_MCP_TOKEN}'
+    requiresOAuth: false
+    timeout: 120000
+    chatMenu: false
   mission-ai-device:
     title: Mission AI Device
     type: streamable-http
