@@ -14,6 +14,7 @@ const mockDragDropContext = {
 let mockProvider: string | undefined = 'Custom Provider';
 /* Saved agent ids carry the `agent_` prefix; anything else reads as ephemeral. */
 let mockAgentId: string | undefined = 'agent_saved01';
+let mockFileConfigQuerySucceeded = true;
 
 jest.mock('~/Providers', () => ({
   useDragDropContext: () => mockDragDropContext,
@@ -37,13 +38,19 @@ jest.mock('~/data-provider', () => ({
       .mergeFileConfig({ endpoints: { 'Custom Provider': { legacyFileUploadUX: true } } }),
     isError: false,
     isPaused: false,
-    isSuccess: true,
+    isSuccess: mockFileConfigQuerySucceeded,
   }),
 }));
 
 const render = () => renderHook(() => useUploadOptions(), { wrapper: RecoilRoot });
 
 describe('useUploadOptions endpoint resolution', () => {
+  beforeEach(() => {
+    mockProvider = 'Custom Provider';
+    mockAgentId = 'agent_saved01';
+    mockFileConfigQuerySucceeded = true;
+  });
+
   it('applies the agent provider policy rather than the agents entry', () => {
     /* An agent conversation carries endpoint `agents`, but a named custom provider
      * configures its own entry. Reading the conversation endpoint missed it, so a
@@ -53,6 +60,15 @@ describe('useUploadOptions endpoint resolution', () => {
     const { result } = render();
 
     expect(result.current.isUnifiedMode).toBe(false);
+  });
+
+  it('accepts a seeded startup policy after the separate query fails', () => {
+    mockFileConfigQuerySucceeded = false;
+
+    const { result } = render();
+
+    expect(result.current.isConfigResolved).toBe(true);
+    expect(result.current.isConfigPending).toBe(false);
   });
 
   it('falls back to the conversation endpoint when no provider is resolved', () => {
