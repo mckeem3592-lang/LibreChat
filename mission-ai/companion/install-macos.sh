@@ -54,7 +54,8 @@ if [[ -n "${MISSION_AI_DEVICE_TOKEN:-}" ]]; then
   unset MISSION_AI_DEVICE_TOKEN
 fi
 
-if ! security find-generic-password -a "$USER" -s "$DEVICE_SERVICE" -w >/dev/null 2>&1; then
+if [[ "${MISSION_AI_REPAIR_PAIR:-false}" == true || -n "${MISSION_AI_PAIR_CODE:-}" ]] ||
+   ! security find-generic-password -a "$USER" -s "$DEVICE_SERVICE" -w >/dev/null 2>&1; then
   zsh "$ROOT_DIR/pair-macos.sh"
 fi
 

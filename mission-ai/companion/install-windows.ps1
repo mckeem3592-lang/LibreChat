@@ -22,7 +22,7 @@ Set-Location $destination
 if ($LASTEXITCODE -ne 0) { throw 'Companion dependency installation failed.' }
 
 $hasCredential = & $node --input-type=module -e 'import {readSecret} from "./keychain.js"; process.stdout.write((await readSecret("mission-ai-device-token")) ? "yes" : "no")'
-if ($hasCredential -ne 'yes') {
+if ($hasCredential -ne 'yes' -or $env:MISSION_AI_REPAIR_PAIR -eq 'true') {
   & $node (Join-Path $destination 'pair-windows.js')
   if ($LASTEXITCODE -ne 0) { throw 'Device pairing failed; no background service was installed.' }
 }
