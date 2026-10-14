@@ -535,15 +535,18 @@ function connectGateway() {
         return;
       }
       gatewayAlive = false;
-      ws.ping();
+      ws.send(JSON.stringify({ type: 'device_heartbeat' }));
     }, 15_000);
   });
-  ws.on('pong', () => { gatewayAlive = true; });
   ws.on('message', async (raw) => {
     let message;
     try {
       message = JSON.parse(raw.toString());
     } catch {
+      return;
+    }
+    if (message?.type === 'device_heartbeat_ack') {
+      gatewayAlive = true;
       return;
     }
     if (message?.type !== 'tool' || typeof message.id !== 'string') return;
