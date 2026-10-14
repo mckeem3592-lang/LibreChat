@@ -92,8 +92,8 @@ const addTitle = async (
     }
     if (freeTitles) {
       const source = String(text || getAttachmentTitleText(req?.body?.files) || '')
-        .replace(/[\\r\\n\\t]+/g, ' ')
-        .replace(/\\s+/g, ' ')
+        .replace(/[\r\n\t]+/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
       const limited = source.slice(0, 60);
       const lastSpace = source.length > 60 ? limited.lastIndexOf(' ') : -1;
