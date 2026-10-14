@@ -7,9 +7,15 @@ if ($major -lt 20) { throw 'Node.js 20 or newer is required.' }
 
 $source = $PSScriptRoot
 $destination = Join-Path $env:LOCALAPPDATA 'MissionAI\Bridge'
+$extensionSource = Join-Path (Split-Path -Parent $source) 'chrome-extension'
+$extensionDestination = Join-Path $env:LOCALAPPDATA 'MissionAI\ChromeExtension'
+if (-not (Test-Path (Join-Path $extensionSource 'manifest.json'))) { throw 'Chrome extension package is missing.' }
 New-Item -ItemType Directory -Force -Path $destination | Out-Null
+New-Item -ItemType Directory -Force -Path $extensionDestination | Out-Null
 Get-ChildItem -Path $source -File | Where-Object { $_.Extension -in '.js', '.json', '.cs' } |
   ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $destination -Force }
+Get-ChildItem -Path $extensionSource -File |
+  ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $extensionDestination -Force }
 
 Set-Location $destination
 & (Get-Command npm.cmd -ErrorAction Stop).Source ci --omit=dev --no-audit --no-fund
@@ -46,5 +52,5 @@ Register-ScheduledTask -TaskName 'MissionAICompanion' -Action $action -Trigger $
 Start-ScheduledTask -TaskName 'MissionAICompanion'
 
 Write-Host 'Mission AI companion installed for this Windows account.'
-Write-Host 'Next: Chrome > Extensions > Developer mode > Load unpacked, then select the chrome-extension folder in this download.'
+Write-Host "Next: Chrome > Extensions > Developer mode > Load unpacked, then select $extensionDestination"
 Write-Host 'The companion works with selected tabs in the background after the Chrome extension connects.'
