@@ -1,4 +1,5 @@
 const express = require('express');
+const { logger } = require('@librechat/data-schemas');
 const {
   createFileUsageLimiter,
   createFileLimiters,
@@ -23,6 +24,22 @@ const initialize = async () => {
   router.use(configMiddleware);
   router.use(checkBan);
   router.use(uaParser);
+
+  // Record the failing stage without logging file contents or credentials.
+  router.use((req, res, next) => {
+    if (req.method === 'POST' && req.path === '/') {
+      res.on('finish', () => {
+        if (res.statusCode === 403) {
+          logger.warn('[files/upload] Request denied', {
+            role: req.user?.role,
+            endpoint: req.body?.endpoint,
+            toolResource: req.body?.tool_resource ?? null,
+          });
+        }
+      });
+    }
+    next();
+  });
 
   const upload = await createMulterInstance();
   router.post('/speech/stt', upload.single('audio'), restoreTenantContextFromReq);
