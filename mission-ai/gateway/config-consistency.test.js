@@ -10,14 +10,16 @@ test('routing config includes required route classes', async () => {
   }
 });
 
-test('LibreChat configs omit Tavily and pin keyless search only for the chat test profile', async () => {
+test('LibreChat keeps legacy config separate and pins bounded Tavily search for the chat test profile', async () => {
   const text = await readFile(new URL('../config/librechat.mission-ai.yaml', import.meta.url), 'utf8');
   assert.doesNotMatch(text, /tavily/i);
   const chat = await readFile(new URL('../config/librechat.github-editor.yaml', import.meta.url), 'utf8');
-  assert.match(chat, /searchProvider:\s*keenable/);
+  assert.match(chat, /searchProvider:\s*tavily/);
   assert.match(chat, /scraperProvider:\s*keenable/);
   assert.match(chat, /rerankerType:\s*none/);
-  assert.doesNotMatch(chat, /tavilyApiKey:|keenableApiKey:/i);
+  assert.match(chat, /tavilyApiKey:\s*'\$\{TAVILY_API_KEY\}'/);
+  assert.match(chat, /maxResults:\s*4/);
+  assert.doesNotMatch(chat, /keenableApiKey:/i);
 });
 
 test('LibreChat Mission AI config keeps scheduled and background work enabled', async () => {

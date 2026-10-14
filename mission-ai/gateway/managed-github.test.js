@@ -7,6 +7,7 @@ process.env.MISSION_AI_FREE_BASELINE = 'true';
 process.env.MISSION_AI_GITHUB_EDITOR = 'true';
 process.env.MISSION_AI_GITHUB_MCP_TOKEN = 'github_pat_offline_test_token_abcdefghijklmnopqrstuvwxyz0123456789';
 process.env.GOOGLE_KEY = 'fake-google-key-for-local-tests';
+process.env.TAVILY_API_KEY = 'fake-tavily-key-for-local-tests';
 const { createManagedToolAdmission, createManagedToolConfigGuard } =
   await import('./generated/managedTools.js');
 const { createManagedChatConfigGuard, createManagedChatAdmission } =

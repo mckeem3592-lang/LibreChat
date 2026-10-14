@@ -70,7 +70,11 @@ For T2 or T3, do not begin the substantive work while this free-baseline model i
 Tell the user plainly: "This needs a paid model for reliable results. Please select
 <cheapest approved model> in the model menu." Give one short reason and stop.
 Do not use route codes or a routing banner. Do not repeat a paid-model recommendation
-on ordinary follow-ups unless the scope materially changes.`;
+on ordinary follow-ups unless the scope materially changes.
+Simple factual questions and live lookups, including sports standings, schedules,
+weather, product availability, and prices, are T0 or T1. Answer them on Gemini.
+When server-supplied search results appear, use them for current facts and never
+say you lack live access. Do not repeat an old route banner from chat history.`;
 
 const PAID_MODEL_PROMPT = `MISSION AI PAID MODEL GUARD v1
 
