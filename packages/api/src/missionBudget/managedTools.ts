@@ -55,13 +55,16 @@ const GITHUB_RESTORED_PARAMS = ['maxOutputTokens', 'effort', 'thinking', 'prompt
 function githubResumeEnvelope(input: unknown, restored = false): Json {
   const body = object(input); exactKeys(body, restored
     ? [...RESUME_FIELDS, ...GITHUB_RESTORED_PARAMS] : RESUME_FIELDS);
-  const device = GITHUB_DEVICE && body.endpoint === 'MissionAIClaudeCached' &&
-    body.spec === 'mission-ai-claude-sonnet';
+  const nativeDevice = GITHUB_DEVICE && body.endpoint === 'MissionAIClaudeCached';
+  const device = nativeDevice && body.spec === 'mission-ai-claude-sonnet';
+  const projectDevice = nativeDevice && body.spec === 'mission-ai-project-manager';
+  const legacyProject = body.endpoint === 'MissionAIClaude' &&
+    body.spec === 'mission-ai-project-manager';
   for (const key of ['conversationId', 'actionId']) {
     if (typeof body[key] !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(body[key] as string)) throw new Error();
   }
   if (!Number.isSafeInteger(body.generationCreatedAt) || Number(body.generationCreatedAt) < 0 ||
-      !(device || (body.endpoint === 'MissionAIClaude' && body.spec === 'mission-ai-project-manager')) ||
+      !(device || projectDevice || legacyProject) ||
       body.model !== 'claude-sonnet-5-5' ||
       (body.endpointType != null && body.endpointType !== 'custom') ||
       (body.generationProtocolVersion != null && body.generationProtocolVersion !== 2) ||
@@ -71,7 +74,8 @@ function githubResumeEnvelope(input: unknown, restored = false): Json {
     const agent = object(body.ephemeralAgent);
     exactKeys(agent, ['mcp', 'execute_code', 'memory', 'web_search', 'file_search',
       'artifacts', 'skills', 'ask_user_question', 'run_in_background', 'describe_intent']);
-    same(agent.mcp, [device ? 'mission-ai-device' : 'github-code-editor']);
+    same(agent.mcp, projectDevice ? ['github-code-editor', 'mission-ai-device'] :
+      device ? ['mission-ai-device'] : ['github-code-editor']);
     for (const key of ['execute_code', 'memory', 'web_search', 'file_search', 'skills',
       'ask_user_question', 'run_in_background', 'describe_intent']) {
       if (agent[key] != null && agent[key] !== false) throw new Error();
