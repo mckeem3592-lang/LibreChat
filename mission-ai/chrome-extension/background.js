@@ -169,7 +169,7 @@ async function execute(tool, args) {
         return [tag, type, name, aria, text].join('|').slice(0, 400);
       };
 
-      const elements = [...document.querySelectorAll('a,button,input,textarea,select,[role="button"]')]
+      const elements = [...document.querySelectorAll('a,button,input,textarea,select,[role="button"],[contenteditable="true"],[role="textbox"]')]
         .slice(0, 300)
         .map((el, index) => ({
           index,
@@ -220,7 +220,7 @@ async function execute(tool, args) {
 
     const result = await execInTab(tab, (elementIndex, elementKey, expectedUrl) => {
       if (location.href !== expectedUrl) throw new Error('browser_snapshot_stale');
-      const all = [...document.querySelectorAll('a,button,input,textarea,select,[role="button"]')]
+      const all = [...document.querySelectorAll('a,button,input,textarea,select,[role="button"],[contenteditable="true"],[role="textbox"]')]
         .slice(0, 300);
       const el = all[elementIndex];
       if (!el) throw new Error('element_not_found');
@@ -260,10 +260,11 @@ async function execute(tool, args) {
 
     const result = await execInTab(tab, (elementIndex, elementKey, text, expectedUrl) => {
       if (location.href !== expectedUrl) throw new Error('browser_snapshot_stale');
-      const all = [...document.querySelectorAll('a,button,input,textarea,select,[role="button"]')]
+      const all = [...document.querySelectorAll('a,button,input,textarea,select,[role="button"],[contenteditable="true"],[role="textbox"]')]
         .slice(0, 300);
       const el = all[elementIndex];
-      if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
+      if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ||
+          (el instanceof HTMLElement && el.isContentEditable))) {
         throw new Error('element_not_text_input');
       }
       const keyFor = (node) => {
@@ -282,12 +283,20 @@ async function execute(tool, args) {
       if (el instanceof HTMLInputElement && el.type === 'password') {
         throw new Error('password_field_denied');
       }
+      if (el.closest('[type="password"],[autocomplete*="password"]') ||
+          /password|passcode|verification code/i.test(el.getAttribute('aria-label') || '')) {
+        throw new Error('credential_field_denied');
+      }
       if (el.disabled || el.readOnly) throw new Error('element_not_editable');
       el.focus();
-      const setter =
-        Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value')?.set ||
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-      setter?.call(el, text);
+      if (el.isContentEditable && !(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
+        el.textContent = text;
+      } else {
+        const setter =
+          Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value')?.set ||
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+        setter?.call(el, text);
+      }
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
       return { typed: elementIndex, length: text.length };
