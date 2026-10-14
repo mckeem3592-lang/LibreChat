@@ -1,7 +1,8 @@
 import { logger } from '@librechat/data-schemas';
 import { excludedKeys, isAgentsEndpoint, isEphemeralAgentId } from 'librechat-data-provider';
 import type { AppConfig, ConversationMethods, IConversation } from '@librechat/data-schemas';
-import type { TConversation } from 'librechat-data-provider';
+import type { TConversation, FiltersConfig } from 'librechat-data-provider';
+import { resolveConversationTitle } from '../protection/title';
 
 type SaveConvo = ConversationMethods['saveConvo'];
 type SaveConvoOptions = NonNullable<Parameters<SaveConvo>[2]>;
@@ -14,8 +15,8 @@ export type ConversationWriteContext = Parameters<SaveConvo>[0];
 /** The request state a turn's conversation writes read and update. */
 export interface TurnConversationRequest {
   user?: { id?: string };
-  body?: { isTemporary?: boolean };
-  config?: { interfaceConfig?: AppConfig['interfaceConfig'] };
+  body?: { isTemporary?: boolean; text?: string };
+  config?: { interfaceConfig?: AppConfig['interfaceConfig']; filters?: FiltersConfig };
   /** Server-captured creation time, stamped only when a write inserts the row. */
   conversationCreatedAt?: string;
   /** `null` once looked up and absent; unset until something has read it. */
@@ -135,6 +136,27 @@ async function loadExistingConversation(
   return deps.getConvo(write.ctx.userId, write.conversationId);
 }
 
+function freeInitialTitle(write: TurnConversationWrite, existing: Partial<IConversation> | null): string | null {
+  if (
+    process.env.MISSION_AI_FREE_TITLES !== 'true' ||
+    write.initialized === true ||
+    existing != null ||
+    write.req?.body?.isTemporary === true ||
+    (write.endpointOptions?.title && write.endpointOptions.title !== 'New Chat')
+  ) {
+    return null;
+  }
+  const source = write.req?.body?.text;
+  if (typeof source !== 'string') return null;
+  const normalized = source.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!normalized) return null;
+  const limited = normalized.slice(0, 60);
+  const lastSpace = normalized.length > 60 ? limited.lastIndexOf(' ') : -1;
+  const words = lastSpace > 30 ? limited.slice(0, lastSpace) : limited;
+  const candidate = words + (normalized.length > words.length ? '…' : '');
+  return resolveConversationTitle({ filters: write.req?.config?.filters, candidate });
+}
+
 async function writeConversation(
   deps: ConversationStore,
   write: TurnConversationWrite,
@@ -143,12 +165,14 @@ async function writeConversation(
 ): Promise<TurnConversationResult> {
   const { req, ctx, conversationId, endpoint, endpointType, endpointOptions = {} } = write;
   const agentOwned = isAgentOwned(write);
+  const title = freeInitialTitle(write, existing);
   const conversation = await deps.saveConvo(
     ctx,
     {
       endpoint,
       endpointType,
       ...endpointOptions,
+      ...(title != null ? { title } : {}),
       conversationId: endpointOptions.conversationId ?? conversationId,
     },
     {
@@ -276,3 +300,4 @@ export function runAfterSeed<T>(seed: Promise<void>, write: () => Promise<T>): (
   });
   return () => (seeding ? seed.then(write) : write());
 }
+
