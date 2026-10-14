@@ -1,4 +1,4 @@
-const { isEnabled } = require('@librechat/api');
+const { isEnabled, getAttachmentTitleText } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 const { CacheKeys } = require('librechat-data-provider');
 const getLogStores = require('~/cache/getLogStores');
@@ -48,11 +48,12 @@ const addTitle = async (
   },
 ) => {
   const { TITLE_CONVO = true } = process.env ?? {};
-  if (!isEnabled(TITLE_CONVO)) {
+  const freeTitles = process.env.MISSION_AI_FREE_TITLES === 'true';
+  if (!freeTitles && !isEnabled(TITLE_CONVO)) {
     return;
   }
 
-  if (client.options.titleConvo === false) {
+  if (!freeTitles && client.options.titleConvo === false) {
     return;
   }
 
@@ -89,7 +90,16 @@ const addTitle = async (
         signal.addEventListener('abort', () => abortController.abort(), { once: true });
       }
     }
-    if (client && typeof client.titleConvo === 'function') {
+    if (freeTitles) {
+      const source = String(text || getAttachmentTitleText(req?.body?.files) || '')
+        .replace(/[\\r\\n\\t]+/g, ' ')
+        .replace(/\\s+/g, ' ')
+        .trim();
+      const limited = source.slice(0, 60);
+      const lastSpace = source.length > 60 ? limited.lastIndexOf(' ') : -1;
+      const words = lastSpace > 30 ? limited.slice(0, lastSpace) : limited;
+      titlePromise = Promise.resolve(words ? words + (source.length > words.length ? '…' : '') : null);
+    } else if (client && typeof client.titleConvo === 'function') {
       titlePromise = Promise.race([
         client
           .titleConvo({
