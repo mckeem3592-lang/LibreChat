@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import {
   Constants,
   supportsFiles,
@@ -38,13 +38,9 @@ function AttachFileChat({
 
   /* Success, not merely settled: a failed or paused fetch leaves the built-in defaults in
    * place, where the absent opt-out reads as unified. */
-  const { data: fileConfig = null, isSuccess: isFileConfigLoaded, status, fetchStatus, error } =
-    useGetFileConfig({ select: (data) => mergeFileConfig(data) });
-
-  useEffect(() => {
-    console.info('[upload-config] query state', { status, fetchStatus,
-      error: error instanceof Error ? error.message : String(error ?? '') });
-  }, [status, fetchStatus, error]);
+  const { data: fileConfig = null } = useGetFileConfig({
+    select: (data) => mergeFileConfig(data),
+  });
 
   const fileConfigEndpoint = useMemo(
     () => (isAgents && agentProvider ? agentProvider : endpoint),
@@ -72,7 +68,7 @@ function AttachFileChat({
    * An ephemeral agent has no record to fetch, so waiting on one never ends. */
   const isSavedAgent =
     isAgents && conversation?.agent_id != null && !isEphemeralAgentId(conversation.agent_id);
-  const isPolicyResolved = isFileConfigLoaded && (!isSavedAgent || agentProvider != null);
+  const isPolicyResolved = fileConfig != null && (!isSavedAgent || agentProvider != null);
 
   /* Resolved here rather than in the menu: an unresolved config reads as unified, which
    * would show the wrong uploader on a legacy deployment. */
