@@ -13,7 +13,11 @@ function record(value: unknown): Json {
   return value as Json;
 }
 function keys(value: Json, allowed: string[]): void {
-  if (Object.keys(value).some((key) => !allowed.includes(key))) fail('native_field_unsupported');
+  const unsupported = Object.keys(value).filter((key) => !allowed.includes(key));
+  if (unsupported.length) {
+    console.error('Mission AI native Anthropic rejected field names:', unsupported);
+    fail('native_field_unsupported');
+  }
 }
 function text(value: unknown, maximum = MAX_BYTES, allowEmpty = false): string {
   if (typeof value !== 'string' || (!allowEmpty && !value.length) || value.length > maximum) fail();

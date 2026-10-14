@@ -22,7 +22,10 @@ export function anthropicRequest(body: Json): Json {
   }
   for (const key of ['tools', 'tool_choice', 'parallel_tool_calls', 'temperature', 'top_p',
     'seed', 'verbosity', 'user']) {
-    if (body[key] !== undefined) fail('native_field_unsupported');
+    if (body[key] !== undefined) {
+      console.error('Mission AI Anthropic adapter rejected field name:', key);
+      fail('native_field_unsupported');
+    }
   }
   for (const key of ['frequency_penalty', 'presence_penalty']) {
     if (body[key] !== undefined && body[key] !== 0) fail('native_field_unsupported');

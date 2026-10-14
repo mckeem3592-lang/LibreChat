@@ -95,7 +95,11 @@ function object(value: unknown): JsonObject {
 
 function keys(value: JsonObject, allowed: readonly string[] | Set<string>): void {
   const permitted = allowed instanceof Set ? allowed : new Set(allowed);
-  if (Object.keys(value).some((key) => !permitted.has(key))) fail('native_field_unsupported');
+  const unsupported = Object.keys(value).filter((key) => !permitted.has(key));
+  if (unsupported.length) {
+    console.error('Mission AI native OpenAI rejected field names:', unsupported);
+    fail('native_field_unsupported');
+  }
 }
 
 function text(value: unknown, max = MAX_BODY_BYTES): string {
