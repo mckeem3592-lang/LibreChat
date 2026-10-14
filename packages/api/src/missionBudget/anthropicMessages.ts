@@ -5,7 +5,6 @@ const MAX_BYTES = 1_048_576;
 const MAX_REQUEST_BYTES = 12_582_912;
 const MAX_IMAGE_BYTES = 4_194_304;
 function fail(code = 'native_request_invalid', status = 400): never {
-  if (code === 'native_request_invalid') console.error('Mission AI native Anthropic invalid shape at', new Error().stack?.split('\n')[2]?.trim());
   throw new NativeBridgeError(code, status);
 }
 function record(value: unknown): Json {
@@ -16,7 +15,6 @@ function record(value: unknown): Json {
 function keys(value: Json, allowed: string[]): void {
   const unsupported = Object.keys(value).filter((key) => !allowed.includes(key));
   if (unsupported.length) {
-    console.error('Mission AI native Anthropic rejected field names:', unsupported);
     fail('native_field_unsupported');
   }
 }
@@ -90,10 +88,13 @@ export function normalizeAnthropicMessages(value: unknown): {
     delete body.metadata;
   }
   if (body.model !== 'claude-sonnet-5-5') fail('native_model_unsupported');
-  const outputLimit = body.max_tokens;
-  console.error('Mission AI native Anthropic output token limit shape:', typeof outputLimit, typeof outputLimit === 'number' ? outputLimit : null);
-  if (typeof outputLimit !== 'number' || !Number.isSafeInteger(outputLimit) ||
-      outputLimit < 1 || outputLimit > 32768) fail();
+  const requestedOutputLimit = body.max_tokens;
+  if (typeof requestedOutputLimit !== 'number' || !Number.isSafeInteger(requestedOutputLimit) ||
+      requestedOutputLimit < 1 || requestedOutputLimit > 131072) fail();
+  // LibreChat sends the model maximum (128K) even for brief replies. Keep the
+  // gateway's smaller per-request spending ceiling and reserve the actual limit.
+  const outputLimit = Math.min(requestedOutputLimit, 32768);
+  body.max_tokens = outputLimit;
   if (body.stream !== undefined && typeof body.stream !== 'boolean') fail();
   if (body.service_tier !== undefined && body.service_tier !== 'standard_only') fail('native_tier_unsupported');
   if (body.thinking !== undefined) {

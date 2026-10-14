@@ -66,6 +66,12 @@ test('client user metadata is validated and removed before the provider request'
     /native_field_unsupported/);
   assert.deepEqual(denied.events, []);
 });
+test('LibreChat model maximum is reduced to the gateway output ceiling before reservation', async () => {
+  const normalized = normalizeAnthropicMessages(request({ max_tokens: 128000 }));
+  assert.equal(normalized.outputLimit, 32768);
+  assert.equal(normalized.body.max_tokens, 32768);
+  assert.throws(() => normalizeAnthropicMessages(request({ max_tokens: 131073 })), /native_request_invalid/);
+});
 test('paid server tools, fallback settings, cache variants and orphan results fail before reservation', async () => {
   for (const extra of [{ fallbacks: 'default' }, { model: 'claude-opus-5-5' }, { service_tier: 'auto' },
     { thinking: { type: 'adaptive' } }, { output_config: { effort: 'high' } },
