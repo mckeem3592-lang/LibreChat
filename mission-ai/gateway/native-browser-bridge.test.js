@@ -16,7 +16,7 @@ test('Chrome extension uses native messaging with a deterministic identity', asy
   ]);
   const manifest = JSON.parse(manifestRaw);
 
-  assert.equal(manifest.version, '0.4.0');
+  assert.equal(manifest.version, '0.5.2');
   assert.ok(manifest.permissions.includes('nativeMessaging'));
   assert.ok(!manifest.permissions.includes('offscreen'));
   assert.deepEqual(manifest.host_permissions, ['http://*/*', 'https://*/*']);
@@ -24,7 +24,8 @@ test('Chrome extension uses native messaging with a deterministic identity', asy
   assert.ok(background.includes("chrome.runtime.connectNative(NATIVE_HOST)"));
   assert.ok(background.includes("com.missionai.browser_bridge"));
   assert.ok(!background.includes('mission-ai-set-token'));
-  assert.ok(!background.includes('127.0.0.1:8766'));
+  assert.ok(background.includes('127.0.0.1:8766/browser/pair'));
+  assert.ok(background.includes('scheduleReconnect()'));
   assert.ok(!popup.includes('/browser/pair'));
   assert.ok(!popup.includes('browserToken'));
 });
