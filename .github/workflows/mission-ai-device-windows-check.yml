@@ -1,7 +1,8 @@
 name: Mission AI Windows companion check
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [mission-ai-v1]
 
 permissions:
   contents: read
