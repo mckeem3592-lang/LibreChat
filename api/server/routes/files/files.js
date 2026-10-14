@@ -818,6 +818,11 @@ const handleFileUpload = async (req, res) => {
         hasUploadBypass: () => hasCapability(req.user, SystemCapabilities.MANAGE_AGENTS),
       });
       if (denied) {
+        logger.warn('[files/upload] Agent upload permission denied', {
+          endpoint: metadata.endpoint,
+          role: req.user?.role,
+          hasAgentId: Boolean(metadata.agent_id),
+        });
         return;
       }
     }
@@ -854,6 +859,12 @@ const handleFileUpload = async (req, res) => {
       getRoleByName,
     });
     if (!uploadAllowed) {
+      logger.warn('[files/upload] Tool resource permission denied', {
+        endpoint: effectiveEndpoint,
+        toolResource: metadata.tool_resource ?? null,
+        effectiveToolResource: effectiveToolResource ?? null,
+        role: req.user?.role,
+      });
       return res.status(403).json({ message: 'Forbidden: Insufficient permissions' });
     }
 
