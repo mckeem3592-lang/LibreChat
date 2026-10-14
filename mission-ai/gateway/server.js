@@ -1412,6 +1412,11 @@ wss.on(
               raw.toString(),
             );
 
+          if (message?.type === 'device_heartbeat') {
+            ws.send(JSON.stringify({ type: 'device_heartbeat_ack' }));
+            return;
+          }
+
           if (
             message?.type ===
               'tool_result' &&
