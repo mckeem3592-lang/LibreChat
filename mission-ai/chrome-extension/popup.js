@@ -7,7 +7,7 @@ function refresh() {
       return;
     }
     status.textContent = response?.connected
-      ? 'Connected to Mission AI on this Mac'
+      ? 'Connected to Mission AI on this computer'
       : response?.error
         ? `Not connected: ${response.error}`
         : 'Not connected';
