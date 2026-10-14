@@ -48,18 +48,21 @@ const GITHUB_ENV = ((globalThis as unknown as {
 }).process?.env ?? {});
 const GITHUB_EDITOR = GITHUB_ENV.MISSION_AI_GITHUB_EDITOR === 'true' &&
   GITHUB_ENV.MISSION_AI_FREE_BASELINE === 'true';
+const GITHUB_DEVICE = GITHUB_EDITOR && GITHUB_ENV.MISSION_AI_DEVICE_MCP_ENABLED === 'true';
 const GITHUB_RESTORED_PARAMS = ['maxOutputTokens', 'effort', 'thinking', 'promptCache',
   'promptCacheTtl', 'maxContextTokens', 'stop', 'reasoning_effort', 'verbosity',
   'disableStreaming', 'temperature', 'top_p', 'frequency_penalty', 'presence_penalty'];
 function githubResumeEnvelope(input: unknown, restored = false): Json {
   const body = object(input); exactKeys(body, restored
     ? [...RESUME_FIELDS, ...GITHUB_RESTORED_PARAMS] : RESUME_FIELDS);
+  const device = GITHUB_DEVICE && body.endpoint === 'MissionAIClaudeCached' &&
+    body.spec === 'mission-ai-claude-sonnet';
   for (const key of ['conversationId', 'actionId']) {
     if (typeof body[key] !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(body[key] as string)) throw new Error();
   }
   if (!Number.isSafeInteger(body.generationCreatedAt) || Number(body.generationCreatedAt) < 0 ||
-      body.endpoint !== 'MissionAIClaude' || body.model !== 'claude-sonnet-5-5' ||
-      body.spec !== 'mission-ai-project-manager' ||
+      !(device || (body.endpoint === 'MissionAIClaude' && body.spec === 'mission-ai-project-manager')) ||
+      body.model !== 'claude-sonnet-5-5' ||
       (body.endpointType != null && body.endpointType !== 'custom') ||
       (body.generationProtocolVersion != null && body.generationProtocolVersion !== 2) ||
       (body.agent_id != null && (typeof body.agent_id !== 'string' || body.agent_id.length > 256)) ||
@@ -68,7 +71,7 @@ function githubResumeEnvelope(input: unknown, restored = false): Json {
     const agent = object(body.ephemeralAgent);
     exactKeys(agent, ['mcp', 'execute_code', 'memory', 'web_search', 'file_search',
       'artifacts', 'skills', 'ask_user_question', 'run_in_background', 'describe_intent']);
-    same(agent.mcp, ['github-code-editor']);
+    same(agent.mcp, [device ? 'mission-ai-device' : 'github-code-editor']);
     for (const key of ['execute_code', 'memory', 'web_search', 'file_search', 'skills',
       'ask_user_question', 'run_in_background', 'describe_intent']) {
       if (agent[key] != null && agent[key] !== false) throw new Error();
