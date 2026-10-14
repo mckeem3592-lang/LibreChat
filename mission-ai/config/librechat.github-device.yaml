@@ -52,21 +52,36 @@ speech:
     textToSpeech: false
 
 fileConfig:
+  # Built-in parsers extract PDF, Word, and spreadsheet text without a RAG service.
+  # Uploaded bytes use LibreChat's local strategy on the free Render instance.
+  serverFileSizeLimit: 10
+  textFallbackWithoutTools: true
+  defaultLLMDeliveryPath:
+    overrides:
+      application/pdf: text
+      application/vnd.openxmlformats-officedocument.wordprocessingml.document: text
+      application/vnd.ms-excel: text
+      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: text
+      application/vnd.oasis.opendocument.text: text
+      application/vnd.oasis.opendocument.spreadsheet: text
   endpoints:
     default:
-      disabled: true
+      disabled: false
+      fileLimit: 5
+      fileSizeLimit: 10
+      totalSizeLimit: 20
     agents:
-      disabled: true
+      disabled: false
     custom:
-      disabled: true
+      disabled: false
     MissionAI:
-      disabled: true
+      disabled: false
     MissionAIClaude:
-      disabled: true
+      disabled: false
     MissionAIClaudeCached:
-      disabled: true
+      disabled: false
     MissionAIOpenAI:
-      disabled: true
+      disabled: false
 
 endpoints:
   all:
