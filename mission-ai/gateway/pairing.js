@@ -19,8 +19,6 @@ export function deviceCredential(masterToken, deviceId) {
 
 export function authorizeDeviceCredential(token, masterToken, deviceId) {
   if (!token || !masterToken || !deviceId) return false;
-  // Existing Mac installations retain their credential during the migration.
-  if (deviceId === 'mac-primary' && safeEqual(token, masterToken)) return true;
   try { return safeEqual(token, deviceCredential(masterToken, deviceId)); }
   catch { return false; }
 }

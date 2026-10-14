@@ -13,6 +13,7 @@ test('pairDevice accepts one valid code then consumes it', () => {
   });
   assert.equal(authorizeDeviceCredential(deviceCredential(process.env.MISSION_AI_DEVICE_TOKEN, 'windows-work'), process.env.MISSION_AI_DEVICE_TOKEN, 'windows-work'), true);
   assert.equal(authorizeDeviceCredential(deviceCredential(process.env.MISSION_AI_DEVICE_TOKEN, 'windows-work'), process.env.MISSION_AI_DEVICE_TOKEN, 'mac-primary'), false);
+  assert.equal(authorizeDeviceCredential(process.env.MISSION_AI_DEVICE_TOKEN, process.env.MISSION_AI_DEVICE_TOKEN, 'mac-primary'), false);
   assert.throws(
     () => pairDevice({ code: 'test-code', deviceId: 'mac-primary', remoteAddress: '127.0.0.2' }),
     /pairing_consumed/,
