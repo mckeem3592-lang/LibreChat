@@ -115,7 +115,7 @@ describe('useResumeSubmit', () => {
     try {
       const missionWrapper = createWrapper(1000, {
         conversation: { conversationId: 'conversation-1', endpoint: 'MissionAI' },
-      } as React.ContextType<typeof ChatContext>);
+      } as unknown as React.ContextType<typeof ChatContext>);
       const { result } = renderHook(
         () => ({ approval: useApprovalContext(), resume: useResumeSubmit() }),
         { wrapper: missionWrapper },
