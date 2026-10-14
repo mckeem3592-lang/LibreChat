@@ -203,7 +203,7 @@ const APPROVED_SPECS: Readonly<Record<string, ApprovedSpec>> = FREE_BASELINE
         prompt: 'paid',
       }),
       'mission-ai-project-manager': Object.freeze({
-        endpoint: CLAUDE_ENDPOINT,
+        endpoint: DEVICE_MCP ? CLAUDE_CACHED_ENDPOINT : CLAUDE_ENDPOINT,
         model: 'claude-sonnet-5-5',
         default: false,
         prompt: 'project',
@@ -634,7 +634,7 @@ function chatBody(value: unknown): ObjectValue {
       if (value == null) continue;
       if (key === 'mcp') {
         if (approved.name === 'mission-ai-project-manager') {
-          sameStrings(value, [GITHUB_SERVER]);
+          sameStrings(value, [GITHUB_SERVER, ...(DEVICE_MCP ? [DEVICE_SERVER] : [])]);
         } else if (GITHUB_EDITOR && (approved.spec.endpoint === CLAUDE_ENDPOINT ||
             approved.name === 'mission-ai-claude-sonnet' ||
             DEVICE_MCP && DEVICE_SPECS.has(approved.name))) {
@@ -1214,7 +1214,7 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
     if (spec.webSearch != null) throw new Error();
 
     if (name === 'mission-ai-project-manager') {
-      sameStrings(spec.mcpServers, [GITHUB_SERVER]);
+      sameStrings(spec.mcpServers, [GITHUB_SERVER, ...(DEVICE_MCP ? [DEVICE_SERVER] : [])]);
     } else if (DEVICE_MCP && DEVICE_SPECS.has(name)) {
       sameStrings(spec.mcpServers, [DEVICE_SERVER]);
     } else if (spec.mcpServers != null) throw new Error();
