@@ -42,6 +42,7 @@ async function connectDirect() {
   try {
     const response = await fetch('http://127.0.0.1:8766/browser/pair', {
       cache: 'no-store', signal: AbortSignal.timeout(5000),
+      headers: { 'X-Mission-AI-Extension': chrome.runtime.id },
     });
     if (!response.ok) throw new Error('local_bridge_pair_failed');
     const { browserToken } = await response.json();

@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 $log = Join-Path $PSScriptRoot 'companion.log'
 try {
   & (Join-Path $PSScriptRoot 'node.exe') (Join-Path $PSScriptRoot 'companion.js') *>> $log

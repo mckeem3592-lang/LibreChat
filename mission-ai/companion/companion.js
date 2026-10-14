@@ -32,6 +32,7 @@ const DEVICE_ID = process.env.MISSION_AI_DEVICE_ID ||
   (process.platform === 'win32' ? 'windows-work' : 'mac-primary');
 const BROWSER_PORT = Number(process.env.MISSION_AI_BROWSER_PORT || 8766);
 const CHROME_EXTENSION_ORIGIN = 'chrome-extension://ggkpmldfojmlehhbadliodeplhneelmb';
+const CHROME_EXTENSION_ID = 'ggkpmldfojmlehhbadliodeplhneelmb';
 const MAX_MESSAGE_BYTES = 1_000_000;
 let configuredFileRoots = {};
 if (process.platform === 'win32') {
@@ -402,13 +403,15 @@ const browserServer = http.createServer(async (req, res) => {
   const remote = req.socket.remoteAddress;
   const loopback = remote === '127.0.0.1' || remote === '::1';
   const origin = String(req.headers.origin || '');
-  const extensionOrigin = origin === CHROME_EXTENSION_ORIGIN;
+  const extensionOrigin = !origin || origin === CHROME_EXTENSION_ORIGIN;
+  const extensionRequest = req.headers['x-mission-ai-extension'] === CHROME_EXTENSION_ID;
   const auth = String(req.headers.authorization || '');
   const healthToken = auth.startsWith('Bearer ') ? auth.slice(7) : '';
 
   if (req.method === 'OPTIONS' && req.url === '/browser/pair' && loopback && extensionOrigin) {
-    res.setHeader('access-control-allow-origin', origin);
+    if (origin) res.setHeader('access-control-allow-origin', origin);
     res.setHeader('access-control-allow-methods', 'GET');
+    res.setHeader('access-control-allow-headers', 'x-mission-ai-extension');
     res.setHeader('access-control-allow-private-network', 'true');
     res.writeHead(204);
     res.end();
@@ -453,9 +456,10 @@ const browserServer = http.createServer(async (req, res) => {
     req.method === 'GET' &&
     req.url === '/browser/pair' &&
     loopback &&
-    extensionOrigin
+    extensionOrigin &&
+    extensionRequest
   ) {
-    res.setHeader('access-control-allow-origin', origin);
+    if (origin) res.setHeader('access-control-allow-origin', origin);
     res.setHeader('cache-control', 'no-store');
     res.setHeader('content-type', 'application/json');
     res.end(JSON.stringify({ ok: true, browserToken: BROWSER_TOKEN }));
