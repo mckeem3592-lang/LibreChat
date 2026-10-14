@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import {
   Constants,
   supportsFiles,
@@ -38,9 +38,13 @@ function AttachFileChat({
 
   /* Success, not merely settled: a failed or paused fetch leaves the built-in defaults in
    * place, where the absent opt-out reads as unified. */
-  const { data: fileConfig = null, isSuccess: isFileConfigLoaded } = useGetFileConfig({
-    select: (data) => mergeFileConfig(data),
-  });
+  const { data: fileConfig = null, isSuccess: isFileConfigLoaded, status, fetchStatus, error } =
+    useGetFileConfig({ select: (data) => mergeFileConfig(data) });
+
+  useEffect(() => {
+    console.info('[upload-config] query state', { status, fetchStatus,
+      error: error instanceof Error ? error.message : String(error ?? '') });
+  }, [status, fetchStatus, error]);
 
   const fileConfigEndpoint = useMemo(
     () => (isAgents && agentProvider ? agentProvider : endpoint),
