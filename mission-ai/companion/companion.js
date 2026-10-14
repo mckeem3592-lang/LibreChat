@@ -520,6 +520,8 @@ function connectGateway() {
   const ws = new WebSocket(url, {
     headers: { authorization: `Bearer ${DEVICE_TOKEN}` },
   });
+  let heartbeat = null;
+  let gatewayAlive = true;
 
   ws.on('open', () => {
     gatewaySocket = ws;
@@ -527,7 +529,16 @@ function connectGateway() {
     reconnectAttempt = 0;
     publishCapabilities();
     console.log('Mission AI companion connected');
+    heartbeat = setInterval(() => {
+      if (!gatewayAlive) {
+        ws.terminate();
+        return;
+      }
+      gatewayAlive = false;
+      ws.ping();
+    }, 15_000);
   });
+  ws.on('pong', () => { gatewayAlive = true; });
   ws.on('message', async (raw) => {
     let message;
     try {
@@ -551,6 +562,7 @@ function connectGateway() {
     }
   });
   ws.on('close', () => {
+    if (heartbeat) clearInterval(heartbeat);
     if (gatewaySocket === ws) gatewaySocket = null;
     gatewayConnected = false;
     if (reconnectTimer) clearTimeout(reconnectTimer);
