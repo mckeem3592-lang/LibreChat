@@ -155,10 +155,6 @@ router.get('/agent/:agent_id', async (req, res) => {
 router.get('/config', async (req, res) => {
   try {
     const appConfig = req.config;
-    logger.info('[upload-config] served file policy', {
-      hasConfig: appConfig?.fileConfig != null,
-      endpointCount: Object.keys(appConfig?.fileConfig?.endpoints ?? {}).length,
-    });
     res.status(200).json(appConfig.fileConfig);
   } catch (error) {
     logger.error('[/files] Error getting fileConfig', error);
