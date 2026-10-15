@@ -1,5 +1,7 @@
 const express = require('express');
+const multer = require('multer');
 const { logger } = require('@librechat/data-schemas');
+const { FileSources, mergeFileConfig } = require('librechat-data-provider');
 const {
   createFileUsageLimiter,
   createFileLimiters,
@@ -8,10 +10,17 @@ const {
   uaParser,
   checkBan,
 } = require('~/server/middleware');
-const { restoreTenantContextFromReq } = require('@librechat/api');
+const {
+  restoreTenantContextFromReq,
+  createEditedDocumentHandlers,
+  createMcpEditedDocumentAuth,
+} = require('@librechat/api');
+const { getAppConfig } = require('~/server/services/Config');
+const { getStrategyFunctions } = require('~/server/services/Files/strategies');
+const db = require('~/models');
 const { avatar: asstAvatarRouter } = require('~/server/routes/assistants/v1');
 const { avatar: agentAvatarRouter } = require('~/server/routes/agents/v1');
-const { createMulterInstance } = require('./multer');
+const { createMulterInstance, createStorage } = require('./multer');
 
 const files = require('./files');
 const images = require('./images');
@@ -20,6 +29,34 @@ const speech = require('./speech');
 
 const initialize = async () => {
   const router = express.Router();
+  const upload = await createMulterInstance();
+  const editedUpload = multer({
+    storage: createStorage({ uniqueTempPath: true }),
+    limits: { fileSize: mergeFileConfig((await getAppConfig())?.fileConfig).serverFileSizeLimit },
+  });
+  const localFiles = getStrategyFunctions(FileSources.local);
+  const editedDocuments = createEditedDocumentHandlers({
+    getMaxBytes: (fileConfig) => mergeFileConfig(fileConfig).serverFileSizeLimit,
+    saveBuffer: localFiles.saveBuffer,
+    createFile: (file, disableTTL) => db.createFile(file, disableTTL),
+    getFiles: (query) => db.getFiles(query),
+    getDownloadStream: localFiles.getDownloadStream,
+    logger,
+  });
+  const { fileUploadIpLimiter, fileUploadUserLimiter } = createFileLimiters();
+  router.post(
+    '/edited/mcp',
+    createMcpEditedDocumentAuth({ secret: process.env.LOCAL_MCP_TOKEN, getUserById: db.getUserById }),
+    configMiddleware,
+    checkBan,
+    uaParser,
+    fileUploadIpLimiter,
+    fileUploadUserLimiter,
+    editedUpload.single('file'),
+    restoreTenantContextFromReq,
+    editedDocuments.upload,
+  );
+
   router.use(requireJwtAuth);
   router.use(configMiddleware);
   router.use(checkBan);
@@ -40,14 +77,11 @@ const initialize = async () => {
     }
     next();
   });
-
-  const upload = await createMulterInstance();
   router.post('/speech/stt', upload.single('audio'), restoreTenantContextFromReq);
 
   /* Important: speech route must be added before the upload limiters */
   router.use('/speech', speech);
 
-  const { fileUploadIpLimiter, fileUploadUserLimiter } = createFileLimiters();
   const fileUsageLimiter = createFileUsageLimiter();
 
   /** Non-strict routing means `/usage/` reaches the same handler, so match the
@@ -74,6 +108,13 @@ const initialize = async () => {
   });
 
   router.post('/', upload.single('file'), restoreTenantContextFromReq);
+  router.post(
+    '/edited',
+    editedUpload.single('file'),
+    restoreTenantContextFromReq,
+    editedDocuments.upload,
+  );
+  router.get('/edited/:file_id', editedDocuments.download);
   router.post('/images', upload.single('file'), restoreTenantContextFromReq);
   router.post('/images/avatar', upload.single('file'), restoreTenantContextFromReq);
   router.post(

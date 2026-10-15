@@ -3144,6 +3144,7 @@ export const configSchema = z.object({
     .optional(),
   rateLimits: rateLimitSchema.optional(),
   fileConfig: fileConfigSchema.optional(),
+  editedDocumentRetentionHours: z.number().int().min(1).max(168).default(24),
   modelSpecs: specsConfigSchema.optional(),
   filters: filtersConfigSchema.optional(),
   messageFilter: messageFilterSchema.optional(),

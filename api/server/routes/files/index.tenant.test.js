@@ -43,6 +43,7 @@ jest.mock('~/server/middleware', () => ({
 }));
 
 jest.mock('./multer', () => ({
+  createStorage: jest.fn(() => ({})),
   createMulterInstance: jest.fn(async () => ({
     single: jest.fn(() => (req, res, next) => {
       req.file = {
