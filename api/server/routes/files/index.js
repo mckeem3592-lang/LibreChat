@@ -49,7 +49,8 @@ const initialize = async () => {
     createMcpEditedDocumentAuth({ secret: process.env.LOCAL_MCP_TOKEN, getUserById: db.getUserById }),
     configMiddleware,
     checkBan,
-    uaParser,
+    // This bearer-authenticated server-to-server route is called by Python urllib,
+    // whose User-Agent is intentionally not a browser.
     fileUploadIpLimiter,
     fileUploadUserLimiter,
     editedUpload.single('file'),
