@@ -121,7 +121,7 @@ export function canDownloadEditedDocument(
   },
   userId: string,
   tenantId?: string,
-  now = new Date(),
+  now: Date = new Date(),
 ): boolean {
   return (
     file.context === 'edited_document' &&
@@ -147,7 +147,14 @@ type EditedDocumentHandlersDependencies = {
   logger: { error: (message: string, error?: Error) => void };
 };
 
-export function createEditedDocumentHandlers(deps: EditedDocumentHandlersDependencies) {
+type EditedDocumentHandlers = {
+  upload: (request: Request, res: Response) => Promise<void>;
+  download: (request: Request, res: Response) => Promise<void>;
+};
+
+export function createEditedDocumentHandlers(
+  deps: EditedDocumentHandlersDependencies,
+): EditedDocumentHandlers {
   return {
     upload: async (request: Request, res: Response): Promise<void> => {
       const req = request as EditedRequest;
@@ -245,7 +252,7 @@ type PublisherUser = {
 export function createMcpEditedDocumentAuth(deps: {
   secret?: string;
   getUserById: (userId: string) => Promise<PublisherUser | null>;
-}) {
+}): (request: Request, res: Response, next: NextFunction) => Promise<void> {
   return async (request: Request, res: Response, next: NextFunction): Promise<void> => {
     const supplied = request.get('Authorization')?.replace(/^Bearer /, '') ?? '';
     const expected = deps.secret ?? '';
