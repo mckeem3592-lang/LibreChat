@@ -4,12 +4,14 @@ type Json = Record<string, unknown>;
 interface Request { body?: unknown; query?: Record<string, unknown>; get(name: string): string | undefined }
 interface Response {
   destroyed?: boolean; writableEnded?: boolean;
+  on?(event: 'close', listener: () => void): unknown;
+  off?(event: 'close', listener: () => void): unknown;
   status(code: number): Response; json(body: unknown): unknown;
   setHeader(name: string, value: string): unknown; write(data: string): unknown; end(): unknown;
 }
 interface Dependencies {
   enabled: () => boolean; token: string; safeEqual: (left: string, right: string) => boolean;
-  bridge: { handle(body: unknown, context?: { projectId?: unknown }): Promise<Json> };
+  bridge: { handle(body: unknown, context?: { projectId?: unknown; signal?: AbortSignal }): Promise<Json> };
 }
 function error(res: Response, status: number, code: string, providerHttpStatus?: number,
   providerErrorCategory?: string, providerRequestId?: string): unknown {
@@ -34,8 +36,17 @@ export function createAnthropicHttp(deps: Dependencies): {
       next();
     },
     async complete(req, res) {
+      const controller = new AbortController();
+      const onClose = (): void => {
+        if (!res.writableEnded) controller.abort();
+      };
+      res.on?.('close', onClose);
+      if (res.destroyed) controller.abort();
       try {
-        const message = await deps.bridge.handle(req.body, { projectId: req.get('x-mission-ai-project') ?? undefined });
+        const message = await deps.bridge.handle(req.body, {
+          projectId: req.get('x-mission-ai-project') ?? undefined,
+          signal: controller.signal,
+        });
         if (res.destroyed || res.writableEnded) return;
         if ((req.body as Json).stream !== true) return res.json(message);
         res.setHeader('Content-Type', 'text/event-stream');
@@ -73,6 +84,8 @@ export function createAnthropicHttp(deps: Dependencies): {
         return cause instanceof NativeBridgeError ? error(res, cause.status, cause.code, cause.providerHttpStatus,
           cause.providerErrorCategory, cause.providerRequestId)
           : error(res, 503, 'native_accounting_unready');
+      } finally {
+        res.off?.('close', onClose);
       }
     },
     unsupported(_req, res) { return error(res, 404, 'native_route_unsupported'); },

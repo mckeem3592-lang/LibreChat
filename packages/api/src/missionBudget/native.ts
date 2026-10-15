@@ -362,10 +362,11 @@ function safeFailure(error: unknown, fallback: string): NativeBridgeError {
   return new NativeBridgeError(SAFE_FAILURES.has(message) ? message : fallback, 503);
 }
 
-export function createNativeBridge(deps: NativeBridgeDependencies): { handle(body: unknown, context?: { projectId?: unknown }): Promise<JsonObject> } {
+export function createNativeBridge(deps: NativeBridgeDependencies): { handle(body: unknown, context?: { projectId?: unknown; signal?: AbortSignal }): Promise<JsonObject> } {
   return {
     async handle(input, context) {
       const projectId = context?.projectId;
+      if (context?.signal?.aborted) fail('native_client_cancelled', 499);
       if (projectId !== undefined && (typeof projectId !== 'string' || !/^[a-fA-F0-9]{24}$/.test(projectId))) fail('native_project_invalid');
       const provider = deps.provider ?? 'openai';
       if (!['openai', 'anthropic'].includes(provider)) fail('native_provider_unready', 503);
@@ -438,11 +439,29 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
         throw safeFailure(error, 'shared_budget_unready');
       }
 
+      if (context?.signal?.aborted) {
+        try {
+          await deps.ledger.release({ reservationId: reservation.reservationId, reason: 'native_client_cancelled' });
+        } catch (error) {
+          throw safeFailure(error, 'native_settlement_failed');
+        }
+        fail('native_client_cancelled', 499);
+      }
+
       let response;
       let failure: NativeBridgeError | undefined;
       let definitiveRejection = false;
       const controller = new AbortController();
       let timer: ReturnType<typeof setTimeout> | undefined;
+      let onClientAbort: (() => void) | undefined;
+      const cancelled = context?.signal ? new Promise<never>((_resolve, reject) => {
+        onClientAbort = () => {
+          controller.abort();
+          reject(new NativeBridgeError('native_client_cancelled', 499));
+        };
+        context.signal!.addEventListener('abort', onClientAbort, { once: true });
+        if (context.signal!.aborted) onClientAbort();
+      }) : undefined;
       try {
         // The deadline covers headers AND the body. Promise.race also bounds a broken injected transport.
         response = await Promise.race([
@@ -472,12 +491,14 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
               reject(new NativeBridgeError('native_provider_timeout', 504));
             }, provider === 'anthropic' ? 120_000 : PROVIDER_TIMEOUT_MS);
           }),
+          ...(cancelled ? [cancelled] : []),
         ]);
       } catch (error) {
         failure = error instanceof NativeBridgeError && error.code.startsWith('native_') ? error :
           new NativeBridgeError('native_provider_response_invalid', 502);
       } finally {
         if (timer !== undefined) clearTimeout(timer);
+        if (onClientAbort) context?.signal?.removeEventListener('abort', onClientAbort);
       }
       if (failure || !response) {
         try {

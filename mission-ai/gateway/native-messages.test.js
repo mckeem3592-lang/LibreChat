@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { createNativeBridge, NativeBridgeError } from './generated/native.js';
@@ -35,6 +36,84 @@ async function fixture(raw = answer(), overrides = {}) {
   });
   return { bridge, events, ledger };
 }
+
+test('cancelled request before reservation never dispatches or charges', async () => {
+  const f = await fixture();
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(f.bridge.handle(request(), { signal: controller.signal }), {
+    code: 'native_client_cancelled',
+  });
+  assert.deepEqual(f.events, []);
+});
+
+test('disconnect during reservation releases it before provider dispatch', async () => {
+  const controller = new AbortController();
+  const released = [];
+  const f = await fixture(answer(), { ledger: {
+    reserve: async ({ reservationId, reserveUsd }) => {
+      controller.abort();
+      return { reservationId, reservedUsd: reserveUsd };
+    },
+    release: async (input) => { released.push(input); },
+    settle: async () => assert.fail('No provider work to settle'),
+  } });
+  await assert.rejects(f.bridge.handle(request(), { signal: controller.signal }), {
+    code: 'native_client_cancelled',
+  });
+  assert.equal(released.length, 1);
+  assert.equal(released[0].reason, 'native_client_cancelled');
+  assert.deepEqual(f.events, []);
+});
+
+test('disconnect aborts an in-flight provider request and settles its reservation', async () => {
+  let notifyFetch;
+  const fetchStarted = new Promise((resolve) => { notifyFetch = resolve; });
+  const f = await fixture(answer(), {
+    fetchImpl: async (_url, init) => {
+      f.events.push({ type: 'fetch', init });
+      notifyFetch();
+      return new Promise((_resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(new Error('transport aborted')), { once: true });
+      });
+    },
+  });
+  const controller = new AbortController();
+  const completion = f.bridge.handle(request(), { signal: controller.signal });
+  await fetchStarted;
+  controller.abort();
+  await assert.rejects(completion, { code: 'native_client_cancelled' });
+  assert.equal(f.events[1].init.signal.aborted, true);
+  assert.equal(f.events[2].type, 'settle');
+  assert.equal(f.events[2].input.usage.estimated, true);
+});
+
+test('Anthropic HTTP disconnect forwards abort and removes its listener', async () => {
+  let notifyBridge;
+  const bridgeStarted = new Promise((resolve) => { notifyBridge = resolve; });
+  let signal;
+  const handlers = createAnthropicHttp({
+    enabled: () => true,
+    token: 'synthetic-http-token',
+    safeEqual: (a, b) => a === b,
+    bridge: { handle: async (_body, context) => {
+      signal = context.signal;
+      notifyBridge();
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('disconnected')), { once: true });
+      });
+    } },
+  });
+  const req = { body: request(), get: () => undefined };
+  const res = Object.assign(new EventEmitter(), { destroyed: false, writableEnded: false });
+  const completion = handlers.complete(req, res);
+  await bridgeStarted;
+  res.destroyed = true;
+  res.emit('close');
+  await completion;
+  assert.equal(signal.aborted, true);
+  assert.equal(res.listenerCount('close'), 0);
+});
 
 test('native tool turn preserves signed blocks and settles before returning a callable result', async () => {
   const f = await fixture();
