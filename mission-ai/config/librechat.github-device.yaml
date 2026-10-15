@@ -429,6 +429,7 @@ mcpServers:
     url: '${LOCAL_MCP_PUBLIC_URL}'
     headers:
       Authorization: 'Bearer ${LOCAL_MCP_TOKEN}'
+      X-LibreChat-User-ID: '{{LIBRECHAT_USER_ID}}'
     requiresOAuth: false
     timeout: 120000
     chatMenu: false
