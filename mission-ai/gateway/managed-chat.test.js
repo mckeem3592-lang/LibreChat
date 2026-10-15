@@ -682,6 +682,24 @@ test('file upload routes reach their authenticated file handlers only at exact p
   }
 });
 
+test('edited document routes reach their authenticated handlers only at exact paths', () => {
+  const id = '58991c8e-8da9-4c26-8d42-971531515c69';
+  for (const [method, path] of [
+    ['POST', '/api/files/edited'], ['POST', '/api/files/edited/mcp'],
+    ['GET', `/api/files/edited/${id}`],
+  ]) {
+    assert.equal(invoke(admission, { method, path }).next, 1, `${method} ${path}`);
+    assert.equal(invoke(admission, { method, path: `${path}?extra=1` }).status, 403);
+  }
+  for (const [method, path] of [
+    ['GET', '/api/files/edited'], ['GET', '/api/files/edited/mcp'],
+    ['POST', `/api/files/edited/${id}`], ['DELETE', `/api/files/edited/${id}`],
+    ['GET', '/api/files/edited/not-a-uuid'], ['GET', `/api/files/edited/${id}/download`],
+  ]) {
+    assert.equal(invoke(admission, { method, path }).status, 403, `${method} ${path}`);
+  }
+});
+
 test('ambiguous routing and method aliases cannot bypass the allowlist', () => {
   for (const path of ['/API/config', '/api/config/', '/api//config', '/api/%63onfig', '/%61pi/config',
     '/api/../api/config', '/api/./config', '/api\\config', '/api/config#fragment',
