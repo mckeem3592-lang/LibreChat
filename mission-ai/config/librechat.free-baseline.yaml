@@ -107,8 +107,9 @@ endpoints:
         - verbosity
 
     - name: 'MissionAIClaude'
+      provider: anthropic
       apiKey: '${MISSION_AI_NATIVE_TOKEN}'
-      baseURL: '${MISSION_AI_GATEWAY_URL}/native/openai/v1'
+      baseURL: '${MISSION_AI_GATEWAY_URL}/native/anthropic'
       models:
         default:
           - 'claude-haiku-4-5'

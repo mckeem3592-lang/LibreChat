@@ -470,7 +470,8 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
               ? 'https://api.anthropic.com/v1/messages' : UPSTREAM_URL, {
               method: 'POST', headers: provider === 'anthropic'
                 ? { 'x-api-key': deps.providerKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json',
-                    ...(nativeMessages ? { 'anthropic-beta': 'thinking-binding-controls-2026-08-01' } : {}) }
+                    ...(nativeMessages && model !== 'claude-haiku-4-5'
+                      ? { 'anthropic-beta': 'thinking-binding-controls-2026-08-01' } : {}) }
                 : { Authorization: `Bearer ${deps.providerKey}`, 'Content-Type': 'application/json' },
               body: serialized, redirect: 'error', signal: controller.signal,
             });

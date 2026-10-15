@@ -129,6 +129,37 @@ test('native tool turn preserves signed blocks and settles before returning a ca
   assert.equal(f.events[2].input.usage.estimated, false);
   assert(Math.abs(f.events[2].input.actualUsd - .00014) < 1e-12);
 });
+test('Haiku and Opus tool turns use their model-specific native thinking transport', async () => {
+  for (const candidate of ['claude-haiku-4-5', 'claude-opus-5-5']) {
+    const content = candidate === 'claude-haiku-4-5'
+      ? [{ type: 'tool_use', id: 'toolu_fixture', name: tool.name, input: {} }]
+      : answer().content;
+    const f = await fixture(answer({ model: candidate, content }), {
+      modelAllowed: (value) => value === candidate,
+      pricingLoader: () => ({ verifiedOn: '2026-09-28', models: {
+        [candidate]: { provider: 'anthropic', input: 4, output: 20 },
+      } }),
+    });
+    const result = await f.bridge.handle(request({ model: candidate }));
+    assert.deepEqual(result.content, content);
+    assert.deepEqual(f.events.map((event) => typeof event === 'string' ? event : event.type),
+      ['reserve', 'fetch', 'settle']);
+    const sent = JSON.parse(f.events[1].init.body);
+    assert.equal(sent.model, candidate);
+    assert.deepEqual(sent.tools, [tool]);
+    if (candidate === 'claude-haiku-4-5') {
+      assert.equal(Object.hasOwn(sent, 'thinking'), false);
+      assert.equal(Object.hasOwn(sent, 'output_config'), false);
+      assert.equal(Object.hasOwn(f.events[1].init.headers, 'anthropic-beta'), false);
+    } else {
+      assert.equal(sent.thinking.type, 'adaptive');
+      assert.equal(sent.output_config.effort, 'low');
+      assert.equal(f.events[1].init.headers['anthropic-beta'], 'thinking-binding-controls-2026-08-01');
+    }
+  }
+  assert.throws(() => normalizeAnthropicMessages(request({ model: 'claude-haiku-4-5',
+    thinking: { type: 'adaptive' } })), /native_field_unsupported/);
+});
 test('native continuation retains signature and paired result, including an empty result', async () => {
   const body = request({ messages: [{ role: 'user', content: 'First.' },
     { role: 'assistant', content: answer().content },
@@ -161,7 +192,7 @@ test('LibreChat adaptive display is normalized to prefix-safe low-effort thinkin
   assert.deepEqual(result.body.output_config, { effort: 'low' });
 });
 test('paid server tools, fallback settings, cache variants and orphan results fail before reservation', async () => {
-  for (const extra of [{ fallbacks: 'default' }, { model: 'claude-opus-5-5' }, { service_tier: 'auto' },
+  for (const extra of [{ fallbacks: 'default' }, { model: 'unreviewed-model' }, { service_tier: 'auto' },
     { thinking: { type: 'enabled', budget_tokens: 1000 } }, { output_config: { effort: 'high' } },
     { tools: [{ type: 'web_search_20250305', name: 'web_search' }] },
     { tools: [{ ...tool, cache_control: { type: 'ephemeral', ttl: '24h' } }] },

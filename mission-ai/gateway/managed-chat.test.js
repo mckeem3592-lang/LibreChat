@@ -26,7 +26,7 @@ const specs = [
 const endpoints = ['MissionAI', 'MissionAIClaude', 'MissionAIOpenAI'];
 const baseURLs = [
   'https://generativelanguage.googleapis.com/v1beta/openai',
-  '${MISSION_AI_GATEWAY_URL}/native/openai/v1',
+  '${MISSION_AI_GATEWAY_URL}/native/anthropic',
   '${MISSION_AI_GATEWAY_URL}/native/openai-direct/v1',
 ];
 
@@ -101,7 +101,8 @@ function config() {
       agents: { disableBuilder: true, allowedProviders: [...endpoints], capabilities: [],
         maxProviderErrorChars: 2000, modelResponseBodyTimeoutMs: 30000 },
       custom: endpoints.map((name, i) => ({
-        name, apiKey: i === 0 ? '${GOOGLE_KEY}' : '${MISSION_AI_NATIVE_TOKEN}',
+        name, ...(name === 'MissionAIClaude' ? { provider: 'anthropic' } : {}),
+        apiKey: i === 0 ? '${GOOGLE_KEY}' : '${MISSION_AI_NATIVE_TOKEN}',
         baseURL: baseURLs[i],
         models: { default: specs.filter(([, , endpoint]) => endpoint === name).map(([, model]) => model), fetch: false },
         modelDisplayLabel: 'Mission AI', titleConvo: false,
@@ -288,6 +289,7 @@ test('each endpoint rejects provider substitution, missing models and transport 
       c => { c.endpoints.custom.splice(index, 1); },
       c => { c.endpoints.custom[index] = structuredClone(c.endpoints.custom[(index + 1) % 3]); },
       c => { c.endpoints.custom[index].baseURL = baseURLs[(index + 1) % 3]; },
+      c => { c.endpoints.custom[index].provider = index === 1 ? undefined : 'anthropic'; },
       c => { c.endpoints.custom[index].apiKey = index === 0 ? '${MISSION_AI_NATIVE_TOKEN}' : '${GOOGLE_KEY}'; },
       c => { c.endpoints.custom[index].models.default.pop(); },
       c => { c.endpoints.custom[index].models.default.push('unapproved-model'); },

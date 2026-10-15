@@ -225,7 +225,7 @@ const BASELINE_ENDPOINTS: Readonly<Record<string, ApprovedEndpoint>> = Object.fr
     models: Object.freeze(['gemini-3.5-flash-lite']),
   }),
   [CLAUDE_ENDPOINT]: Object.freeze({
-    baseURL: 'anthropicGateway',
+    baseURL: 'anthropicNativeGateway',
     apiKey: 'native',
     models: Object.freeze([
       'claude-haiku-4-5',
@@ -1169,7 +1169,7 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
 
     const name = string(custom.name);
 
-    if (name === CLAUDE_CACHED_ENDPOINT ? custom.provider !== 'anthropic' : custom.provider != null) {
+    if ([CLAUDE_ENDPOINT, CLAUDE_CACHED_ENDPOINT].includes(name) ? custom.provider !== 'anthropic' : custom.provider != null) {
       throw new Error();
     }
 
