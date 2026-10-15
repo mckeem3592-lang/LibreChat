@@ -107,7 +107,9 @@ test('startup preflight selects only the reviewed configuration and requires own
     MISSION_AI_NATIVE_TOKEN: options.nativeToken, JWT_SECRET: 'a'.repeat(64), JWT_REFRESH_SECRET: 'b'.repeat(64),
     CREDS_KEY: 'c'.repeat(64), CREDS_IV: 'd'.repeat(32),
     MONGO_URI: 'mongodb+srv://' + 'mission_ai_chat_test:synthetic@fixture.mongodb.net/MissionAIChatTest?tls=true',
-    DOMAIN_CLIENT: 'https://synthetic.invalid', DOMAIN_SERVER: 'https://synthetic.invalid' };
+    DOMAIN_CLIENT: 'https://synthetic.invalid', DOMAIN_SERVER: 'https://synthetic.invalid',
+    LOCAL_MCP_PUBLIC_URL: 'https://version-departure-blatantly.ngrok-free.dev/mcp',
+    LOCAL_MCP_TOKEN: 'synthetic-local-mcp-token-for-offline-tests-only-123456' };
   const script = fileURLToPath(new URL('../chat-test/start.sh', import.meta.url));
   const preflight = (extra) => spawnSync('bash', [script, '--check'], { env: { ...env, ...extra }, encoding: 'utf8', timeout: 10000 });
   assert.equal(preflight({}).status, 0);
