@@ -439,25 +439,31 @@ export function logAgentMemorySnapshot(
     countRepeatedExtractedText: context.countRepeatedExtractedText,
     countRepeatedBytes: context.countRepeatedExtractedText,
   });
-  if (attachments.attachmentCount === 0) {
-    return;
-  }
   const memory = process.memoryUsage();
-  logger.info('[AgentAttachmentMemory] snapshot', {
-    phase,
-    rss: memory.rss,
-    heapUsed: memory.heapUsed,
-    external: memory.external,
-    arrayBuffers: memory.arrayBuffers ?? 0,
-    conversationId: context.conversationId,
-    messageId: context.messageId,
-    jobId: (context.req as (ServerRequest & { _resumableStreamId?: string }) | undefined)
-      ?._resumableStreamId,
-    userId: context.req?.user?.id,
-    tenantId: context.req?.user?.tenantId,
-    modelRunId,
-    ...attachments,
-  });
+  // The production console transport prints only the message, so keep bounded numeric
+  // diagnostics in it as well as the structured fields used by other transports.
+  logger.info(
+    `[AgentAttachmentMemory] snapshot phase=${phase} rssBytes=${memory.rss} ` +
+      `heapUsedBytes=${memory.heapUsed} heapTotalBytes=${memory.heapTotal} ` +
+      `externalBytes=${memory.external} arrayBufferBytes=${memory.arrayBuffers ?? 0} ` +
+      `attachments=${attachments.attachmentCount} knownBytes=${attachments.totalKnownBytes} ` +
+      `textChars=${attachments.extractedTextChars}`,
+    {
+      phase,
+      rss: memory.rss,
+      heapUsed: memory.heapUsed,
+      external: memory.external,
+      arrayBuffers: memory.arrayBuffers ?? 0,
+      conversationId: context.conversationId,
+      messageId: context.messageId,
+      jobId: (context.req as (ServerRequest & { _resumableStreamId?: string }) | undefined)
+        ?._resumableStreamId,
+      userId: context.req?.user?.id,
+      tenantId: context.req?.user?.tenantId,
+      modelRunId,
+      ...attachments,
+    },
+  );
 }
 
 export function createAgentMemoryCallback(context: AgentMemoryContext): {
