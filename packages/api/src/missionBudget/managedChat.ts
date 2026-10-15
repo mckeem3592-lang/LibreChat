@@ -917,6 +917,11 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
         (method === 'DELETE' && path === '/api/files')
       )) return next();
 
+      if (query === '' && (
+        (method === 'POST' && (path === '/api/files/edited' || path === '/api/files/edited/mcp')) ||
+        (method === 'GET' && /^\/api\/files\/edited\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(path))
+      )) return next();
+
       if (method === 'GET' && path === '/api/files/speech/config/get' && query === '') {
         return next();
       }
