@@ -5,6 +5,8 @@
  * endpoints in free-baseline mode. Gemini remains the only default there.
  * The existing non-baseline tool deployment retains its isolated Sonnet profile.
  */
+import { admitManagedData } from './managedData.js';
+
 type ObjectValue = Record<string, unknown>;
 
 export interface ManagedChatRequest {
@@ -931,6 +933,11 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
         return next();
       }
 
+      // Manual memories use the stock authenticated, owner-partitioned router.
+      // The device profile has no memory agent, so these routes do not start a model call.
+      if (DEVICE_MCP && path.startsWith('/api/memories') &&
+          admitManagedData(method, raw, req.body)) return next();
+
       if (method === 'GET' && query === '' &&
           SHARE_READ_PATHS.some((rule) => rule.test(path))) {
         return next();
@@ -1332,8 +1339,18 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
 
   if (defaults !== 1) throw new Error();
 
+  const checkedMemory = (value: unknown): boolean => {
+    const memory = object(value);
+    if (!DEVICE_MCP) return memory.disabled === true;
+    keys(memory, new Set(['disabled', 'personalize', 'tokenLimit', 'charLimit',
+      'maxInputTokens', 'messageWindowSize']));
+    return memory.disabled === false && memory.personalize === false &&
+      memory.tokenLimit === 2000 && memory.charLimit === 10000 &&
+      memory.maxInputTokens === 2000 && memory.messageWindowSize === 5;
+  };
+
   if (
-    object(config.memory).disabled !== true ||
+    !checkedMemory(config.memory) ||
     object(config.summarization).enabled !== false
   ) {
     throw new Error();
@@ -1363,7 +1380,7 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
   }
 
   if (
-    object(raw.memory).disabled !== true ||
+    !checkedMemory(raw.memory) ||
     object(raw.summarization).enabled !== false
   ) {
     throw new Error();
@@ -1432,12 +1449,13 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
       'agents',
       'schedules',
       'skills',
-      'memories',
       'runCode',
       'fileSearch',
     ]) {
       if (ui[key] !== false) throw new Error();
     }
+
+    if (ui.memories !== DEVICE_MCP) throw new Error();
 
     if (ui.webSearch !== GITHUB_EDITOR) throw new Error();
 
