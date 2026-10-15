@@ -361,7 +361,6 @@ const DISPLAY_FIELDS = new Set([
 const NULL_ONLY_FIELDS = new Set([
   'addedConvo',
   'thread_id',
-  'chatProjectId',
   'recoverySteerId',
   'reasoning_context',
   'reasoning_summary',
@@ -396,6 +395,7 @@ const BODY_FIELDS = new Set([
   'endpointType',
   'model',
   'spec',
+  'chatProjectId',
   'text',
   'sender',
   'clientTimestamp',
@@ -545,6 +545,10 @@ function chatBody(value: unknown): ObjectValue {
     if (ID_FIELDS.has(key)) {
       if (!IDENTIFIER.test(string(value))) throw new Error();
       out[key] = value;
+    } else if (key === 'chatProjectId') {
+      if (!DEVICE_MCP || typeof value !== 'string' ||
+          !/^[a-fA-F0-9]{24}$/.test(value)) throw new Error();
+      out.chatProjectId = value;
     } else if (BOOL_FIELDS.has(key) || key === 'disableStreaming') {
       if (typeof value !== 'boolean') throw new Error();
       out[key] = value;
@@ -933,9 +937,10 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
         return next();
       }
 
-      // Manual memories use the stock authenticated, owner-partitioned router.
-      // The device profile has no memory agent, so these routes do not start a model call.
-      if (DEVICE_MCP && path.startsWith('/api/memories') &&
+      // Manual memories and projects use the stock authenticated, owner-partitioned routers.
+      // These data routes do not start a model call.
+      if (DEVICE_MCP && (path.startsWith('/api/memories') ||
+          path.startsWith('/api/projects')) &&
           admitManagedData(method, raw, req.body)) return next();
 
       if (method === 'GET' && query === '' &&
