@@ -44,6 +44,20 @@ describe('formatToolContent', () => {
   });
 
   describe('recognized providers', () => {
+    it('preserves every text block in a large MCP result', () => {
+      const content = Array.from({ length: 2_000 }, (_, index) => ({
+        type: 'text' as const,
+        text: `part-${index.toString().padStart(4, '0')}:${'x'.repeat(24)}`,
+      }));
+
+      const [formatted, artifacts] = formatToolContent({ content }, 'anthropic');
+
+      expect(formatted.startsWith(content[0].text)).toBe(true);
+      expect(formatted.endsWith(content[content.length - 1].text)).toBe(true);
+      expect(formatted.split('\n\n')).toHaveLength(content.length);
+      expect(artifacts).toBeUndefined();
+    });
+
     const allProviders: t.Provider[] = [
       'google',
       'anthropic',
