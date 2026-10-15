@@ -99,6 +99,22 @@ test('device profile permits bounded manual memories without automatic extractio
   }
 });
 
+test('device profile exposes browser read-aloud without an external TTS provider', () => {
+  const guard = createManagedToolConfigGuard(options);
+  const accepted = fixture();
+  assert.equal(accepted.config.config.speech.speechTab.textToSpeech, true);
+  assert.equal(accepted.config.config.speech.tts, undefined);
+  assert.equal(run(guard, accepted).next, 1);
+  for (const change of [
+    req => { req.config.config.speech.speechTab.textToSpeech = false; },
+    req => { req.config.config.speech.tts = { openai: {} }; },
+  ]) {
+    const req = fixture();
+    change(req);
+    assert.equal(run(guard, req).status, 503);
+  }
+});
+
 test('Claude accepts a PDF attachment with both preset document tools', () => {
   const req = fixture();
   req.body.text = 'Summarize this document.';
