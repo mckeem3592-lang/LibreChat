@@ -973,7 +973,15 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
       if (GITHUB_EDITOR && method === 'GET' && query === '' &&
           (GITHUB_MCP_READ_PATHS.has(path) ||
            (DEVICE_MCP && ['/api/mcp/servers/mission-ai-device',
-             '/api/mcp/connection/status/mission-ai-device'].includes(path)))) return next();
+             '/api/mcp/connection/status/mission-ai-device',
+             '/api/mcp/servers/mission-ai-local-documents',
+             '/api/mcp/connection/status/mission-ai-local-documents'].includes(path)))) return next();
+
+      if (DEVICE_MCP && method === 'POST' && query === '' &&
+          path === '/api/mcp/mission-ai-local-documents/reinitialize') {
+        if (req.body != null) keys(object(req.body), new Set());
+        return next();
+      }
 
       const refreshRetry = path === '/api/auth/refresh' && query === 'retry=true';
 
