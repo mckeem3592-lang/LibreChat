@@ -22,6 +22,13 @@ test('LibreChat keeps legacy config separate and pins bounded Tavily search for 
   assert.doesNotMatch(chat, /keenableApiKey:/i);
 });
 
+test('managed document profile prunes old tool results without model summarization', async () => {
+  const text = await readFile(new URL('../config/librechat.github-device.yaml', import.meta.url), 'utf8');
+  assert.match(text, /summarization:\s*\n\s+enabled: false\s*\n\s+contextPruning:\s*\n\s+enabled: true/);
+  assert.match(text, /keepLastAssistants: 1/);
+  assert.match(text, /minPrunableToolChars: 4000/);
+});
+
 test('LibreChat Mission AI config keeps scheduled and background work enabled', async () => {
   const text = await readFile(new URL('../config/librechat.mission-ai.yaml', import.meta.url), 'utf8');
   assert.match(text, /schedules:\s*\n\s+use:\s*true/);

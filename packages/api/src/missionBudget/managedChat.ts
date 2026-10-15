@@ -620,7 +620,12 @@ function chatBody(value: unknown): ObjectValue {
    * never forwarded: the enforced server spec supplies the provider prompt. */
   if (input.promptPrefix != null) string(input.promptPrefix, 1_000_000);
 
-  if (input.maxContextTokens != null) {
+  if (approved.spec.endpoint === CLAUDE_CACHED_ENDPOINT) {
+    const requested = input.maxContextTokens == null
+      ? 32_000
+      : integer(input.maxContextTokens, 1, 1_000_000);
+    out.maxContextTokens = Math.min(requested, 32_000);
+  } else if (input.maxContextTokens != null) {
     out.maxContextTokens = integer(input.maxContextTokens, 1, 1_000_000);
   }
 

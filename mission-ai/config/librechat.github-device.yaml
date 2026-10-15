@@ -45,6 +45,12 @@ memory:
 
 summarization:
   enabled: false
+  contextPruning:
+    enabled: true
+    keepLastAssistants: 1
+    softTrimRatio: 0.1
+    hardClearRatio: 0.2
+    minPrunableToolChars: 4000
 
 speech:
   speechTab:
