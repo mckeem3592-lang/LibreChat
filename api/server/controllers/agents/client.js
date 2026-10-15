@@ -123,6 +123,7 @@ const {
   createMultiAgentMapper,
   filterMalformedContentParts,
   countFormattedMessageTokens,
+  Tokenizer,
   prependFileContext,
   prependQuotes,
   applyAttachmentOnlyText,
@@ -2284,6 +2285,11 @@ class AgentClient extends BaseClient {
   }
 
   async buildMessages(messages, parentMessageId, _buildOptions, opts) {
+    /** Begin loading alongside memory, MCP, and attachment work. Prompt admission
+     * counts run synchronously below and must not use the cold-start estimate. */
+    const encoding = this.getEncoding();
+    const encodingPromise = Promise.resolve(Tokenizer.initEncoding(encoding));
+    void encodingPromise.catch(() => {});
     if (this.eventActorContinuation === 'cold') {
       /** Compatibility was rejected after warm state preparation. Rebuild all
        * non-checkpointed state from durable history, never from that stale head. */
@@ -2316,7 +2322,7 @@ class AgentClient extends BaseClient {
       conversationId: this.conversationId,
       userId: this.user ?? this.options.req.user?.id,
       config: this.options.req.config?.endpoints?.[EModelEndpoint.agents]?.askUserQuestion,
-      encoding: this.getEncoding(),
+      encoding,
     });
     this.loadedHistoryRows = undefined;
 
@@ -2531,6 +2537,10 @@ class AgentClient extends BaseClient {
         orderedMessages[orderedMessages.length - 1].text,
       );
     }
+    /** RAG context does not depend on message token counts. Start it before
+     * waiting for the tokenizer, alongside the other independent context. */
+    const augmentedPromptPromise = Promise.resolve(this.contextHandlers?.createContext());
+    void augmentedPromptPromise.catch(() => {});
 
     /** @type {Record<number, number>} */
     const indexTokenCountMap = {};
@@ -2539,7 +2549,7 @@ class AgentClient extends BaseClient {
     const memoryPayload = [];
     let hasFileContext = false;
     let promptTokenTotal = 0;
-    const encoding = this.getEncoding();
+    await encodingPromise;
     /**
      * Rebuilds the memory-side copy of one source row: the same formatting and
      * per-message merges as the prompt copy, minus the fileContext prepend.
@@ -2853,7 +2863,7 @@ class AgentClient extends BaseClient {
      */
     const sharedRunContextParts = [];
     const [augmentedPrompt, [memories, configServers], agentScopedContext] = await Promise.all([
-      this.contextHandlers?.createContext(),
+      augmentedPromptPromise,
       earlySharedContextPromise,
       agentScopedContextPromise,
     ]);

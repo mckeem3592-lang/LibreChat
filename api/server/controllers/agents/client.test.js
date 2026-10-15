@@ -191,6 +191,7 @@ jest.mock('@librechat/api', () => ({
   checkAccess: jest.fn(),
   createRun: (...args) => mockCreateRun(...args),
   countFormattedMessageTokens: jest.fn(() => 42),
+  Tokenizer: { initEncoding: jest.fn().mockResolvedValue(undefined) },
   countTokens: jest.fn((text) => Math.ceil(String(text ?? '').length / 4)),
   createCachedTokenCounter: jest.fn(async () => jest.fn(() => 0)),
   createInitializedAgentContextFingerprint: jest.fn(() => ({
@@ -5485,6 +5486,26 @@ describe('AgentClient - titleConvo', () => {
       client.shouldSummarize = false;
       client.maxContextTokens = 4096;
       client.useMemory = jest.fn().mockResolvedValue(undefined);
+    });
+
+    it('loads the selected encoding before counting a cold request', async () => {
+      const { Tokenizer, countFormattedMessageTokens } = require('@librechat/api');
+      const loading = deferred();
+      const initEncoding = jest.spyOn(Tokenizer, 'initEncoding').mockReturnValue(loading.promise);
+      try {
+        const build = client.buildMessages(
+          [{ messageId: 'msg-1', sender: 'User', text: 'Hello', isCreatedByUser: true }],
+          'msg-1',
+          {},
+        );
+        expect(initEncoding).toHaveBeenCalledWith(client.getEncoding());
+        expect(countFormattedMessageTokens).not.toHaveBeenCalled();
+        loading.resolve();
+        await build;
+        expect(countFormattedMessageTokens).toHaveBeenCalled();
+      } finally {
+        initEncoding.mockRestore();
+      }
     });
 
     it.each(['primary', 'handoff'])(
