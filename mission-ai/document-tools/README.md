@@ -32,7 +32,9 @@ passes its authenticated user ID to that MCP server through the configured
 POST the original bytes to `/api/files/edited/mcp`; the API resolves that user from
 its database and stores the file under the user's local upload directory. The tool
 returns an `/api/files/edited/:file_id` URL, which requires that user's LibreChat
-session to download. A normal signed-in browser can also POST multipart field
+session to download. The chat Markdown link uses LibreChat's authenticated client
+request to fetch the file as a blob; opening the URL directly in a browser tab
+does not send the bearer token. A signed-in client can also POST multipart field
 `file` to `/api/files/edited`.
 
 The upload size uses the existing `fileConfig.serverFileSizeLimit`. Only DOCX,
@@ -45,3 +47,8 @@ This is an ephemeral-storage prototype: a Render restart, redeploy, or instance
 change can erase the bytes before their retention deadline. Existing file records
 may then yield unavailable downloads. Keep the local original until the recipient
 has downloaded and verified the file.
+
+PPTX is supported by the local document toolchain but is not accepted by this
+edited-file publishing route. Chat-to-document delivery and visual/content checks
+must be completed separately for each requested format before claiming release
+acceptance.
