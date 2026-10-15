@@ -490,6 +490,28 @@ function deny(res: ManagedChatResponse, configuration = false): unknown {
   });
 }
 
+function logRejectedChatShape(stage: string, body: unknown): void {
+  if (body == null || typeof body !== 'object' || Array.isArray(body)) return;
+  const input = body as ObjectValue;
+  const files = Array.isArray(input.files) ? input.files : [];
+  const firstFile = files[0];
+  const file = firstFile != null && typeof firstFile === 'object' && !Array.isArray(firstFile)
+    ? firstFile as ObjectValue : null;
+  const agent = input.ephemeralAgent != null && typeof input.ephemeralAgent === 'object' &&
+    !Array.isArray(input.ephemeralAgent) ? input.ephemeralAgent as ObjectValue : null;
+  console.warn('Mission AI managed chat request shape rejected', {
+    stage,
+    unexpectedBodyFields: Object.keys(input).filter((key) => !BODY_FIELDS.has(key)),
+    fileCount: files.length,
+    unexpectedFileFields: file == null ? [] : Object.keys(file).filter((key) => !CHAT_FILE_FIELDS.has(key)),
+    fileIdValid: file == null ? null : typeof file.file_id === 'string' && IDENTIFIER.test(file.file_id),
+    fileDeliveryAllowed: file == null || file.llmDeliveryPath == null ? null :
+      ['text', 'provider', 'none'].includes(String(file.llmDeliveryPath)),
+    mcpCount: agent == null || !Array.isArray(agent.mcp) ? null : agent.mcp.length,
+    hasFileTokenLimit: input.fileTokenLimit != null,
+  });
+}
+
 function approvedSpec(name: unknown): { name: string; spec: ApprovedSpec } {
   const specName = string(name);
   if (!own(APPROVED_SPECS, specName)) throw new Error();
@@ -974,6 +996,9 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
 
       throw new Error();
     } catch {
+      if ((req.originalUrl ?? req.url ?? '').startsWith('/api/agents/chat/')) {
+        logRejectedChatShape('admission', req.body);
+      }
       return deny(res);
     }
   };
@@ -1449,6 +1474,7 @@ export function createManagedChatConfigGuard(
           (!options.ownerEmail || req.user?.email?.toLowerCase() !==
             options.ownerEmail.toLowerCase())) throw new Error();
     } catch {
+      logRejectedChatShape('configuration', req.body);
       return deny(res);
     }
 
