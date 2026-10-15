@@ -74,8 +74,8 @@ function githubResumeEnvelope(input: unknown, restored = false): Json {
     const agent = object(body.ephemeralAgent);
     exactKeys(agent, ['mcp', 'execute_code', 'memory', 'web_search', 'file_search',
       'artifacts', 'skills', 'ask_user_question', 'run_in_background', 'describe_intent']);
-    same(agent.mcp, projectDevice ? ['github-code-editor', 'mission-ai-device'] :
-      device ? ['mission-ai-device'] : ['github-code-editor']);
+    same(agent.mcp, projectDevice ? ['github-code-editor', 'mission-ai-device', 'mission-ai-local-documents'] :
+      device ? ['mission-ai-device', 'mission-ai-local-documents'] : ['github-code-editor']);
     for (const key of ['execute_code', 'memory', 'web_search', 'file_search', 'skills',
       'ask_user_question', 'run_in_background', 'describe_intent']) {
       if (agent[key] != null && agent[key] !== false) throw new Error();

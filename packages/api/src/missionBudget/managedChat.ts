@@ -490,28 +490,6 @@ function deny(res: ManagedChatResponse, configuration = false): unknown {
   });
 }
 
-function logRejectedChatShape(stage: string, body: unknown): void {
-  if (body == null || typeof body !== 'object' || Array.isArray(body)) return;
-  const input = body as ObjectValue;
-  const files = Array.isArray(input.files) ? input.files : [];
-  const firstFile = files[0];
-  const file = firstFile != null && typeof firstFile === 'object' && !Array.isArray(firstFile)
-    ? firstFile as ObjectValue : null;
-  const agent = input.ephemeralAgent != null && typeof input.ephemeralAgent === 'object' &&
-    !Array.isArray(input.ephemeralAgent) ? input.ephemeralAgent as ObjectValue : null;
-  console.warn('Mission AI managed chat request shape rejected', {
-    stage,
-    unexpectedBodyFields: Object.keys(input).filter((key) => !BODY_FIELDS.has(key)),
-    fileCount: files.length,
-    unexpectedFileFields: file == null ? [] : Object.keys(file).filter((key) => !CHAT_FILE_FIELDS.has(key)),
-    fileIdValid: file == null ? null : typeof file.file_id === 'string' && IDENTIFIER.test(file.file_id),
-    fileDeliveryAllowed: file == null || file.llmDeliveryPath == null ? null :
-      ['text', 'provider', 'none'].includes(String(file.llmDeliveryPath)),
-    mcpCount: agent == null || !Array.isArray(agent.mcp) ? null : agent.mcp.length,
-    hasFileTokenLimit: input.fileTokenLimit != null,
-  });
-}
-
 function approvedSpec(name: unknown): { name: string; spec: ApprovedSpec } {
   const specName = string(name);
   if (!own(APPROVED_SPECS, specName)) throw new Error();
@@ -699,11 +677,14 @@ function chatBody(value: unknown): ObjectValue {
             DEVICE_MCP && DEVICE_SPECS.has(approved.name))) {
           /* A prior Project Manager selection can persist its MCP badge in an
            * ordinary Claude chat. Admit that one stale selection but drop it. */
-          if (!Array.isArray(value) ||
-              (value.length !== 0 &&
-               (value.length !== 1 || ![...(approved.spec.endpoint === CLAUDE_ENDPOINT ||
-                 approved.name === 'mission-ai-claude-sonnet' ? [GITHUB_SERVER] : []),
-                 ...(DEVICE_MCP ? [DEVICE_SERVER, DOCUMENT_SERVER] : [])].includes(value[0])))) throw new Error();
+          const allowed = [
+            ...(approved.spec.endpoint === CLAUDE_ENDPOINT ||
+              approved.name === 'mission-ai-claude-sonnet' ? [GITHUB_SERVER] : []),
+            ...(DEVICE_MCP ? [DEVICE_SERVER, DOCUMENT_SERVER] : []),
+          ];
+          if (!Array.isArray(value) || value.length > allowed.length ||
+              new Set(value).size !== value.length ||
+              value.some((name) => !allowed.includes(name))) throw new Error();
         } else emptyArray(value);
       }
       else if (key === 'artifacts' && (value === '' ||
@@ -996,9 +977,6 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
 
       throw new Error();
     } catch {
-      if ((req.originalUrl ?? req.url ?? '').startsWith('/api/agents/chat/')) {
-        logRejectedChatShape('admission', req.body);
-      }
       return deny(res);
     }
   };
@@ -1474,7 +1452,6 @@ export function createManagedChatConfigGuard(
           (!options.ownerEmail || req.user?.email?.toLowerCase() !==
             options.ownerEmail.toLowerCase())) throw new Error();
     } catch {
-      logRejectedChatShape('configuration', req.body);
       return deny(res);
     }
 

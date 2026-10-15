@@ -649,15 +649,18 @@ test('all unlisted APIs and unapproved provider route families are denied regard
   for (const path of ['/api/auth/register', '/api/auth/requestPasswordReset', '/api/auth/resetPassword',
     '/api/agents/chat', '/api/agents/chat/openAI', '/api/agents/chat/resume', '/api/agents/chat/steer/deliver',
     '/api/agents/chat/queued-turns', '/api/agents', '/api/agents/v1/chat/completions', '/api/chat/MissionAI',
-    '/api/assistants', '/api/files', '/api/files/audio/speech', '/api/images', '/api/actions', '/api/mcp',
+    '/api/assistants', '/api/files/audio/speech', '/api/images', '/api/actions', '/api/mcp',
     '/api/schedules', '/api/projects', '/api/api-keys', '/api/admin/config', '/api/convos/fork',
     '/api/messages/branch', '/api/unknown-future-provider', '/api', '/oauth/openai', '/v1/responses']) {
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
       assert.equal(invoke(admission, { method, path }).status, 403, `${method} ${path}`);
     }
   }
-  for (const path of ['/api/files', '/api/mcp', '/api/agents', '/api/admin/config', '/api/api-keys', '/oauth/google']) {
+  for (const path of ['/api/mcp', '/api/agents', '/api/admin/config', '/api/api-keys', '/oauth/google']) {
     assert.equal(invoke(admission, { method: 'GET', path }).status, 403, path);
+  }
+  for (const method of ['PUT', 'PATCH']) {
+    assert.equal(invoke(admission, { method, path: '/api/files' }).status, 403);
   }
   for (const path of ['/api/files/speech/stt', '/api/files/speech/tts',
     '/api/files/speech/config/get?engineSTT=external', '/api/files/speech/config/get/']) {
@@ -665,6 +668,17 @@ test('all unlisted APIs and unapproved provider route families are denied regard
   }
   for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
     assert.equal(invoke(admission, { method, path: '/api/files/speech/config/get' }).status, 403);
+  }
+});
+
+test('file upload routes reach their authenticated file handlers only at exact paths', () => {
+  for (const [method, path] of [
+    ['GET', '/api/files'], ['GET', '/api/files/config'],
+    ['POST', '/api/files'], ['POST', '/api/files/usage'],
+    ['DELETE', '/api/files'],
+  ]) {
+    assert.equal(invoke(admission, { method, path }).next, 1, `${method} ${path}`);
+    assert.equal(invoke(admission, { method, path: `${path}?extra=1` }).status, 403);
   }
 });
 
