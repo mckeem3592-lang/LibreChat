@@ -18,7 +18,7 @@ interface:
     public: false
   schedules: false
   skills: false
-  memories: false
+  memories: true
   runCode: false
   webSearch: true
   fileSearch: false
@@ -40,8 +40,13 @@ balance:
   enabled: false
 
 memory:
-  disabled: true
+  # Manual memories only; no memory agent is configured, so this adds no autonomous model call.
+  disabled: false
   personalize: false
+  tokenLimit: 2000
+  charLimit: 10000
+  maxInputTokens: 2000
+  messageWindowSize: 5
 
 summarization:
   enabled: false

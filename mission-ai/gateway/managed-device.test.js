@@ -63,6 +63,42 @@ test('only the owner can use the reviewed Claude device profile', () => {
   assert.equal(run(late, missingNgrokHeader).status, 503);
 });
 
+test('device profile permits bounded manual memories without automatic extraction', () => {
+  const admit = createManagedToolAdmission(options);
+  const guard = createManagedToolConfigGuard(options);
+  const accepted = fixture();
+  assert.equal(accepted.config.memory.disabled, false);
+  assert.equal(accepted.config.memory.personalize, false);
+  assert.equal(accepted.config.memory.agent, undefined);
+  assert.equal(run(guard, accepted).next, 1);
+  for (const [method, url, body] of [
+    ['GET', '/api/memories', undefined],
+    ['POST', '/api/memories', { key: 'preference', value: 'Concise answers.' }],
+    ['PATCH', '/api/memories/preferences', { memories: false }],
+    ['PATCH', '/api/memories/id/0123456789abcdef01234567', { value: 'Updated.' }],
+    ['DELETE', '/api/memories/id/0123456789abcdef01234567', undefined],
+  ]) {
+    assert.equal(run(admit, { method, originalUrl: url, body }).next, 1);
+  }
+  for (const [method, url, body] of [
+    ['GET', '/api/memories?agentId=another-user', undefined],
+    ['POST', '/api/memories', { key: 'preference', value: 'x'.repeat(10001) }],
+    ['POST', '/api/memories', { key: 'preference', value: 'x', agentId: 'other' }],
+  ]) {
+    assert.equal(run(admit, { method, originalUrl: url, body }).status, 403);
+  }
+  for (const change of [
+    req => { req.config.memory.agent = { enabled: true, provider: 'anthropic', model: 'claude-haiku-4-5' }; },
+    req => { req.config.memory.tokenLimit = 100000; },
+    req => { req.config.interfaceConfig.memories = false; },
+    req => { req.config.config.memory.disabled = true; },
+  ]) {
+    const req = fixture();
+    change(req);
+    assert.equal(run(guard, req).status, 503);
+  }
+});
+
 test('Claude accepts a PDF attachment with both preset document tools', () => {
   const req = fixture();
   req.body.text = 'Summarize this document.';
