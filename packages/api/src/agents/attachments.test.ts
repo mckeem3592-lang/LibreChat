@@ -346,8 +346,12 @@ describe('agent attachment helpers', () => {
       'before_model',
       'after_model',
     ]);
+    expect(loggerInfo.mock.calls[0][0]).not.toContain('file-1');
+    expect(loggerInfo.mock.calls[0][0]).not.toContain('conversation-1');
     expect(loggerInfo).toHaveBeenLastCalledWith(
-      '[AgentAttachmentMemory] snapshot',
+      expect.stringMatching(
+        /^\[AgentAttachmentMemory\] snapshot phase=after_model rssBytes=\d+ heapUsedBytes=\d+ heapTotalBytes=\d+ externalBytes=\d+ arrayBufferBytes=\d+ attachments=1 knownBytes=\d+ textChars=7$/,
+      ),
       expect.objectContaining({
         modelRunId: 'run-1',
         attachmentCount: 1,
@@ -360,7 +364,7 @@ describe('agent attachment helpers', () => {
     );
   });
 
-  it('does not log attachment snapshots for runs without attachments', () => {
+  it('logs memory snapshots for tool-only runs without attachments', () => {
     const loggerInfo = logger.info as jest.Mock;
     loggerInfo.mockClear();
     const callback = createAgentMemoryCallback({ attachments: [] });
@@ -368,7 +372,14 @@ describe('agent attachment helpers', () => {
     callback.handleChatModelStart(undefined, [], 'run-1');
     callback.handleLLMEnd({}, 'run-1');
 
-    expect(loggerInfo).not.toHaveBeenCalled();
+    expect(loggerInfo.mock.calls.map(([, fields]) => fields.phase)).toEqual([
+      'before_model',
+      'after_model',
+    ]);
+    expect(loggerInfo).toHaveBeenLastCalledWith(
+      expect.stringContaining('attachments=0 knownBytes=0 textChars=0'),
+      expect.objectContaining({ attachmentCount: 0, rss: expect.any(Number) }),
+    );
   });
 
   it('counts repeated binary bytes in memory snapshots', () => {
@@ -387,7 +398,7 @@ describe('agent attachment helpers', () => {
     callback.handleChatModelStart(undefined, [], 'run-replay');
 
     expect(loggerInfo).toHaveBeenCalledWith(
-      '[AgentAttachmentMemory] snapshot',
+      expect.stringContaining('attachments=1 knownBytes=146800640'),
       expect.objectContaining({ totalKnownBytes: 140 * 1024 * 1024 }),
     );
   });

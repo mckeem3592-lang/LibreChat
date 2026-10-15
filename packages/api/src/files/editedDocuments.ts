@@ -1,8 +1,8 @@
-import crypto from 'node:crypto';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { readFile, unlink } from 'node:fs/promises';
-import type { Readable } from 'node:stream';
 import type { Request, Response } from 'express';
+import type { Readable } from 'node:stream';
 import type { NextFunction } from 'express';
 
 const MIME_TYPES: Readonly<Record<string, string>> = {
@@ -53,7 +53,7 @@ export class EditedDocumentError extends Error {
 }
 
 export function sanitizeEditedDocumentName(originalname: string): string {
-  const basename = originalname.split(/[\\/]/).at(-1) ?? '';
+  const basename = originalname.split(/[\\/]/).pop() ?? '';
   const cleaned = basename
     .replace(/[^\p{L}\p{N} ._()-]/gu, '_')
     .replace(/^\.+/, '')
@@ -135,7 +135,11 @@ export function canDownloadEditedDocument(
 type FileRecord = EditedDocument & { user: string | { toString(): string } };
 type EditedRequest = Request & {
   user?: { id: string; tenantId?: string };
-  config?: { paths: { uploads: string }; fileConfig?: object; editedDocumentRetentionHours?: number };
+  config?: {
+    paths: { uploads: string };
+    fileConfig?: object;
+    editedDocumentRetentionHours?: number;
+  };
   file?: Express.Multer.File;
 };
 type EditedDocumentHandlersDependencies = {
