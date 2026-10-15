@@ -37,10 +37,12 @@ request to fetch the file as a blob; opening the URL directly in a browser tab
 does not send the bearer token. A signed-in client can also POST multipart field
 `file` to `/api/files/edited`.
 
-The upload size uses the existing `fileConfig.serverFileSizeLimit`. Only DOCX,
-XLSX, and PDF extensions with matching ZIP or PDF signatures are accepted. The
-server sanitizes filenames, serves downloads as attachments, and removes records
-and bytes through the existing file retention sweep. The deadline defaults to 24
+The upload size uses the existing `fileConfig.serverFileSizeLimit`. DOCX,
+XLSX, and PPTX require a valid ZIP directory with the corresponding Office parts;
+their entries are decompressed with 25 MB per-entry and 100 MB total caps. PDF
+requires a matching header. The server sanitizes filenames, serves downloads as
+attachments, and removes records and bytes through the existing file retention
+sweep. The deadline defaults to 24
 hours and can be set with `editedDocumentRetentionHours` (1–168) in `librechat.yaml`.
 
 This is an ephemeral-storage prototype: a Render restart, redeploy, or instance
@@ -48,7 +50,8 @@ change can erase the bytes before their retention deadline. Existing file record
 may then yield unavailable downloads. Keep the local original until the recipient
 has downloaded and verified the file.
 
-PPTX is supported by the local document toolchain but is not accepted by this
-edited-file publishing route. Chat-to-document delivery and visual/content checks
-must be completed separately for each requested format before claiming release
-acceptance.
+The authenticated upload route accepts PPTX. The separately installed Local
+Documents MCP publisher still needs a verified PPTX acceptance test before
+claiming tool-based PPTX delivery. Chat-to-document delivery and visual/content
+checks must be completed separately for each requested format before claiming
+release acceptance.
