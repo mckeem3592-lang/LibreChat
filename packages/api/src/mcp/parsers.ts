@@ -238,7 +238,9 @@ export function formatToolContent(
 
   const imageUrls: t.FormattedContent[] = [];
   const uiResources: UIResource[] = [];
-  let currentTextBlock = '';
+  // Join once after collecting blocks. Repeatedly appending to a growing tool
+  // result can copy the entire prefix for every content item.
+  const textBlocks: string[] = [];
 
   type ContentHandler = undefined | ((item: t.ToolContentPart) => void);
 
@@ -258,7 +260,9 @@ export function formatToolContent(
     resource_link: (item: t.ResourceLink) => void;
   } = {
     text: (item) => {
-      currentTextBlock += (currentTextBlock ? '\n\n' : '') + item.text;
+      if (item.text) {
+        textBlocks.push(item.text);
+      }
     },
 
     image: (item) => {
@@ -304,14 +308,14 @@ export function formatToolContent(
       }
 
       if (resourceText.length) {
-        currentTextBlock += (currentTextBlock ? '\n\n' : '') + resourceText.join('\n');
+        textBlocks.push(resourceText.join('\n'));
       }
     },
 
     resource_link: (item) => {
       const lines = describeResourceLink(item);
       if (lines.length) {
-        currentTextBlock += (currentTextBlock ? '\n\n' : '') + lines.join('\n');
+        textBlocks.push(lines.join('\n'));
       }
     },
   };
@@ -322,10 +326,11 @@ export function formatToolContent(
       handler(item as never);
     } else {
       const stringified = JSON.stringify(item, null, 2);
-      currentTextBlock += (currentTextBlock ? '\n\n' : '') + stringified;
+      textBlocks.push(String(stringified));
     }
   }
 
+  let currentTextBlock = textBlocks.join('\n\n');
   if (uiResources.length > 0) {
     const uiInstructions = `
 
