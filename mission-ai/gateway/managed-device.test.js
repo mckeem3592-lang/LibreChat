@@ -40,7 +40,12 @@ test('only the owner can use the reviewed Claude device profile', () => {
   const late = createManagedToolConfigGuard(options);
   const accepted = fixture();
   assert.equal(run(early, accepted).next, 1);
+  assert.equal(accepted.body.maxContextTokens, 32000);
   assert.equal(run(late, accepted).next, 1);
+  const oversizedContext = fixture();
+  oversizedContext.body.maxContextTokens = 500000;
+  assert.equal(run(early, oversizedContext).next, 1);
+  assert.equal(oversizedContext.body.maxContextTokens, 32000);
   const other = fixture('other@example.test');
   assert.equal(run(early, other).next, 1);
   assert.equal(run(late, other).status, 403);
