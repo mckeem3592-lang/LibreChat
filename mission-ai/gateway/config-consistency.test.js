@@ -29,6 +29,13 @@ test('managed document profile prunes old tool results without model summarizati
   assert.match(text, /minPrunableToolChars: 4000/);
 });
 
+test('Local Documents MCP bypasses the ngrok warning page', async () => {
+  const text = await readFile(new URL('../config/librechat.github-device.yaml', import.meta.url), 'utf8');
+  const localDocuments = text.split('  mission-ai-local-documents:')[1]?.split('  mission-ai-device:')[0] || '';
+  assert.match(localDocuments, /url: '\$\{LOCAL_MCP_PUBLIC_URL\}'/);
+  assert.match(localDocuments, /ngrok-skip-browser-warning: 'true'/);
+});
+
 test('LibreChat Mission AI config keeps scheduled and background work enabled', async () => {
   const text = await readFile(new URL('../config/librechat.mission-ai.yaml', import.meta.url), 'utf8');
   assert.match(text, /schedules:\s*\n\s+use:\s*true/);

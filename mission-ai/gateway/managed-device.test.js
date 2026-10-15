@@ -58,6 +58,9 @@ test('only the owner can use the reviewed Claude device profile', () => {
   const wrongUser = fixture();
   wrongUser.config.mcpConfig['mission-ai-local-documents'].headers['X-LibreChat-User-ID'] = 'fixed-user-id';
   assert.equal(run(late, wrongUser).status, 503);
+  const missingNgrokHeader = fixture();
+  delete missingNgrokHeader.config.mcpConfig['mission-ai-local-documents'].headers['ngrok-skip-browser-warning'];
+  assert.equal(run(late, missingNgrokHeader).status, 503);
 });
 
 test('Claude accepts a PDF attachment with both preset document tools', () => {
