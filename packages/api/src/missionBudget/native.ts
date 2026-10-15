@@ -46,7 +46,9 @@ export interface NativeBridgeDependencies {
     usage: Usage,
     pricing: unknown,
   ) => { totalUsd: number; pricingVerifiedOn?: string | null };
-  fetchImpl: (url: string, init: RequestInit) => Promise<Pick<Response, 'status' | 'json'>>;
+  fetchImpl: (url: string, init: RequestInit) => Promise<Pick<Response, 'status' | 'json'> & {
+    headers?: { get(name: string): string | null };
+  }>;
   providerKey: string;
   provider?: 'openai' | 'anthropic';
   protocol?: 'openai' | 'anthropic-messages';
@@ -55,14 +57,42 @@ export interface NativeBridgeDependencies {
   randomId: () => string;
 }
 
+// Fixed labels derived only from the upstream HTTP status. The provider error body is never read.
+const PROVIDER_ERROR_CATEGORIES: Readonly<Record<number, string>> = {
+  400: 'invalid_request_error', 401: 'authentication_error', 402: 'billing_error', 403: 'permission_error',
+  404: 'not_found_error', 413: 'request_too_large', 429: 'rate_limit_error', 500: 'api_error',
+  504: 'timeout_error', 529: 'overloaded_error',
+};
+// Opaque provider request IDs are bounded alphanumeric tokens; anything else is dropped.
+const PROVIDER_REQUEST_ID = /^req_[A-Za-z0-9]{1,100}$/;
+
+function providerRequestId(headers: { get?: (name: string) => string | null } | undefined): string | undefined {
+  try {
+    return headers?.get?.('request-id') ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export class NativeBridgeError extends Error {
   readonly providerHttpStatus?: number;
-  constructor(public readonly code: string, public readonly status = 400, providerHttpStatus?: number) {
+  readonly providerErrorCategory?: string;
+  readonly providerRequestId?: string;
+  constructor(public readonly code: string, public readonly status = 400, providerHttpStatus?: number,
+    diagnostics: { category?: unknown; requestId?: unknown } = {}) {
     super(code);
     this.name = 'NativeBridgeError';
     // Only a bounded numeric status may leave the provider transport. Never expose its body or headers.
     if (Number.isSafeInteger(providerHttpStatus) && providerHttpStatus! >= 100 && providerHttpStatus! <= 599) {
       this.providerHttpStatus = providerHttpStatus;
+    }
+    // Only a fixed category label and a bounded opaque request ID may accompany the status.
+    if (typeof diagnostics.category === 'string' &&
+        Object.values(PROVIDER_ERROR_CATEGORIES).includes(diagnostics.category)) {
+      this.providerErrorCategory = diagnostics.category;
+    }
+    if (typeof diagnostics.requestId === 'string' && PROVIDER_REQUEST_ID.test(diagnostics.requestId)) {
+      this.providerRequestId = diagnostics.requestId;
     }
   }
 }
@@ -427,7 +457,11 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
             });
             if (upstream.status < 200 || upstream.status >= 300) {
               definitiveRejection = upstream.status >= 400 && upstream.status < 500 && upstream.status !== 408;
-              throw new NativeBridgeError('native_provider_rejected', 502, upstream.status);
+              // The provider error body stays unread. Only a status-derived category and request ID are surfaced.
+              throw new NativeBridgeError('native_provider_rejected', 502, upstream.status, provider === 'anthropic' ? {
+                category: PROVIDER_ERROR_CATEGORIES[upstream.status],
+                requestId: providerRequestId(upstream.headers),
+              } : undefined);
             }
             const raw = await upstream.json();
             return provider === 'anthropic' ? anthropicUsage(raw, model) : responseUsage(raw, model);
