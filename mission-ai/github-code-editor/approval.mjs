@@ -11,6 +11,11 @@ export default function githubEditorApproval() {
           .some((tool) => name === tool || name.startsWith(`${tool}_mcp_`))) {
       return { decision: 'ask', reason: 'Review the Mission AI device action.' };
     }
+    if (name.includes('mission-ai-local-documents') &&
+        !['list_files', 'read_document']
+          .some((tool) => name === `${tool}_mcp_mission-ai-local-documents`)) {
+      return { decision: 'ask', reason: 'Review the Mission AI local documents action.' };
+    }
     return {};
   };
 }
