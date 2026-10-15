@@ -105,3 +105,12 @@ This file records concrete development evidence. It is not a production approval
 - The original service remained on `main`, deployment `dep-dasksdgae00c73b7mglg`, commit `b31617a816f5fd14c9346b57f3e6252e188984e8`, with configuration timestamp `2026-09-27T17:14:56.55896Z`. Its login, database contents, provider configuration, and conversations were preserved.
 
 The bounded no-paid test setup is accepted. Paid native use, old-caller drain and historical reconciliation, shared activation, complete route/egress acceptance, and the broader platform matrix remain pending. There is no platform-wide atomic $175 ceiling claim for the running original service, and no production promotion occurred.
+
+## 2026-10-15
+
+### Edited-document delivery repair
+
+- A disposable DOCX publish from the Python Local Documents MCP returned `Illegal request` before the upload handler. The MCP request's non-browser User-Agent was blocked by `uaParser`. PR #10 removed that browser-only check from the already bearer-authenticated `/api/files/edited/mcp` route; ordinary browser upload routes retain it.
+- On the live test chat deployment at commit `148c5cc97d8428dd8d158313de4a52d9248cc112`, disposable DOCX, XLSX, and PDF publishes each returned HTTP 201, a filename, SHA-256, expiry, and owner-scoped download URL. `publish-api.test.mjs` passed 5 cases covering owner scoping, expiry, exact bytes, invalid formats/sizes, and authorization. No model request was used for these probes.
+- Direct browser navigation to a returned download URL produced `No auth token`: the session token is attached to authenticated client requests, not browser navigation. PR #11 makes exact same-origin edited-document Markdown links use the authenticated client, download the response as a blob, and preserve a safe filename. Its URL and filename tests passed 3 cases. A signed-in click/download of each format still requires a live browser acceptance check.
+- Both fixes target the isolated `mission-ai-v1` test chat. The edited-file store remains ephemeral; a redeploy can invalidate prior links. PPTX publish support and visual/content verification of returned documents remain outside this evidence.
