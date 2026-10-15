@@ -182,6 +182,31 @@ test('retains the metadata error when cleanup also fails', async () => {
   }
 });
 
+test('uses the selected durable storage source and cleans stored bytes on metadata failure', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'edited-doc-test-'));
+  try {
+    const temporaryPath = path.join(root, 'temp');
+    const bytes = Buffer.from('%PDF-1.7\n');
+    await writeFile(temporaryPath, bytes);
+    let cleaned;
+    await assert.rejects(publishEditedDocument({
+      userId: 'owner', originalname: 'report.pdf', temporaryPath,
+      size: bytes.length, maxBytes: 1024, retentionHours: 24, uploadsPath: root,
+      source: 'edited_gridfs',
+      saveBuffer: async () => 'edited-gridfs:stored-id',
+      createFile: async file => {
+        assert.equal(file.source, 'edited_gridfs');
+        assert.equal(file.filepath, 'edited-gridfs:stored-id');
+        throw new Error('metadata unavailable');
+      },
+      deleteStored: async filepath => { cleaned = filepath; },
+    }), /metadata unavailable/);
+    assert.equal(cleaned, 'edited-gridfs:stored-id');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('download handler denies unauthenticated and other-user requests, then streams exact bytes', async () => {
   const bytes = Buffer.from('%PDF-1.7\nprivate bytes');
   const record = {
@@ -215,6 +240,21 @@ test('download handler denies unauthenticated and other-user requests, then stre
   assert.deepEqual(Buffer.concat(owner.chunks), bytes);
   assert.equal(owner.headers['Cache-Control'], 'no-store');
   assert.equal(owner.headers['X-Content-Type-Options'], 'nosniff');
+
+  let durableRead = false;
+  const durableHandlers = createEditedDocumentHandlers({
+    getMaxBytes: () => 1024, saveBuffer: async () => '', createFile: async () => ({}),
+    getFiles: async () => [{ ...record, source: 'edited_gridfs', filepath: 'edited-gridfs:stored' }],
+    getDownloadStream: async () => { throw new Error('local storage must not be used'); },
+    getStoredDownloadStream: async () => { durableRead = true; return Readable.from([bytes]); },
+    logger: { error: () => {} },
+  });
+  const durableOwner = new Reply();
+  const durableFinished = new Promise(resolve => durableOwner.on('finish', resolve));
+  await durableHandlers.download({ params: { file_id: 'id' }, user: { id: 'owner', tenantId: 'tenant-a' } }, durableOwner);
+  await durableFinished;
+  assert.equal(durableRead, true);
+  assert.deepEqual(Buffer.concat(durableOwner.chunks), bytes);
 });
 
 test('MCP publishing requires the shared secret and a real LibreChat user', async () => {
