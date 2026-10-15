@@ -47,6 +47,12 @@ test('only the owner can use the reviewed Claude device profile', () => {
   const drift = fixture();
   drift.config.mcpConfig['mission-ai-device'].url = 'https://different.example/mcp';
   assert.equal(run(late, drift).status, 503);
+  const missingUser = fixture();
+  delete missingUser.config.mcpConfig['mission-ai-local-documents'].headers['X-LibreChat-User-ID'];
+  assert.equal(run(late, missingUser).status, 503);
+  const wrongUser = fixture();
+  wrongUser.config.mcpConfig['mission-ai-local-documents'].headers['X-LibreChat-User-ID'] = 'fixed-user-id';
+  assert.equal(run(late, wrongUser).status, 503);
 });
 
 test('Claude accepts a PDF attachment with both preset document tools', () => {

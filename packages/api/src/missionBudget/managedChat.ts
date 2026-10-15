@@ -1398,9 +1398,10 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
             documents.requiresOAuth !== false || documents.timeout !== 120000 ||
             documents.chatMenu !== false) throw new Error();
         const documentHeaders = object(documents.headers);
-        keys(documentHeaders, new Set(['Authorization']));
+        keys(documentHeaders, new Set(['Authorization', 'X-LibreChat-User-ID']));
         if (![ `Bearer ${documentsToken}`, 'Bearer ${LOCAL_MCP_TOKEN}' ]
-            .includes(documentHeaders.Authorization as string)) throw new Error();
+            .includes(documentHeaders.Authorization as string) ||
+            documentHeaders['X-LibreChat-User-ID'] !== '{{LIBRECHAT_USER_ID}}') throw new Error();
       }
     }
   } else {
