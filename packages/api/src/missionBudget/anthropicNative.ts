@@ -78,9 +78,16 @@ export function anthropicUsage(value: unknown, model: string): { response: Json;
   const raw = object(response.usage);
   const allowed = new Set(['input_tokens', 'output_tokens', 'cache_read_input_tokens',
     'cache_creation_input_tokens', 'cache_creation', 'service_tier', 'server_tool_use',
-    'inference_geo', 'output_tokens_details']);
+    'inference_geo', 'output_tokens_details', 'speed', 'iterations', 'fallback_credit']);
   if (Object.keys(raw).some((key) => !allowed.has(key))) fail('native_usage_unverified', 502);
   if (raw.service_tier !== 'standard') fail('native_tier_unverified', 502);
+  // The beta Messages API may include these accounting descriptors. Premium speed and
+  // multi-iteration usage need separate pricing and remain conservatively blocked.
+  if (raw.speed != null && raw.speed !== 'standard') fail('native_tier_unverified', 502);
+  if (raw.fallback_credit != null) fail('native_usage_unverified', 502);
+  if (raw.iterations != null && (!Array.isArray(raw.iterations) || raw.iterations.length !== 0)) {
+    fail('native_usage_unverified', 502);
+  }
   const inputTokens = count(raw.input_tokens);
   const outputTokens = count(raw.output_tokens);
   const cachedInputTokens = count(raw.cache_read_input_tokens ?? 0);

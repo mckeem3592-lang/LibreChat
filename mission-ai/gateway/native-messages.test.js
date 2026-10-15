@@ -200,6 +200,22 @@ test('invalid provider status cannot enter the public error or accounting metada
   }
 });
 
+test('beta usage descriptors accept standard speed but block unpriced modes', async () => {
+  const standard = answer({ usage: { ...answer().usage, speed: 'standard', iterations: [],
+    fallback_credit: null } });
+  const accepted = await fixture(standard);
+  await accepted.bridge.handle(request());
+  assert.equal(accepted.events.at(-1).input.usage.estimated, false);
+
+  for (const [extra, code] of [[{ speed: 'fast' }, 'native_tier_unverified'],
+    [{ iterations: [{ type: 'message' }] }, 'native_usage_unverified'],
+    [{ fallback_credit: {} }, 'native_usage_unverified']]) {
+    const f = await fixture(answer({ usage: { ...answer().usage, ...extra } }));
+    await assert.rejects(f.bridge.handle(request()), { code });
+    assert.equal(f.events.at(-1).input.usage.estimated, true);
+  }
+});
+
 const image = { type: 'image', source: { type: 'base64', media_type: 'image/png',
   data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC' } };
 test('user images and screenshot tool results retain typed bytes with visual-token reservations', async () => {
