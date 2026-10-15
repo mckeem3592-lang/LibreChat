@@ -129,10 +129,12 @@ reports only a bounded numeric provider HTTP status on rejection, and retains th
 status with uncertain accounting. Provider error bodies and headers are never read
 or exposed, and no status enables a retry or fallback. This diagnostic does not
 reconcile a historical estimate without independent provider billing evidence.
-The managed chat
-configuration still uses the restricted text adapter: deploying the native
-transport does not enable chat tools or authorize a local action. The actual
-Anthropic SDK is tested with synthetic responses and no provider calls.
+The reviewed free-baseline and GitHub editor/device chat profiles route Claude
+through this native transport, preserving client tool calls and signed thinking
+blocks. Tool use still requires the separate owner-bound MCP policy and its
+approval checks. The older shared-budget profile retains the restricted text
+adapter. The actual Anthropic SDK is tested with synthetic responses and no
+provider calls.
 
 The separate chat now has an opt-in native tool configuration. Its default is
 `MISSION_AI_MANAGED_TOOLS=false`, using the existing text configuration. The

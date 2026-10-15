@@ -29,6 +29,17 @@ test('managed document profile prunes old tool results without model summarizati
   assert.match(text, /minPrunableToolChars: 4000/);
 });
 
+test('approved Claude presets use the native tool-capable Anthropic transport', async () => {
+  for (const profile of ['librechat.free-baseline.yaml', 'librechat.github-editor.yaml',
+    'librechat.github-device.yaml']) {
+    const text = await readFile(new URL(`../config/${profile}`, import.meta.url), 'utf8');
+    const claude = text.match(/    - name: 'MissionAIClaude'\r?\n([\s\S]*?)(?=\r?\n    - name: '|$)/)?.[1] ?? '';
+    assert.match(claude, /provider: anthropic/);
+    assert.match(claude, /baseURL: '\$\{MISSION_AI_GATEWAY_URL\}\/native\/anthropic'/);
+    assert.doesNotMatch(claude, /native\/openai\/v1/);
+  }
+});
+
 test('Local Documents MCP bypasses the ngrok warning page', async () => {
   const text = await readFile(new URL('../config/librechat.github-device.yaml', import.meta.url), 'utf8');
   const localDocuments = text.split('  mission-ai-local-documents:')[1]?.split('  mission-ai-device:')[0] || '';

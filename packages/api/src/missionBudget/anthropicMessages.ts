@@ -87,7 +87,11 @@ export function normalizeAnthropicMessages(value: unknown): {
     if (metadata.user_id !== undefined) text(metadata.user_id, 256);
     delete body.metadata;
   }
-  if (body.model !== 'claude-sonnet-5-5') fail('native_model_unsupported');
+  if (!['claude-haiku-4-5', 'claude-sonnet-5-5', 'claude-opus-5-5'].includes(String(body.model))) {
+    fail('native_model_unsupported');
+  }
+  const model = body.model as string;
+  const adaptiveThinking = model !== 'claude-haiku-4-5';
   const requestedOutputLimit = body.max_tokens;
   if (typeof requestedOutputLimit !== 'number' || !Number.isSafeInteger(requestedOutputLimit) ||
       requestedOutputLimit < 1 || requestedOutputLimit > 131072) fail();
@@ -98,6 +102,7 @@ export function normalizeAnthropicMessages(value: unknown): {
   if (body.stream !== undefined && typeof body.stream !== 'boolean') fail();
   if (body.service_tier !== undefined && body.service_tier !== 'standard_only') fail('native_tier_unsupported');
   if (body.thinking !== undefined) {
+    if (!adaptiveThinking) fail('native_field_unsupported');
     const thinking = record(body.thinking); keys(thinking, ['type', 'display']);
     if (!['between_tools', 'adaptive'].includes(String(thinking.type)) ||
         (thinking.display !== undefined && !['summarized', 'omitted', 'updates'].includes(String(thinking.display)))) {
@@ -105,6 +110,7 @@ export function normalizeAnthropicMessages(value: unknown): {
     }
   }
   if (body.output_config !== undefined) {
+    if (!adaptiveThinking) fail('native_field_unsupported');
     const output = record(body.output_config); keys(output, ['effort']);
     if (output.effort !== 'low') fail('native_field_unsupported');
   }
@@ -183,11 +189,13 @@ export function normalizeAnthropicMessages(value: unknown): {
   body.service_tier = 'standard_only';
   // LibreChat may prune older tool output or refresh MCP definitions between calls.
   // Drop thinking blocks whose signed prefix no longer matches that edited history.
-  body.thinking = { type: 'adaptive', block_binding: { prefix_mismatch_behavior: 'drop_block' } };
-  body.output_config = { effort: 'low' };
-  // Reserve the documented Sonnet 5.5 maximum visual tokens even for tiny compressed images.
+  if (adaptiveThinking) {
+    body.thinking = { type: 'adaptive', block_binding: { prefix_mismatch_behavior: 'drop_block' } };
+    body.output_config = { effort: 'low' };
+  }
+  // The high-resolution cap also conservatively covers Haiku 4.5's lower image tier.
   if (imageCount > 20 || new TextEncoder().encode(anthropicReservationPrompt(body)).length > MAX_BYTES) fail('native_request_too_large', 413);
-  return { body, model: 'claude-sonnet-5-5', outputLimit, imageInputTokens: imageCount * 4784 };
+  return { body, model, outputLimit, imageInputTokens: imageCount * 4784 };
 }
 
 /** Only validated image bytes are excluded from text-token estimation; visual tokens are reserved separately. */
