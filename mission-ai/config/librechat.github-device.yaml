@@ -60,7 +60,8 @@ summarization:
 speech:
   speechTab:
     speechToText: true
-    textToSpeech: false
+    # Browser speech synthesis uses local voices; no external TTS provider is configured.
+    textToSpeech: true
 
 fileConfig:
   # Built-in parsers extract PDF, Word, and spreadsheet text without a RAG service.

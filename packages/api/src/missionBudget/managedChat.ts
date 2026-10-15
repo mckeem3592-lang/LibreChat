@@ -1358,6 +1358,14 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
 
   const raw = object(config.config);
 
+  if (DEVICE_MCP) {
+    const speech = object(raw.speech);
+    keys(speech, new Set(['speechTab']));
+    const speechTab = object(speech.speechTab);
+    keys(speechTab, new Set(['speechToText', 'textToSpeech']));
+    if (speechTab.speechToText !== true || speechTab.textToSpeech !== true) throw new Error();
+  }
+
   if (GITHUB_EDITOR) {
     const search = object(raw.webSearch);
     keys(search, new Set(['searchProvider', 'scraperProvider', 'rerankerType',
