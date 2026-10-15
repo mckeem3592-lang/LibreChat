@@ -11,9 +11,12 @@ interface Dependencies {
   enabled: () => boolean; token: string; safeEqual: (left: string, right: string) => boolean;
   bridge: { handle(body: unknown, context?: { projectId?: unknown }): Promise<Json> };
 }
-function error(res: Response, status: number, code: string, providerHttpStatus?: number): unknown {
+function error(res: Response, status: number, code: string, providerHttpStatus?: number,
+  providerErrorCategory?: string, providerRequestId?: string): unknown {
   return res.status(status).json({ type: 'error', error: { type: 'mission_budget_error', message: code,
-    ...(providerHttpStatus !== undefined ? { provider_http_status: providerHttpStatus } : {}) } });
+    ...(providerHttpStatus !== undefined ? { provider_http_status: providerHttpStatus } : {}),
+    ...(providerErrorCategory !== undefined ? { provider_error_category: providerErrorCategory } : {}),
+    ...(providerRequestId !== undefined ? { provider_request_id: providerRequestId } : {}) } });
 }
 
 /** Buffered native SSE preserves signed blocks. Nothing is delivered before durable settlement. */
@@ -67,7 +70,8 @@ export function createAnthropicHttp(deps: Dependencies): {
         return res.end();
       } catch (cause) {
         if (res.destroyed || res.writableEnded) return;
-        return cause instanceof NativeBridgeError ? error(res, cause.status, cause.code, cause.providerHttpStatus)
+        return cause instanceof NativeBridgeError ? error(res, cause.status, cause.code, cause.providerHttpStatus,
+          cause.providerErrorCategory, cause.providerRequestId)
           : error(res, 503, 'native_accounting_unready');
       }
     },

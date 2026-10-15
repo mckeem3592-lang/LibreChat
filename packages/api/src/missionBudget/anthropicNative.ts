@@ -5,12 +5,18 @@ type Usage = { inputTokens: number; outputTokens: number; cachedInputTokens: num
   cacheWriteTokens: number; cacheWrite5mTokens: number; cacheWrite1hTokens: number };
 
 function fail(code: string, status = 400): never { throw new NativeBridgeError(code, status); }
+function usageFail(stage: 'count' | 'top_level' | 'beta_usage' | 'cache_detail' | 'cache_total' |
+  'server_tools' | 'output_detail' | 'refusal'): never {
+  // Fixed labels only: no provider response fields, body, or identifiers enter logs.
+  console.warn(`[missionBudget] native_usage_unverified stage=${stage}`);
+  fail('native_usage_unverified', 502);
+}
 function object(value: unknown): Json {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail('native_provider_response_invalid', 502);
   return value as Json;
 }
 function count(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) fail('native_usage_unverified', 502);
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) usageFail('count');
   return value;
 }
 function sum(...values: number[]): number { return count(values.reduce((a, b) => a + b, 0)); }
@@ -78,9 +84,16 @@ export function anthropicUsage(value: unknown, model: string): { response: Json;
   const raw = object(response.usage);
   const allowed = new Set(['input_tokens', 'output_tokens', 'cache_read_input_tokens',
     'cache_creation_input_tokens', 'cache_creation', 'service_tier', 'server_tool_use',
-    'inference_geo', 'output_tokens_details']);
-  if (Object.keys(raw).some((key) => !allowed.has(key))) fail('native_usage_unverified', 502);
+    'inference_geo', 'output_tokens_details', 'speed', 'iterations', 'fallback_credit']);
+  if (Object.keys(raw).some((key) => !allowed.has(key))) usageFail('top_level');
   if (raw.service_tier !== 'standard') fail('native_tier_unverified', 502);
+  // The beta Messages API may include these accounting descriptors. Premium speed and
+  // multi-iteration usage need separate pricing and remain conservatively blocked.
+  if (raw.speed != null && raw.speed !== 'standard') fail('native_tier_unverified', 502);
+  if (raw.fallback_credit != null) usageFail('beta_usage');
+  if (raw.iterations != null && (!Array.isArray(raw.iterations) || raw.iterations.length !== 0)) {
+    usageFail('beta_usage');
+  }
   const inputTokens = count(raw.input_tokens);
   const outputTokens = count(raw.output_tokens);
   const cachedInputTokens = count(raw.cache_read_input_tokens ?? 0);
@@ -90,34 +103,34 @@ export function anthropicUsage(value: unknown, model: string): { response: Json;
   if (raw.cache_creation != null) {
     const detail = object(raw.cache_creation);
     if (Object.keys(detail).some((key) => !['ephemeral_5m_input_tokens', 'ephemeral_1h_input_tokens'].includes(key))) {
-      fail('native_usage_unverified', 502);
+      usageFail('cache_detail');
     }
     cacheWrite5mTokens = count(detail.ephemeral_5m_input_tokens);
     cacheWrite1hTokens = count(detail.ephemeral_1h_input_tokens);
   }
-  if (sum(cacheWrite5mTokens, cacheWrite1hTokens) !== cacheWriteTokens) fail('native_usage_unverified', 502);
+  if (sum(cacheWrite5mTokens, cacheWrite1hTokens) !== cacheWriteTokens) usageFail('cache_total');
   sum(inputTokens, cachedInputTokens, cacheWriteTokens, outputTokens);
   if (raw.server_tool_use != null) {
     const detail = object(raw.server_tool_use);
     if (Object.entries(detail).some(([key, value]) =>
-      !['web_search_requests', 'web_fetch_requests'].includes(key) || value !== 0)) fail('native_usage_unverified', 502);
+      !['web_search_requests', 'web_fetch_requests'].includes(key) || value !== 0)) usageFail('server_tools');
   }
   if (raw.output_tokens_details != null) {
     const detail = object(raw.output_tokens_details);
     if (Object.keys(detail).some((key) => key !== 'thinking_tokens') ||
-        count(detail.thinking_tokens) > outputTokens) fail('native_usage_unverified', 502);
+        count(detail.thinking_tokens) > outputTokens) usageFail('output_detail');
   }
   let billable = true;
   if (response.stop_reason === 'refusal' && outputTokens === 0) {
     // September 2026 provider policy: unknown categories retain an estimate.
-    if (!Array.isArray(response.content) || response.content.length) fail('native_usage_unverified', 502);
+    if (!Array.isArray(response.content) || response.content.length) usageFail('refusal');
     const details = object(response.stop_details);
     if (details.type !== 'refusal' || Object.keys(details).some((key) =>
       !['type', 'category', 'explanation', 'recommended_model'].includes(key)) ||
-      details.recommended_model != null) fail('native_usage_unverified', 502);
+      details.recommended_model != null) usageFail('refusal');
     if (details.category === null || ['cyber', 'general_harms'].includes(String(details.category))) billable = false;
     else if (!['bio', 'frontier_llm', 'reasoning_extraction'].includes(String(details.category))) {
-      fail('native_usage_unverified', 502);
+      usageFail('refusal');
     }
   }
   return { response, billable, usage: { inputTokens, outputTokens, cachedInputTokens,

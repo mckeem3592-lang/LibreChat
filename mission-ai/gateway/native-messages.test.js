@@ -155,16 +155,64 @@ test('provider HTTP failures expose only status, never retry, and preserve conse
       bridge: { handle() { throw observed; } } });
     const res = { status(code) { assert.equal(code, 502); return this; }, json(body) {
       assert.deepEqual(body, { type: 'error', error: { type: 'mission_budget_error',
-        message: 'native_provider_rejected', provider_http_status: status } });
+        message: 'native_provider_rejected', provider_http_status: status,
+        ...(status === 401 ? { provider_error_category: 'authentication_error' } : {}),
+        ...(status === 429 ? { provider_error_category: 'rate_limit_error' } : {}),
+        ...(status === 500 ? { provider_error_category: 'api_error' } : {}),
+        ...(status === 529 ? { provider_error_category: 'overloaded_error' } : {}) } });
     } };
     await http.complete({ body: request(), get() {} }, res);
     assert.equal(calls, 1);
   }
 });
 
+test('Anthropic 400 exposes only bounded diagnostics and releases the reservation', async () => {
+  const f = await fixture(undefined, { fetchImpl: async () => ({
+    status: 400, headers: { get(name) { assert.equal(name, 'request-id'); return 'req_Synthetic123'; } },
+    json: async () => { assert.fail('Provider error body must not be read'); },
+  }) });
+  let observed;
+  await assert.rejects(f.bridge.handle(request()), error => {
+    observed = error;
+    return error.code === 'native_provider_rejected' && error.providerHttpStatus === 400 &&
+      error.providerErrorCategory === 'invalid_request_error' && error.providerRequestId === 'req_Synthetic123';
+  });
+  assert.equal(f.events.some(event => event.type === 'settle'), false);
+  const summary = await f.ledger.summary({ now, timeZone: 'America/Denver' });
+  assert.equal(summary.reservedUsd, 0);
+  assert.equal(summary.settledUsd, 0);
+  const http = createAnthropicHttp({ enabled: () => true, token: 'x'.repeat(32), safeEqual: (a, b) => a === b,
+    bridge: { handle() { throw observed; } } });
+  const res = { status(code) { assert.equal(code, 502); return this; }, json(body) {
+    assert.deepEqual(body, { type: 'error', error: { type: 'mission_budget_error',
+      message: 'native_provider_rejected', provider_http_status: 400,
+      provider_error_category: 'invalid_request_error', provider_request_id: 'req_Synthetic123' } });
+    assert.equal(JSON.stringify(body).includes('Provider error body'), false);
+  } };
+  await http.complete({ body: request(), get() {} }, res);
+  assert.equal(new NativeBridgeError('native_provider_rejected', 502, 400,
+    { requestId: 'req_secret\nInjected: yes' }).providerRequestId, undefined);
+});
+
 test('invalid provider status cannot enter the public error or accounting metadata', () => {
   for (const value of [undefined, 0, 600, NaN, '500', 'secret', 500.5]) {
     assert.equal(new NativeBridgeError('native_provider_rejected', 502, value).providerHttpStatus, undefined);
+  }
+});
+
+test('beta usage descriptors accept standard speed but block unpriced modes', async () => {
+  const standard = answer({ usage: { ...answer().usage, speed: 'standard', iterations: [],
+    fallback_credit: null } });
+  const accepted = await fixture(standard);
+  await accepted.bridge.handle(request());
+  assert.equal(accepted.events.at(-1).input.usage.estimated, false);
+
+  for (const [extra, code] of [[{ speed: 'fast' }, 'native_tier_unverified'],
+    [{ iterations: [{ type: 'message' }] }, 'native_usage_unverified'],
+    [{ fallback_credit: {} }, 'native_usage_unverified']]) {
+    const f = await fixture(answer({ usage: { ...answer().usage, ...extra } }));
+    await assert.rejects(f.bridge.handle(request()), { code });
+    assert.equal(f.events.at(-1).input.usage.estimated, true);
   }
 });
 
