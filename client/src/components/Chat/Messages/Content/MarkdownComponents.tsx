@@ -1,7 +1,7 @@
 import React, { memo, useMemo, useRef, useEffect } from 'react';
 import { useRecoilValue } from 'recoil';
 import { useToastContext } from '@librechat/client';
-import { PermissionTypes, Permissions, apiBaseUrl } from 'librechat-data-provider';
+import { PermissionTypes, Permissions, apiBaseUrl, dataService } from 'librechat-data-provider';
 import {
   handleDoubleClick,
   triggerDownload,
@@ -14,6 +14,7 @@ import CodeBlock from '~/components/Messages/Content/CodeBlock';
 import useHasAccess from '~/hooks/Roles/useHasAccess';
 import { useFileDownload } from '~/data-provider';
 import { useLocalize } from '~/hooks';
+import { getEditedDocumentFilename, getEditedDocumentLink } from '~/utils/editedDocumentLink';
 import store from '~/store';
 
 type TCodeProps = {
@@ -118,6 +119,7 @@ export const a: React.ElementType = memo(function MarkdownAnchor({ href, childre
   const user = useRecoilValue(store.user);
   const { showToast } = useToastContext();
   const localize = useLocalize();
+  const editedDocument = getEditedDocumentLink(href, apiBaseUrl(), window.location.origin);
 
   const {
     file_id = '',
@@ -138,6 +140,33 @@ export const a: React.ElementType = memo(function MarkdownAnchor({ href, childre
 
   const { refetch: downloadFile } = useFileDownload(user?.id ?? '', file_id, { direct: false });
   const props: { target?: string; onClick?: React.MouseEventHandler } = { target: '_blank' };
+
+  if (editedDocument) {
+    const handleEditedDownload = async (event: React.MouseEvent<HTMLAnchorElement>) => {
+      event.preventDefault();
+      try {
+        const response = await dataService.getCodeOutputDownload(editedDocument.url);
+        if (!(response.data instanceof Blob) || response.data.size === 0) {
+          throw new Error('Edited document response was empty');
+        }
+        const filename = getEditedDocumentFilename(
+          response.headers['content-disposition'],
+          response.headers['content-type'],
+          editedDocument.fileId,
+        );
+        triggerDownload(URL.createObjectURL(response.data), filename);
+      } catch (error) {
+        console.error('Error downloading edited document:', error);
+        showToast({ status: 'error', message: localize('com_ui_download_error') });
+      }
+    };
+
+    return (
+      <a href={editedDocument.url} onClick={handleEditedDownload}>
+        {children}
+      </a>
+    );
+  }
 
   if (!file_id || !filename) {
     return (
