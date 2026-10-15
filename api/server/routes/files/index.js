@@ -17,6 +17,7 @@ const {
 } = require('@librechat/api');
 const { getAppConfig } = require('~/server/services/Config');
 const { getStrategyFunctions } = require('~/server/services/Files/strategies');
+const editedGridFS = require('~/server/services/Files/EditedGridFS');
 const db = require('~/models');
 const { avatar: asstAvatarRouter } = require('~/server/routes/assistants/v1');
 const { avatar: agentAvatarRouter } = require('~/server/routes/agents/v1');
@@ -37,16 +38,22 @@ const initialize = async () => {
   const localFiles = getStrategyFunctions(FileSources.local);
   const editedDocuments = createEditedDocumentHandlers({
     getMaxBytes: (fileConfig) => mergeFileConfig(fileConfig).serverFileSizeLimit,
-    saveBuffer: localFiles.saveBuffer,
+    source: FileSources.edited_gridfs,
+    saveBuffer: editedGridFS.saveBuffer,
+    deleteStored: editedGridFS.deleteStored,
     createFile: (file, disableTTL) => db.createFile(file, disableTTL),
     getFiles: (query) => db.getFiles(query),
     getDownloadStream: localFiles.getDownloadStream,
+    getStoredDownloadStream: editedGridFS.getDownloadStream,
     logger,
   });
   const { fileUploadIpLimiter, fileUploadUserLimiter } = createFileLimiters();
   router.post(
     '/edited/mcp',
-    createMcpEditedDocumentAuth({ secret: process.env.LOCAL_MCP_TOKEN, getUserById: db.getUserById }),
+    createMcpEditedDocumentAuth({
+      secret: process.env.LOCAL_MCP_TOKEN,
+      getUserById: db.getUserById,
+    }),
     configMiddleware,
     checkBan,
     // This bearer-authenticated server-to-server route is called by Python urllib,

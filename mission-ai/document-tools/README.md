@@ -30,7 +30,7 @@ DOCX, XLSX, or PDF without putting its binary content in a model response. Libre
 passes its authenticated user ID to that MCP server through the configured
 `X-LibreChat-User-ID` header. The MCP server uses its existing `LOCAL_MCP_TOKEN` to
 POST the original bytes to `/api/files/edited/mcp`; the API resolves that user from
-its database and stores the file under the user's local upload directory. The tool
+its database and stores the file in the existing MongoDB GridFS database. The tool
 returns an `/api/files/edited/:file_id` URL, which requires that user's LibreChat
 session to download. The chat Markdown link uses LibreChat's authenticated client
 request to fetch the file as a blob; opening the URL directly in a browser tab
@@ -42,13 +42,13 @@ XLSX, and PPTX require a valid ZIP directory with the corresponding Office parts
 their entries are decompressed with 25 MB per-entry and 100 MB total caps. PDF
 requires a matching header. The server sanitizes filenames, serves downloads as
 attachments, and removes records and bytes through the existing file retention
-sweep. The deadline defaults to 24
-hours and can be set with `editedDocumentRetentionHours` (1–168) in `librechat.yaml`.
+sweep. The deadline defaults to 24 hours and can be set with
+`editedDocumentRetentionHours` (1–168) in `librechat.yaml`.
 
-This is an ephemeral-storage prototype: a Render restart, redeploy, or instance
-change can erase the bytes before their retention deadline. Existing file records
-may then yield unavailable downloads. Keep the local original until the recipient
-has downloaded and verified the file.
+New uploads use GridFS so a chat server restart or redeploy does not remove their
+bytes. Existing edited documents stored on the local filesystem remain readable
+until they expire or that instance is replaced; the migration does not recover
+bytes already lost. Keep the original until the recipient has verified the file.
 
 The authenticated upload route accepts PPTX. The separately installed Local
 Documents MCP publisher still needs a verified PPTX acceptance test before

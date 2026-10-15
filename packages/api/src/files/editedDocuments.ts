@@ -21,7 +21,7 @@ export type EditedDocument = {
   filepath: string;
   filename: string;
   context: 'edited_document';
-  source: 'local';
+  source: 'local' | 'edited_gridfs';
   type: string;
   expiredAt: Date;
 };
@@ -43,6 +43,8 @@ export type EditedDocumentInput = {
     buffer: Buffer;
   }) => Promise<string>;
   createFile: (file: EditedDocument, disableTTL: true) => Promise<object | null>;
+  source?: EditedDocument['source'];
+  deleteStored?: (filepath: string) => Promise<void>;
   reportCleanupError?: (error: unknown) => void;
 };
 
@@ -169,7 +171,7 @@ export async function publishEditedDocument(input: EditedDocumentInput): Promise
     filepath,
     filename,
     context: 'edited_document',
-    source: 'local',
+    source: input.source ?? 'local',
     type: MIME_TYPES[extension],
     expiredAt: new Date(Date.now() + input.retentionHours * 60 * 60 * 1000),
   };
@@ -178,7 +180,8 @@ export async function publishEditedDocument(input: EditedDocumentInput): Promise
     if (!saved) throw new Error('Failed to save file metadata');
   } catch (error) {
     try {
-      await unlink(path.join(input.uploadsPath, input.userId, storedName));
+      if (input.deleteStored) await input.deleteStored(filepath);
+      else await unlink(path.join(input.uploadsPath, input.userId, storedName));
     } catch (cleanupError) {
       try {
         input.reportCleanupError?.(cleanupError);
@@ -227,6 +230,9 @@ type EditedDocumentHandlersDependencies = {
   createFile: EditedDocumentInput['createFile'];
   getFiles: (query: { file_id: string; user: string }) => Promise<FileRecord[]>;
   getDownloadStream: (req: Request, filepath: string) => Promise<Readable>;
+  getStoredDownloadStream?: (req: Request, filepath: string) => Promise<Readable>;
+  source?: EditedDocument['source'];
+  deleteStored?: EditedDocumentInput['deleteStored'];
   logger: { error: (message: string, error?: Error) => void };
 };
 
@@ -261,6 +267,8 @@ export function createEditedDocumentHandlers(
           uploadsPath: req.config.paths.uploads,
           saveBuffer: deps.saveBuffer,
           createFile: deps.createFile,
+          source: deps.source,
+          deleteStored: deps.deleteStored,
           reportCleanupError: (error) =>
             deps.logger.error(
               '[edited documents] Failed to remove bytes after metadata failure',
@@ -307,7 +315,13 @@ export function createEditedDocumentHandlers(
           res.status(404).json({ error: 'Document unavailable' });
           return;
         }
-        const stream = await deps.getDownloadStream(req, file.filepath);
+        if (file.source === 'edited_gridfs' && !deps.getStoredDownloadStream) {
+          throw new Error('Edited document storage is unavailable');
+        }
+        const stream =
+          file.source === 'edited_gridfs'
+            ? await deps.getStoredDownloadStream!(req, file.filepath)
+            : await deps.getDownloadStream(req, file.filepath);
         stream.on('error', (error: Error) => {
           deps.logger.error('[edited documents] Download failed', error);
           if (res.headersSent) res.destroy();

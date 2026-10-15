@@ -4,6 +4,7 @@ import { EToolResources } from './tools';
 
 export enum FileSources {
   local = 'local',
+  edited_gridfs = 'edited_gridfs',
   firebase = 'firebase',
   azure = 'azure',
   azure_blob = 'azure_blob',

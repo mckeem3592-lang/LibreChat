@@ -73,6 +73,7 @@ const {
 } = require('./Azure');
 const { uploadOpenAIFile, deleteOpenAIFile, getOpenAIFileStream } = require('./OpenAI');
 const { deleteCodeEnvFile, getCodeOutputDownloadStream, uploadCodeEnvFile } = require('./Code');
+const editedGridFS = require('./EditedGridFS');
 const { uploadVectors, deleteVectors } = require('./VectorDB');
 
 /**
@@ -312,6 +313,11 @@ const getStrategyFunctions = (fileSource) => {
     return firebaseStrategy();
   } else if (fileSource === FileSources.local) {
     return localStrategy();
+  } else if (fileSource === FileSources.edited_gridfs) {
+    return {
+      deleteFile: editedGridFS.deleteFile,
+      getDownloadStream: editedGridFS.getDownloadStream,
+    };
   } else if (fileSource === FileSources.openai) {
     return openAIStrategy();
   } else if (fileSource === FileSources.azure) {
