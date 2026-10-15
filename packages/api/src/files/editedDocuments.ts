@@ -4,10 +4,12 @@ import { readFile, unlink } from 'node:fs/promises';
 import type { Request, Response } from 'express';
 import type { Readable } from 'node:stream';
 import type { NextFunction } from 'express';
+import yauzl from 'yauzl';
 
 const MIME_TYPES: Readonly<Record<string, string>> = {
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   '.pdf': 'application/pdf',
 };
 
@@ -41,6 +43,7 @@ export type EditedDocumentInput = {
     buffer: Buffer;
   }) => Promise<string>;
   createFile: (file: EditedDocument, disableTTL: true) => Promise<object | null>;
+  reportCleanupError?: (error: unknown) => void;
 };
 
 export class EditedDocumentError extends Error {
@@ -59,7 +62,7 @@ export function sanitizeEditedDocumentName(originalname: string): string {
     .replace(/^\.+/, '')
     .trim();
   if (!cleaned || cleaned.length > 180 || !MIME_TYPES[path.extname(cleaned).toLowerCase()]) {
-    throw new EditedDocumentError(415, 'Only DOCX, XLSX, and PDF files are supported');
+    throw new EditedDocumentError(415, 'Only DOCX, XLSX, PPTX, and PDF files are supported');
   }
   return cleaned;
 }
@@ -71,6 +74,70 @@ export function isEditedDocumentBytes(extension: string, bytes: Buffer): boolean
   return bytes.length >= 4 && bytes.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
 }
 
+const OFFICE_ENTRY: Readonly<Record<string, string>> = {
+  '.docx': 'word/document.xml',
+  '.xlsx': 'xl/workbook.xml',
+  '.pptx': 'ppt/presentation.xml',
+};
+
+function hasOfficeStructure(bytes: Buffer, extension: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    yauzl.fromBuffer(bytes, { lazyEntries: true }, (error, archive) => {
+      if (error || !archive) {
+        resolve(false);
+        return;
+      }
+      const required = new Set(['[Content_Types].xml', '_rels/.rels', OFFICE_ENTRY[extension]]);
+      let entries = 0;
+      let totalBytes = 0;
+      let settled = false;
+      const finish = (valid: boolean): void => {
+        if (settled) return;
+        settled = true;
+        try {
+          archive.close();
+        } catch {
+          // The ZIP may already have closed after its final entry.
+        }
+        resolve(valid);
+      };
+      archive.on('entry', (entry: yauzl.Entry) => {
+        if (++entries > 10_000) {
+          finish(false);
+          return;
+        }
+        required.delete(entry.fileName);
+        if (entry.fileName.endsWith('/')) {
+          archive.readEntry();
+          return;
+        }
+        archive.openReadStream(entry, (streamError, stream) => {
+          if (streamError || !stream) {
+            finish(false);
+            return;
+          }
+          let entryBytes = 0;
+          stream.on('data', (chunk: Buffer) => {
+            entryBytes += chunk.length;
+            totalBytes += chunk.length;
+            if (entryBytes > 25 * 1024 * 1024 || totalBytes > 100 * 1024 * 1024) {
+              stream.destroy();
+              finish(false);
+            }
+          });
+          stream.on('end', () => {
+            if (!settled) archive.readEntry();
+          });
+          stream.on('error', () => finish(false));
+        });
+      });
+      archive.on('end', () => finish(required.size === 0));
+      archive.on('error', () => finish(false));
+      archive.readEntry();
+    });
+  });
+}
+
 export async function publishEditedDocument(input: EditedDocumentInput): Promise<EditedDocument> {
   const filename = sanitizeEditedDocumentName(input.originalname);
   const extension = path.extname(filename).toLowerCase();
@@ -78,7 +145,11 @@ export async function publishEditedDocument(input: EditedDocumentInput): Promise
     throw new EditedDocumentError(413, 'File exceeds the configured upload size limit');
   }
   const buffer = await readFile(input.temporaryPath);
-  if (buffer.length !== input.size || !isEditedDocumentBytes(extension, buffer)) {
+  if (
+    buffer.length !== input.size ||
+    !isEditedDocumentBytes(extension, buffer) ||
+    (extension !== '.pdf' && !(await hasOfficeStructure(buffer, extension)))
+  ) {
     throw new EditedDocumentError(415, 'File bytes do not match the selected document type');
   }
   const fileId = crypto.randomUUID();
@@ -106,7 +177,15 @@ export async function publishEditedDocument(input: EditedDocumentInput): Promise
     const saved = await input.createFile(file, true);
     if (!saved) throw new Error('Failed to save file metadata');
   } catch (error) {
-    await unlink(path.join(input.uploadsPath, input.userId, storedName));
+    try {
+      await unlink(path.join(input.uploadsPath, input.userId, storedName));
+    } catch (cleanupError) {
+      try {
+        input.reportCleanupError?.(cleanupError);
+      } catch {
+        // A logging failure must not replace the metadata error.
+      }
+    }
     throw error;
   }
   return file;
@@ -182,6 +261,11 @@ export function createEditedDocumentHandlers(
           uploadsPath: req.config.paths.uploads,
           saveBuffer: deps.saveBuffer,
           createFile: deps.createFile,
+          reportCleanupError: (error) =>
+            deps.logger.error(
+              '[edited documents] Failed to remove bytes after metadata failure',
+              error instanceof Error ? error : undefined,
+            ),
         });
         res.setHeader('Cache-Control', 'no-store');
         res.status(201).json({

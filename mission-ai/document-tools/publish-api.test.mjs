@@ -6,9 +6,11 @@ import path from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
+import JSZip from 'jszip';
 
 const source = fileURLToPath(new URL('../../packages/api/src/files/editedDocuments.ts', import.meta.url));
-const moduleDir = await mkdtemp(path.join(os.tmpdir(), 'edited-doc-module-'));
+// Keep the temporary module below the package so its yauzl dependency resolves.
+const moduleDir = await mkdtemp(path.join(path.dirname(source), '.edited-doc-module-'));
 const modulePath = path.join(moduleDir, 'editedDocuments.mts');
 await writeFile(modulePath, await readFile(source));
 const { publishEditedDocument, canDownloadEditedDocument, createEditedDocumentHandlers,
@@ -75,6 +77,66 @@ test('rejects wrong bytes, unsupported names, and oversized files', async () => 
   }
 });
 
+test('accepts real Office files and rejects malformed or mislabeled ZIPs', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'edited-doc-test-'));
+  try {
+    const temporaryPath = path.join(root, 'temp');
+    let bytes;
+    const input = {
+      userId: 'owner', originalname: 'slides.pptx', temporaryPath,
+      size: 0, maxBytes: 1_000_000, retentionHours: 24, uploadsPath: root,
+      saveBuffer: async ({ fileName, buffer }) => {
+        assert.deepEqual(buffer, bytes);
+        return `/uploads/owner/${fileName}`;
+      },
+      createFile: async (record) => record,
+    };
+    for (const [extension, mime] of [
+      ['docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      ['xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+      ['pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+    ]) {
+      bytes = await readFile(new URL(`../../packages/api/src/files/documents/sample.${extension}`, import.meta.url));
+      await writeFile(temporaryPath, bytes);
+      const file = await publishEditedDocument({ ...input, originalname: `sample.${extension}`, size: bytes.length });
+      assert.equal(file.type, mime);
+    }
+    await assert.rejects(publishEditedDocument({ ...input, originalname: 'wrong.xlsx', size: bytes.length }), {
+      status: 415,
+    });
+    const fakeZip = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0, 0, 0]);
+    await writeFile(temporaryPath, fakeZip);
+    await assert.rejects(publishEditedDocument({ ...input, size: fakeZip.length }), {
+      status: 415,
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects an Office archive whose decompressed entry exceeds the safety cap', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'edited-doc-test-'));
+  try {
+    const archive = new JSZip();
+    archive.file('[Content_Types].xml', '<Types/>');
+    archive.file('_rels/.rels', '<Relationships/>');
+    archive.file('word/document.xml', 'A'.repeat(26 * 1024 * 1024));
+    const bytes = await archive.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    const temporaryPath = path.join(root, 'temp');
+    await writeFile(temporaryPath, bytes);
+    let stored = false;
+    await assert.rejects(publishEditedDocument({
+      userId: 'owner', originalname: 'oversized.docx', temporaryPath,
+      size: bytes.length, maxBytes: 1024 * 1024, retentionHours: 24, uploadsPath: root,
+      saveBuffer: async () => { stored = true; return ''; },
+      createFile: async () => ({}),
+    }), { status: 415 });
+    assert.equal(stored, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('removes saved bytes when metadata persistence fails', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'edited-doc-test-'));
   try {
@@ -94,6 +156,27 @@ test('removes saved bytes when metadata persistence fails', async () => {
       createFile: async () => { throw new Error('database offline'); },
     }), /database offline/);
     await assert.rejects(readFile(savedPath), { code: 'ENOENT' });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('retains the metadata error when cleanup also fails', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'edited-doc-test-'));
+  try {
+    const temporaryPath = path.join(root, 'temp');
+    const bytes = Buffer.from('%PDF-1.7\n');
+    await writeFile(temporaryPath, bytes);
+    const cleanupErrors = [];
+    await assert.rejects(publishEditedDocument({
+      userId: 'owner', originalname: 'report.pdf', temporaryPath,
+      size: bytes.length, maxBytes: 1024, retentionHours: 24, uploadsPath: root,
+      saveBuffer: async () => '/uploads/owner/not-created.pdf',
+      createFile: async () => { throw new Error('database offline'); },
+      reportCleanupError: error => cleanupErrors.push(error),
+    }), /database offline/);
+    assert.equal(cleanupErrors.length, 1);
+    assert.equal(cleanupErrors[0].code, 'ENOENT');
   } finally {
     await rm(root, { recursive: true, force: true });
   }
