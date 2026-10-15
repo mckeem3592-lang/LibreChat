@@ -436,6 +436,7 @@ mcpServers:
     headers:
       Authorization: 'Bearer ${LOCAL_MCP_TOKEN}'
       X-LibreChat-User-ID: '{{LIBRECHAT_USER_ID}}'
+      ngrok-skip-browser-warning: 'true'
     requiresOAuth: false
     timeout: 120000
     chatMenu: false
