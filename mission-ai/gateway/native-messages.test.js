@@ -44,6 +44,8 @@ test('native tool turn preserves signed blocks and settles before returning a ca
   const body = JSON.parse(f.events[1].init.body);
   assert.equal(body.stream, false); assert.equal(body.service_tier, 'standard_only');
   assert.deepEqual(body.tools, [tool]); assert.deepEqual(body.output_config, { effort: 'low' });
+  assert.deepEqual(body.thinking, { type: 'adaptive', block_binding: { prefix_mismatch_behavior: 'drop_block' } });
+  assert.equal(f.events[1].init.headers['anthropic-beta'], 'thinking-binding-controls-2026-08-01');
   assert.equal(f.events[1].init.redirect, 'error');
   assert.equal(f.events[2].input.usage.estimated, false);
   assert(Math.abs(f.events[2].input.actualUsd - .00014) < 1e-12);
@@ -72,11 +74,11 @@ test('LibreChat model maximum is reduced to the gateway output ceiling before re
   assert.equal(normalized.body.max_tokens, 32768);
   assert.throws(() => normalizeAnthropicMessages(request({ max_tokens: 131073 })), /native_request_invalid/);
 });
-test('LibreChat adaptive display is normalized to supported low-effort thinking', () => {
+test('LibreChat adaptive display is normalized to prefix-safe low-effort thinking', () => {
   const result = normalizeAnthropicMessages(request({
     thinking: { type: 'adaptive', display: 'summarized' },
   }));
-  assert.deepEqual(result.body.thinking, { type: 'between_tools' });
+  assert.deepEqual(result.body.thinking, { type: 'adaptive', block_binding: { prefix_mismatch_behavior: 'drop_block' } });
   assert.deepEqual(result.body.output_config, { effort: 'low' });
 });
 test('paid server tools, fallback settings, cache variants and orphan results fail before reservation', async () => {

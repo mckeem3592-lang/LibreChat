@@ -181,7 +181,9 @@ export function normalizeAnthropicMessages(value: unknown): {
       record(body.messages[body.messages.length - 1]).role !== 'user') fail('native_request_invalid');
   body.stream = false;
   body.service_tier = 'standard_only';
-  body.thinking = { type: 'between_tools' };
+  // LibreChat may prune older tool output or refresh MCP definitions between calls.
+  // Drop thinking blocks whose signed prefix no longer matches that edited history.
+  body.thinking = { type: 'adaptive', block_binding: { prefix_mismatch_behavior: 'drop_block' } };
   body.output_config = { effort: 'low' };
   // Reserve the documented Sonnet 5.5 maximum visual tokens even for tiny compressed images.
   if (imageCount > 20 || new TextEncoder().encode(anthropicReservationPrompt(body)).length > MAX_BYTES) fail('native_request_too_large', 413);
