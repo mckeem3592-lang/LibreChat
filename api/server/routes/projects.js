@@ -16,7 +16,7 @@ const handlers = createProjectHandlers({
 router.use(requireJwtAuth);
 router.use(createManagedToolOwnerGuard({
   enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
-  toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+  toolsEnabled: true,
   ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
 }));
 

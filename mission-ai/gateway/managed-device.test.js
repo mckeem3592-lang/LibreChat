@@ -12,7 +12,8 @@ process.env.LOCAL_MCP_TOKEN = 'local-documents-token-for-offline-tests-only-1234
 process.env.MISSION_AI_GITHUB_MCP_TOKEN = 'github_pat_offline_test_token_abcdefghijklmnopqrstuvwxyz0123456789';
 process.env.GOOGLE_KEY = 'fake-google-key-for-local-tests';
 process.env.TAVILY_API_KEY = 'fake-tavily-key-for-local-tests';
-const { createManagedToolAdmission, createManagedToolConfigGuard } =
+const { createManagedToolAdmission, createManagedToolConfigGuard,
+  createManagedProjectGuard, createManagedToolOwnerGuard } =
   await import('./generated/managedTools.js');
 
 const raw = yaml.parse(readFileSync(new URL('../config/librechat.github-device.yaml', import.meta.url), 'utf8'));
@@ -97,6 +98,49 @@ test('device profile permits bounded manual memories without automatic extractio
     change(req);
     assert.equal(run(guard, req).status, 503);
   }
+});
+
+test('device profile admits owner-scoped projects and validated project chat context', async () => {
+  const admit = createManagedToolAdmission(options);
+  const guard = createManagedToolConfigGuard(options);
+  const projectOwner = createManagedToolOwnerGuard({ ...options, toolsEnabled: true });
+  const id = '0123456789abcdef01234567';
+  for (const [method, url, body] of [
+    ['GET', '/api/projects', undefined],
+    ['POST', '/api/projects', { name: 'Research' }],
+    ['GET', `/api/projects/${id}`, undefined],
+    ['PUT', '/api/projects/conversations/convo-1', { projectId: id }],
+  ]) {
+    assert.equal(run(admit, { method, originalUrl: url, body }).next, 1);
+  }
+  for (const [method, url, body] of [
+    ['GET', '/api/projects?limit=1000', undefined],
+    ['POST', '/api/projects', { name: 'x'.repeat(257) }],
+    ['PUT', '/api/projects/conversations/convo-1', { projectId: 'invalid' }],
+  ]) {
+    assert.equal(run(admit, { method, originalUrl: url, body }).status, 403);
+  }
+  assert.equal(run(projectOwner, { user: { email: 'owner@example.test' } }).next, 1);
+  assert.equal(run(projectOwner, { user: { email: 'other@example.test' } }).status, 403);
+
+  const chat = fixture();
+  chat.user.id = 'user-1';
+  chat.body.chatProjectId = id;
+  assert.equal(run(admit, chat).next, 1);
+  assert.equal(run(guard, chat).next, 1);
+  assert.equal(chat.body.chatProjectId, id);
+  const projectGuard = createManagedProjectGuard({ ...options,
+    projectOwned: async (userId, projectId) => userId === 'user-1' && projectId === id });
+  const passed = await new Promise((resolve) => {
+    let status;
+    projectGuard(chat, { status(code) { status = code; return this; }, json() {} },
+      () => resolve({ next: 1, status }));
+    setTimeout(() => resolve({ next: 0, status }), 50);
+  });
+  assert.equal(passed.next, 1);
+  const invalid = fixture();
+  invalid.body.chatProjectId = 'other';
+  assert.equal(run(admit, invalid).status, 403);
 });
 
 test('device profile exposes browser read-aloud without an external TTS provider', () => {

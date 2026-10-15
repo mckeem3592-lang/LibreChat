@@ -379,7 +379,7 @@ export function createManagedProjectGuard(options: ManagedToolOptions & {
   projectOwned: (userId: string, projectId: string) => Promise<boolean>;
 }): Middleware {
   return async (req, res, next) => {
-    if (!options.enabled || !options.toolsEnabled) return next();
+    if (!options.enabled) return next();
     const id = (req.body as Json | undefined)?.chatProjectId;
     if (id == null) return next();
     if (!owner(req, options) || !req.user?.id || typeof id !== 'string' || !/^[a-fA-F0-9]{24}$/.test(id)) return reject(res);
