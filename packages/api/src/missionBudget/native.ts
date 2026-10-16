@@ -1,11 +1,12 @@
 import { anthropicRequest, anthropicUsage, anthropicCompletion } from './anthropicNative.js';
 import { normalizeAnthropicMessages, validateAnthropicMessage, anthropicReservationPrompt } from './anthropicMessages.js';
 
-/** Restricted, non-streaming upstream transport. The host owns HTTP authentication and SSE. */
 type JsonObject = Record<string, unknown>;
 type Usage = { inputTokens: number; outputTokens: number; cachedInputTokens: number; cacheWriteTokens: number;
   cacheWrite5mTokens?: number; cacheWrite1hTokens?: number };
 type Awaitable<T> = T | Promise<T>;
+type NativeStreamSink = { write(chunk: Uint8Array): Promise<void> };
+type NativeContext = { projectId?: unknown; signal?: AbortSignal; stream?: NativeStreamSink };
 
 interface NativeLedger {
   reserve(input: {
@@ -104,6 +105,95 @@ const MAX_BODY_BYTES = 1_048_576;
 const MAX_OUTPUT_TOKENS = 32_768;
 const PROVIDER_TIMEOUT_MS = 30_000;
 const UPSTREAM_URL = 'https://api.openai.com/v1/chat/completions';
+const MAX_SSE_FRAME_BYTES = 1_048_576;
+
+async function readAnthropicStream(
+  response: { body?: ReadableStream<Uint8Array> | null }, sink: NativeStreamSink,
+  model: string, controller: AbortController,
+  progress: { inputTokens?: number; outputTokens?: number },
+): Promise<{ usage: Usage; response: JsonObject; terminal: Uint8Array }> {
+  if (!response.body) fail('native_provider_response_invalid', 502);
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  let pending = new Uint8Array(0);
+  let start: JsonObject | undefined;
+  let usage: JsonObject | undefined;
+  let stop: JsonObject | undefined;
+  let terminal: Uint8Array | undefined;
+  let sawDelta = false;
+  let contentBlocks = 0;
+  let complete = false;
+  const frameEnd = (bytes: Uint8Array): number => {
+    for (let i = 1; i < bytes.length; i++) {
+      if (bytes[i] === 10 && bytes[i - 1] === 10) return i + 1;
+      if (i >= 3 && bytes[i] === 10 && bytes[i - 1] === 13 && bytes[i - 2] === 10 && bytes[i - 3] === 13) return i + 1;
+    }
+    return -1;
+  };
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (controller.signal.aborted) fail('native_client_cancelled', 499);
+      if (pending.length + value.length > MAX_SSE_FRAME_BYTES * 2) fail('native_provider_response_invalid', 502);
+      const joined = new Uint8Array(pending.length + value.length);
+      joined.set(pending);
+      joined.set(value, pending.length);
+      pending = joined;
+      let end: number;
+      while ((end = frameEnd(pending)) >= 0) {
+        const frame = pending.slice(0, end);
+        pending = pending.slice(end);
+        if (frame.length > MAX_SSE_FRAME_BYTES) fail('native_provider_response_invalid', 502);
+        const lines = decoder.decode(frame).split(/\r?\n/);
+        const event = lines.find(line => line.startsWith('event:'))?.slice(6).trim();
+        const data = lines.filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n');
+        if (!event || !data) { await sink.write(frame); continue; }
+        const payload = object(JSON.parse(data));
+        if (payload.type !== event) fail('native_provider_response_invalid', 502);
+        if (event === 'error') fail('native_provider_response_invalid', 502);
+        if (event === 'message_start') {
+          if (start) fail('native_provider_response_invalid', 502);
+          start = object(payload.message);
+          if (start.model !== model &&
+              !(model === 'claude-haiku-4-5' && start.model === 'claude-haiku-4-5-20251001')) {
+            fail('native_model_unverified', 502);
+          }
+          usage = object(start.usage);
+          progress.inputTokens = Number(usage.input_tokens);
+          progress.outputTokens = Number(usage.output_tokens);
+        } else if (event === 'message_delta') {
+          if (!start || terminal) fail('native_provider_response_invalid', 502);
+          stop = object(payload.delta);
+          usage = { ...usage, ...object(payload.usage) };
+          progress.outputTokens = Number(usage.output_tokens);
+          sawDelta = true;
+        } else if (event === 'content_block_start') {
+          contentBlocks++;
+        } else if (event === 'message_stop') {
+          if (!start || !sawDelta || terminal) fail('native_provider_response_invalid', 502);
+          terminal = frame;
+          continue;
+        }
+        if (terminal) fail('native_provider_response_invalid', 502);
+        await sink.write(frame);
+      }
+      if (pending.length > MAX_SSE_FRAME_BYTES) fail('native_provider_response_invalid', 502);
+    }
+    if (!terminal || pending.length || !start || !stop || !usage) fail('native_provider_response_invalid', 502);
+    const raw = { model: start.model, usage, stop_reason: stop.stop_reason,
+      stop_details: stop.stop_details, content: contentBlocks ? [{}] : [] };
+    const verified = anthropicUsage(raw, model);
+    complete = true;
+    return { usage: verified.usage, response: raw, terminal };
+  } finally {
+    if (!complete) {
+      controller.abort();
+      void reader.cancel().catch(() => {});
+    }
+    reader.releaseLock();
+  }
+}
 
 /** Real fetch responses are read under the existing protocol ceiling before JSON parsing. */
 async function readProviderJson(response: Pick<Response, 'json'> & {
@@ -404,7 +494,7 @@ function safeFailure(error: unknown, fallback: string): NativeBridgeError {
   return new NativeBridgeError(SAFE_FAILURES.has(message) ? message : fallback, 503);
 }
 
-export function createNativeBridge(deps: NativeBridgeDependencies): { handle(body: unknown, context?: { projectId?: unknown; signal?: AbortSignal }): Promise<JsonObject> } {
+export function createNativeBridge(deps: NativeBridgeDependencies): { handle(body: unknown, context?: NativeContext): Promise<JsonObject> } {
   return {
     async handle(input, context) {
       const projectId = context?.projectId;
@@ -419,6 +509,9 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
       }
       const normalized = nativeMessages ? normalizeAnthropicMessages(input) : normalizeBody(input);
       const { body, model } = normalized;
+      const incremental = nativeMessages && (input as JsonObject).stream === true;
+      if (incremental && !context?.stream) fail('native_stream_unavailable', 503);
+      if (incremental) body.stream = true;
       let outputLimit = normalized.outputLimit;
       const imageInputTokens = 'imageInputTokens' in normalized && typeof normalized.imageInputTokens === 'number' ? normalized.imageInputTokens : 0;
       const upstreamBody = provider === 'anthropic' && !nativeMessages ? anthropicRequest(body) : body;
@@ -496,6 +589,8 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
 
       let response;
       let failure: NativeBridgeError | undefined;
+      let terminal: Uint8Array | undefined;
+      const progress: { inputTokens?: number; outputTokens?: number } = {};
       let definitiveRejection = false;
       const controller = new AbortController();
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -529,6 +624,11 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
                 requestId: providerRequestId(upstream.headers),
               } : undefined);
             }
+            if (incremental) {
+              const streamed = await readAnthropicStream(upstream, context!.stream!, model, controller, progress);
+              terminal = streamed.terminal;
+              return { response: streamed.response, usage: streamed.usage, billable: true };
+            }
             const raw = await readProviderJson(upstream, controller);
             return provider === 'anthropic' ? anthropicUsage(raw, model) : responseUsage(raw, model);
           })(),
@@ -555,6 +655,8 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
             await deps.ledger.settle({
               reservationId: reservation.reservationId, actualUsd: reserveUsd,
               usage: { ...metadata, estimated: true, error: failure?.code ?? 'native_provider_response_invalid',
+                ...(Number.isSafeInteger(progress.inputTokens) ? { lastKnownInputTokens: progress.inputTokens } : {}),
+                ...(Number.isSafeInteger(progress.outputTokens) ? { lastKnownOutputTokens: progress.outputTokens } : {}),
                 ...(failure?.providerHttpStatus !== undefined ? { providerHttpStatus: failure.providerHttpStatus } : {}) },
             });
           }
@@ -577,6 +679,10 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
         if (actualUsd > reserveUsd + 1e-9) fail('reservation_underestimated', 503);
         // Valid billable usage survives malformed presentation/protocol fields.
         if (response.usage.outputTokens > outputLimit) fail('native_output_limit_exceeded', 502);
+        if (incremental) {
+          await context!.stream!.write(terminal!);
+          return { streamed: true };
+        }
         if (nativeMessages) return validateAnthropicMessage(response.response, upstreamBody);
         const completion = provider === 'anthropic'
           ? anthropicCompletion(response.response, response.usage, now) : response.response;
