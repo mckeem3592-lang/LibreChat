@@ -518,7 +518,7 @@ export function useResumeSubmit() {
             }
           },
           onError: (error) => {
-            if (fields.endpoint === 'MissionAI') {
+            if (fields.endpoint === 'MissionAI' || fields.endpoint === 'MissionAIClaudeCached') {
               logSafeApprovalFailure(error);
             }
             const expired = isExpiredError(error);
