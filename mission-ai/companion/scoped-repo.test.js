@@ -19,9 +19,9 @@ test('scoped repository reads, edits, checks, and rejects stale or escaping writ
   await writeFile(path.join(root, 'src', 'app.js'), 'old\n');
   let invocation;
   const repo = createScopedRepo({ root, checks: {
-    lint: { command: 'git', args: ['diff', '--check'] },
+    lint: { command: 'git', args: ['diff', '--check'], timeoutMs: 300_000 },
   } }, { run: async (command, args, options) => {
-    invocation = { command, args, cwd: options.cwd };
+    invocation = { command, args, cwd: options.cwd, timeoutMs: options.timeout };
     return { stdout: 'clean\n', stderr: '' };
   } });
   assert.deepEqual((await repo.list()).entries, [{ name: 'src', type: 'directory' }]);
@@ -33,7 +33,8 @@ test('scoped repository reads, edits, checks, and rejects stale or escaping writ
     hash('new\n'));
   assert.equal(await readFile(path.join(root, 'src', 'app.js'), 'utf8'), 'new\n');
   assert.equal((await repo.check({ checkId: 'lint' })).exitCode, 0);
-  assert.deepEqual(invocation, { command: 'git', args: ['diff', '--check'], cwd: await realpath(root) });
+  assert.deepEqual(invocation, { command: 'git', args: ['diff', '--check'],
+    cwd: await realpath(root), timeoutMs: 300_000 });
   await assert.rejects(repo.check({ checkId: 'arbitrary' }), /repo_check_not_allowed/);
   await assert.rejects(repo.write({ path: '../outside', text: 'no' }), /repo_path_not_allowed/);
   await assert.rejects(repo.write({ path: 'src/CON.txt', text: 'no' }), /repo_path_not_allowed/);
@@ -71,4 +72,36 @@ test('a real Git check reports a changed source file and a failing diff', async 
   const check = await repo.check({ checkId: 'diff-check' });
   assert.notEqual(check.exitCode, 0);
   assert.match(check.stdout + check.stderr, /trailing whitespace/i);
+  const started = await repo.startCheck({ checkId: 'diff-check' });
+  let background;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    background = repo.checkStatus({ jobId: started.jobId });
+    if (background.status !== 'running') break;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.equal(background.status, 'failed');
+  assert.notEqual(background.result.exitCode, 0);
+  assert.match(background.result.stdout + background.result.stderr, /trailing whitespace/i);
+});
+
+test('a named check continues while the caller is away and exposes its terminal result', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'mission-repo-job-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(path.join(root, '.git'));
+  let finish;
+  const repo = createScopedRepo({ root, checks: { lint: { command: 'git', args: ['diff', '--check'] } } },
+    { run: () => new Promise(resolve => { finish = resolve; }) });
+  const started = await repo.startCheck({ checkId: 'lint' });
+  assert.equal(started.status, 'running');
+  assert.equal(repo.checkStatus({ jobId: started.jobId }).status, 'running');
+  await assert.rejects(repo.startCheck({ checkId: 'lint' }), /repo_check_busy/);
+  for (let attempt = 0; attempt < 20 && !finish; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.equal(typeof finish, 'function');
+  finish({ stdout: 'clean', stderr: '' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(repo.checkStatus({ jobId: started.jobId }).result,
+    { checkId: 'lint', exitCode: 0, stdout: 'clean', stderr: '' });
+  assert.equal(repo.checkStatus({ jobId: started.jobId }).status, 'completed');
 });

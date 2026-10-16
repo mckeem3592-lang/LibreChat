@@ -2,13 +2,13 @@ import { createInterface } from 'node:readline';
 
 const readOnlyTools = new Set([
   'mac.active_app', 'mac.screenshot', 'browser.list_tabs', 'browser.get_state',
-  'file.list', 'file.read', 'repo.list', 'repo.read',
+  'file.list', 'file.read', 'repo.list', 'repo.read', 'repo.check_status',
 ]);
 const autonomousTools = new Set([
   'browser.activate_tab', 'browser.open_new_tab', 'browser.open_url_direct',
   'browser.close_tabs', 'browser.click', 'browser.type', 'browser.scroll',
   'browser.open_url', 'file.move', 'file.write',
-  'repo.write', 'repo.check',
+  'repo.write', 'repo.check', 'repo.start_check',
   'mac.open_app', 'mac.click', 'mac.type', 'mac.key',
 ]);
 let awaitingApproval = false;

@@ -65,7 +65,7 @@ if (Test-Path -LiteralPath $settingsPath) {
 $settings = @{
   autonomousTools = @('browser.activate_tab', 'browser.open_new_tab', 'browser.open_url_direct',
     'browser.close_tabs', 'browser.click', 'browser.type', 'browser.scroll', 'browser.open_url',
-    'file.move', 'file.write', 'repo.write', 'repo.check')
+    'file.move', 'file.write', 'repo.write', 'repo.check', 'repo.start_check')
   fileRoots = @{
     Desktop = [Environment]::GetFolderPath('Desktop')
     Documents = [Environment]::GetFolderPath('MyDocuments')
