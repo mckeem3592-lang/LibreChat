@@ -4,6 +4,7 @@ export interface IChatProject {
   _id?: Types.ObjectId;
   name: string;
   description?: string;
+  instructions?: string;
   user: string;
   conversationCount: number;
   lastConversationAt?: Date | null;

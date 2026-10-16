@@ -10,8 +10,12 @@ function fixture() {
     assignConversationToProject: jest.fn().mockResolvedValue(null),
   };
   const handlers = createProjectHandlers(methods);
-  const request = { user: { id: 'owner-id' }, params: { projectId: id, conversationId: 'convo-id' },
-    body: { name: 'Project', description: 'Context', projectId: id }, query: {} };
+  const request = {
+    user: { id: 'owner-id' },
+    params: { projectId: id, conversationId: 'convo-id' },
+    body: { name: 'Project', description: 'Context', projectId: id },
+    query: {},
+  };
   const response = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
   return { methods, handlers, request, response };
 }
@@ -19,8 +23,11 @@ test('project reads and mutations consistently pass the authenticated owner to t
   const f = fixture();
   for (const action of ['getProject', 'updateProject', 'deleteProject'] as const) {
     await f.handlers[action](f.request as never, f.response as never);
-    const method = { getProject: f.methods.getChatProject, updateProject: f.methods.updateChatProject,
-      deleteProject: f.methods.deleteChatProject }[action];
+    const method = {
+      getProject: f.methods.getChatProject,
+      updateProject: f.methods.updateChatProject,
+      deleteProject: f.methods.deleteChatProject,
+    }[action];
     expect(method.mock.calls[0].slice(0, 2)).toEqual(['owner-id', id]);
     expect(f.response.status).toHaveBeenLastCalledWith(404);
   }
@@ -28,13 +35,37 @@ test('project reads and mutations consistently pass the authenticated owner to t
   expect(f.methods.assignConversationToProject).toHaveBeenCalledWith('owner-id', 'convo-id', id);
 });
 test('invalid project IDs are rejected before repository access', async () => {
-  const f = fixture(); f.request.params.projectId = '../other';
+  const f = fixture();
+  f.request.params.projectId = '../other';
   await f.handlers.getProject(f.request as never, f.response as never);
-  expect(f.response.status).toHaveBeenCalledWith(404); expect(f.methods.getChatProject).not.toHaveBeenCalled();
+  expect(f.response.status).toHaveBeenCalledWith(404);
+  expect(f.methods.getChatProject).not.toHaveBeenCalled();
 });
 test('creating a project uses the signed-in owner rather than any submitted identity', async () => {
   const f = fixture();
-  await f.handlers.createProject({ ...f.request, body: { name: ' Project ', description: 'Context', user: 'other' } } as never, f.response as never);
-  expect(f.methods.createChatProject).toHaveBeenCalledWith('owner-id', { name: 'Project', description: 'Context' });
+  await f.handlers.createProject(
+    { ...f.request, body: { name: ' Project ', description: 'Context', user: 'other' } } as never,
+    f.response as never,
+  );
+  expect(f.methods.createChatProject).toHaveBeenCalledWith('owner-id', {
+    name: 'Project',
+    description: 'Context',
+  });
   expect(f.response.status).toHaveBeenCalledWith(201);
+});
+test('project instructions are passed through owner-scoped create and update', async () => {
+  const f = fixture();
+  Object.assign(f.request.body, { instructions: 'Use the project checklist.' });
+  await f.handlers.createProject(f.request as never, f.response as never);
+  await f.handlers.updateProject(f.request as never, f.response as never);
+  expect(f.methods.createChatProject).toHaveBeenCalledWith('owner-id', {
+    name: 'Project',
+    description: 'Context',
+    instructions: 'Use the project checklist.',
+  });
+  expect(f.methods.updateChatProject).toHaveBeenCalledWith(
+    'owner-id',
+    id,
+    expect.objectContaining({ instructions: 'Use the project checklist.' }),
+  );
 });

@@ -1,6 +1,7 @@
 import {
   MAX_CHAT_PROJECT_NAME_LENGTH,
   MAX_CHAT_PROJECT_DESCRIPTION_LENGTH,
+  MAX_CHAT_PROJECT_INSTRUCTIONS_LENGTH,
 } from 'librechat-data-provider';
 import type { FilterQuery, Model, SortOrder, Types } from 'mongoose';
 import type { IChatProject, IChatProjectDocument, IConversation } from '~/types';
@@ -15,6 +16,7 @@ export type ChatProjectSortDirection = 'asc' | 'desc';
 export type CreateChatProjectInput = {
   name: string;
   description?: string | null;
+  instructions?: string | null;
 };
 
 export type UpdateChatProjectInput = Partial<CreateChatProjectInput>;
@@ -99,6 +101,7 @@ function sanitizeProjectInput(input: CreateChatProjectInput): CreateChatProjectI
   return {
     name: input.name.trim().slice(0, MAX_CHAT_PROJECT_NAME_LENGTH),
     description: input.description?.trim().slice(0, MAX_CHAT_PROJECT_DESCRIPTION_LENGTH) ?? '',
+    instructions: input.instructions?.trim().slice(0, MAX_CHAT_PROJECT_INSTRUCTIONS_LENGTH) ?? '',
   };
 }
 
@@ -411,7 +414,7 @@ export function createChatProjectMethods(mongoose: typeof import('mongoose')): C
     }
 
     const ChatProject = mongoose.models.ChatProject as Model<IChatProjectDocument>;
-    const update: Partial<Pick<IChatProject, 'name' | 'description'>> = {};
+    const update: Partial<Pick<IChatProject, 'name' | 'description' | 'instructions'>> = {};
     if (typeof input.name === 'string') {
       const name = input.name.trim().slice(0, MAX_CHAT_PROJECT_NAME_LENGTH);
       if (!name) {
@@ -422,6 +425,10 @@ export function createChatProjectMethods(mongoose: typeof import('mongoose')): C
     if (input.description !== undefined) {
       update.description =
         input.description?.trim().slice(0, MAX_CHAT_PROJECT_DESCRIPTION_LENGTH) ?? '';
+    }
+    if (input.instructions !== undefined) {
+      update.instructions =
+        input.instructions?.trim().slice(0, MAX_CHAT_PROJECT_INSTRUCTIONS_LENGTH) ?? '';
     }
 
     return await ChatProject.findOneAndUpdate(

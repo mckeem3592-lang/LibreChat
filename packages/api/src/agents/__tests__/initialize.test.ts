@@ -289,6 +289,52 @@ describe('initializeAgent — execution context', () => {
     jest.clearAllMocks();
   });
 
+  it('adds only owner-scoped project instructions to the model configuration', async () => {
+    const { agent, req, res, loadTools, db } = createMocks();
+    agent.instructions = 'Agent conventions';
+    req.body = { chatProjectId: '507f1f77bcf86cd799439011' };
+    db.getChatProject = jest.fn().mockResolvedValue({ instructions: 'Use the project checklist.' });
+
+    const result = await initializeAgent(
+      {
+        req,
+        res,
+        agent,
+        loadTools,
+        endpointOption: { endpoint: EModelEndpoint.agents },
+        allowedProviders: new Set([agent.provider]),
+        isInitialAgent: true,
+      },
+      db,
+    );
+
+    expect(db.getChatProject).toHaveBeenCalledWith('user-1', '507f1f77bcf86cd799439011');
+    expect(result.instructions).toContain('Agent conventions');
+    expect(result.instructions).toContain('Project instructions:\nUse the project checklist.');
+  });
+
+  it('rejects a project outside the owner scope before loading tools', async () => {
+    const { agent, req, res, loadTools, db } = createMocks();
+    req.body = { chatProjectId: '507f1f77bcf86cd799439011' };
+    db.getChatProject = jest.fn().mockResolvedValue(null);
+
+    await expect(
+      initializeAgent(
+        {
+          req,
+          res,
+          agent,
+          loadTools,
+          endpointOption: { endpoint: EModelEndpoint.agents },
+          allowedProviders: new Set([agent.provider]),
+          isInitialAgent: true,
+        },
+        db,
+      ),
+    ).rejects.toThrow('Project not found');
+    expect(loadTools).not.toHaveBeenCalled();
+  });
+
   it.each(['prefer', 'defer', 'off'] as const)(
     'uses saved repository instruction mode %s in definitions-only initialization',
     async (mode) => {

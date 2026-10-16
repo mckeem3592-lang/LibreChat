@@ -65,6 +65,9 @@ const createProjectInput = (req: ProjectRequest): CreateChatProjectInput | null 
   return {
     name,
     description: typeof req.body?.description === 'string' ? req.body.description : '',
+    ...(typeof req.body?.instructions === 'string' && {
+      instructions: req.body.instructions,
+    }),
   };
 };
 
@@ -171,6 +174,9 @@ export function createProjectHandlers(deps: ProjectHandlerDependencies): {
     }
     if (req.body?.description !== undefined) {
       input.description = typeof req.body.description === 'string' ? req.body.description : '';
+    }
+    if (req.body?.instructions !== undefined) {
+      input.instructions = typeof req.body.instructions === 'string' ? req.body.instructions : '';
     }
 
     try {

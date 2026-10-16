@@ -1,6 +1,6 @@
 # Mission AI functional parity ledger
 
-Last reviewed: 2026-10-16. Baseline: `mission-ai-v1` at `744d65f17` (PR #74).
+Last reviewed: 2026-10-16. Baseline: `mission-ai-v1` at `8c19e0085` (PR #76).
 Deployment: `mission-ai-chat-test-mckee` and `mission-ai-gateway-mckee` on Render.
 
 The goal is to complete practical ChatGPT-like work with a manually selected
@@ -19,13 +19,13 @@ identified as such; it is not a fresh acceptance test.
 | C4: continue long coding work in background | Core agent jobs/checkpointer code exists; active profile lacks `run_in_background`; Windows companion persists named check results on disk | Prove a selected-model coding job, gateway disconnect recovery, and Mac path | PR #74 worker installed; a real `status` check completed with exit 0 and was read by a fresh launcher process; gateway re-advertised `repo.scoped` at 15:43 UTC | Worker connection/daemon designed to persist, but mutating job awaits local operator | **Installed no-model background check recovery pass; model job unverified** | Active profile gate, paid model E2E, Mac approval |
 | F1: scoped local file read/write | Device MCP `file_read`/`file_write`; companion confines paths and approvals | Read, mutate, reopen, and confirm ownership on each OS | Installed module passed create/read/stale-hash rejection/update/readback with a disposable workspace fixture and a temporary narrowed Documents root; actual configured Documents root is OneDrive and was not written | `mac-primary` disconnected during deploy and did not reconnect in the checked window | **Installed module no-model pass; configured device/model full cycle unverified** | Signed-in model call and paired-device acceptance; Windows configured OneDrive path is outside writable test workspace |
 | F2: upload and analyze documents | PDF/DOCX/XLSX text extraction; bounded upload; optional Local Documents MCP; Mongo GridFS bytes and owner-scoped download link deployed in `53347905` | Compare production download bytes and verify model analysis against source | Local Mongo reconnect and byte readback passed; signed-in production PDF persists after restart and My Files exposes its authenticated download link; disposable standard-font PDF text extraction passed offline after supplying packaged PDF.js fonts | Local Documents bridge exists; per-user tool availability not proved | **Production no-model upload/list/link pass; offline PDF extraction pass; production byte readback and model analysis unverified** | Browser download capture returned no file and browser downloads page is policy-blocked; paid model call prohibited |
-| F3: create/edit/download DOCX, XLSX, PPTX, PDF | Edited-byte GridFS, owner-scoped publisher/download, Office validation, XLSX creator | Format-by-format create, edit, render/open, redeploy, download acceptance | Web client should work, local document editor not established | Local Documents bridge; PR #43 fixed first-response XLSX link | **Partial prior XLSX/document runs; suite incomplete** | Paid model call, connected document tool, render/open checks |
+| F3: create/edit/download DOCX, XLSX, PPTX, PDF | Edited-byte GridFS, owner-scoped publisher/download, Office validation, XLSX creator | Format-by-format create, edit, render/open, redeploy, download acceptance | Offline publisher suite passed 9/9, including real DOCX/XLSX/PPTX inputs, exact-byte streaming and owner denial; web client still unverified | Local Documents bridge; PR #43 fixed first-response XLSX link | **Offline publisher pass; complete production/model format suite unverified** | Paid model call, connected document tool, production byte and render/open checks |
 | F4: file search with citations | File text fallback exists; `fileSearch: false` | Durable ingestion, permission-scoped index, source spans and citation checks | Off | Off | **Not available** | Retrieval backend and storage; no paid index service approved |
 | B1: enumerate/open/close browser tabs | Device MCP browser tools and companion/Chrome extension | Verify live extension runtime and tab identity through the model | Installed Windows extension manifest/background and companion files match repository SHA256; `windows-work` advertised `browser.page_extension`; live action unknown | PR #44 found an older installed extension; `mac-primary` did not reconnect in the checked post-deploy window | **Installed file revision verified; browser workflow unverified** | Chrome extension runtime and model acceptance |
 | B2: click/type/save in connected sites | Snapshot-bound click/type, hidden/credential exclusions and retention checks | Save then reread a disposable item; distinguish DOM typing from server save | Bridge code exists, live result unknown | Gmail draft round trip remained unverified after PRs #44–#47 | **No verified save/read model cycle** | Extension version/permissions and paid model call |
 | S1: GitHub read/edit/PR work | Owner-scoped GitHub editor MCP and code bridge | Verify one model task through changed-file readback, checks and PR result | Cloud MCP is OS-independent; access from Windows browser unverified | Cloud MCP is OS-independent; Mac client path unverified | **Tool exists; no accepted complete model task** | Paid model call and exact repo authorization |
 | S2: email and other connected services | Browser bridge and selected MCP servers | Add scoped OAuth/native connectors or prove browser save/read/send with result receipts | Browser bridge unverified | Browser Gmail draft save/read unverified | **Not accepted** | Per-service authorization, extension readiness, paid model test |
-| P1: Projects with reusable context | Owner-scoped project CRUD and chat grouping | Project instructions/files and verified context injection, deletion isolation | Web UI present, authenticated acceptance unverified | Same web UI status | **Grouping implementation only** | Schema lacks instructions/files; paid context test |
+| P1: Projects with reusable context | Owner-scoped project CRUD and chat grouping; project instructions storage/form and owner-scoped agent injection under implementation | Deploy and verify project instructions, then project files and deletion isolation | Offline code path being tested; authenticated acceptance unverified | Same web UI status | **Project grouping only accepted as implementation; instructions/model context unverified** | Project files absent; deployment and paid context test |
 | M1: personal memory | Bounded manual CRUD; automatic memory agent off | Confirm CRUD and that a fresh chat uses only authorized memory | Web UI present, live result unknown | Same | **Unverified context use** | Paid fresh-chat check; autonomous extraction intentionally off |
 | T1: schedules/background tasks | Owner-pinned schedule agent, schedule UI, engine and signed trigger | Verify listener-local admission response, then timed fire, retry, recovery and completion notice | Hosted engine is OS-independent; not accepted | Same | **Failed live disposable Run now**: retries dead-lettered Oct 16 while a chat deploy was starting; HTTP 200 non-JSON body, and no chat-controller entry log | Source of non-JSON response unproven; free Render sleep; recurring AI spend disallowed |
 | K1: reusable skills/agents | General agents and skills code exists; single pinned schedule agent | Durable skill import, authorization, execution and user-facing lifecycle | `skills: false` | `skills: false` | **Not available** | Gated profile and storage/acceptance |
@@ -105,10 +105,20 @@ chat-controller entry. The response origin remains unproven. Trigger dispatch
 now prefers the current process's bound listener after initialization, retaining
 the configured self URL only before a listener exists. A focused offline test
 covers that routing choice; timed or model-driven schedule acceptance remains
-unverified.
+unverified. PR #75 (`108b5922`) was deployed live in Render deployment
+`dep-db94gmmk1f9s73fif3tg`; no new schedule fire was run.
 
 PDF.js logged a missing `standardFontDataUrl` warning for the production PDF.
 The parser now points at the package's standard fonts. A disposable one-page
 Helvetica PDF returned `Hello parity` in an offline extraction without that
 warning. This does not verify the production document's extracted text or a
 model's use of it.
+PR #76 (`8c19e008`) was deployed live in Render deployment
+`dep-db94j367bikc73dmk8ng`. The offline document publisher suite passed 9/9,
+including actual Office fixtures, exact-byte download streaming, and owner
+denial. It does not prove production download byte equality or Mac MCP use.
+
+Project instructions now have a proposed owner-scoped storage, create/edit UI,
+and agent initialization path. The standalone handler probe passed scoped
+create/update. Model context injection, project files, and deletion isolation
+remain unverified; the new code must pass a fresh deployment build first.
