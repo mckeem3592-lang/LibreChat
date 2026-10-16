@@ -2,6 +2,7 @@
  * requires a separate opt-in and an active budget-backed provider route. */
 const DEVICE_TOOLS = [
   'mission_readiness',
+  'mission_budget_snapshot',
   'browser_list_tabs',
   'browser_activate_tab',
   'browser_open_new_tab',

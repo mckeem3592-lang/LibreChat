@@ -93,6 +93,28 @@ export function createMissionMcpNodeHandler({
     );
 
     registerTool(
+      'mission_budget_snapshot',
+      {
+        description: 'Return only current-month Mission AI spend and ceiling numbers for a bounded request. No provider, project, message, or credential details are returned.',
+        inputSchema: z.object({}),
+      },
+      async () => {
+        try {
+          const dashboard = await getDashboard();
+          const snapshot = Object.fromEntries(
+            ['monthStart', 'accountingMode', 'spendUsd', 'projectedSpendUsd',
+              'remainingUsd', 'reservedUsd', 'hardUsd', 'accountingBlocked']
+              .filter((key) => Object.hasOwn(dashboard, key))
+              .map((key) => [key, dashboard[key]]),
+          );
+          return textResult({ ok: true, snapshot });
+        } catch (error) {
+          return errorResult(error);
+        }
+      },
+    );
+
+    registerTool(
       'mission_cost_dashboard',
       {
         description: 'Return read-only current-month Mission AI spend and token telemetry. No message content or credentials are returned.',

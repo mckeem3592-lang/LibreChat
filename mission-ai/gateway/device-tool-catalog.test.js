@@ -5,6 +5,7 @@ import { deviceMcpAllowedTools } from './device-tool-catalog.js';
 test('device catalog keeps image generation off by default', () => {
   const tools = deviceMcpAllowedTools();
   assert.equal(tools.has('browser_get_state'), true);
+  assert.equal(tools.has('mission_budget_snapshot'), true);
   assert.equal(tools.has('mission_generate_image'), false);
   assert.equal(tools.has('mission_delegate'), false);
 });
