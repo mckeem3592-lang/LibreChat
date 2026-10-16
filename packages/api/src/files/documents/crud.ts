@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import path from 'path';
 import yauzl from 'yauzl';
 import { megabyte, excelMimeTypes, FileSources } from 'librechat-data-provider';
 import type { TextItem } from 'pdfjs-dist/types/src/display/api';
@@ -76,7 +77,11 @@ async function pdfToText(file: Express.Multer.File): Promise<string> {
   const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
 
   const data = new Uint8Array(await fs.promises.readFile(file.path));
-  const pdf = await getDocument({ data }).promise;
+  // PDF.js needs its packaged standard fonts even when only extracting text.
+  // Its URL validator requires a literal forward slash on Windows too.
+  const standardFontDataUrl =
+    path.join(path.dirname(require.resolve('pdfjs-dist/package.json')), 'standard_fonts') + '/';
+  const pdf = await getDocument({ data, standardFontDataUrl }).promise;
 
   let fullText = '';
   for (let i = 1; i <= pdf.numPages; i++) {
