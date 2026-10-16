@@ -1,6 +1,6 @@
 # Mission AI functional parity ledger
 
-Last reviewed: 2026-10-16. Baseline: `mission-ai-v1` at `8c19e0085` (PR #76).
+Last reviewed: 2026-10-16. Baseline: `mission-ai-v1` at `4d36a259d` (PR #77).
 Deployment: `mission-ai-chat-test-mckee` and `mission-ai-gateway-mckee` on Render.
 
 The goal is to complete practical ChatGPT-like work with a manually selected
@@ -25,7 +25,7 @@ identified as such; it is not a fresh acceptance test.
 | B2: click/type/save in connected sites | Snapshot-bound click/type, hidden/credential exclusions and retention checks | Save then reread a disposable item; distinguish DOM typing from server save | Bridge code exists, live result unknown | Gmail draft round trip remained unverified after PRs #44–#47 | **No verified save/read model cycle** | Extension version/permissions and paid model call |
 | S1: GitHub read/edit/PR work | Owner-scoped GitHub editor MCP and code bridge | Verify one model task through changed-file readback, checks and PR result | Cloud MCP is OS-independent; access from Windows browser unverified | Cloud MCP is OS-independent; Mac client path unverified | **Tool exists; no accepted complete model task** | Paid model call and exact repo authorization |
 | S2: email and other connected services | Browser bridge and selected MCP servers | Add scoped OAuth/native connectors or prove browser save/read/send with result receipts | Browser bridge unverified | Browser Gmail draft save/read unverified | **Not accepted** | Per-service authorization, extension readiness, paid model test |
-| P1: Projects with reusable context | Owner-scoped project CRUD and chat grouping; project instructions storage/form and owner-scoped agent injection under implementation | Deploy and verify project instructions, then project files and deletion isolation | Offline code path being tested; authenticated acceptance unverified | Same web UI status | **Project grouping only accepted as implementation; instructions/model context unverified** | Project files absent; deployment and paid context test |
+| P1: Projects with reusable context | Owner-scoped project CRUD and chat grouping; project instructions storage/form and owner-scoped agent initialization deployed in `4d36a259` | Verify saved instructions through a project chat, then project files and deletion isolation | Standalone owner-scoped handler probe passed; signed-in deployed Create/Edit forms show Instructions; no project data changed | Same web UI status; Mac client not tested | **No-model deployed form pass; saved instruction/model context unverified** | Project files absent; safe project save/readback acceptance and paid model context test |
 | M1: personal memory | Bounded manual CRUD; automatic memory agent off | Confirm CRUD and that a fresh chat uses only authorized memory | Web UI present, live result unknown | Same | **Unverified context use** | Paid fresh-chat check; autonomous extraction intentionally off |
 | T1: schedules/background tasks | Owner-pinned schedule agent, schedule UI, engine and signed trigger | Verify listener-local admission response, then timed fire, retry, recovery and completion notice | Hosted engine is OS-independent; not accepted | Same | **Failed live disposable Run now**: retries dead-lettered Oct 16 while a chat deploy was starting; HTTP 200 non-JSON body, and no chat-controller entry log | Source of non-JSON response unproven; free Render sleep; recurring AI spend disallowed |
 | K1: reusable skills/agents | General agents and skills code exists; single pinned schedule agent | Durable skill import, authorization, execution and user-facing lifecycle | `skills: false` | `skills: false` | **Not available** | Gated profile and storage/acceptance |
@@ -118,7 +118,10 @@ PR #76 (`8c19e008`) was deployed live in Render deployment
 including actual Office fixtures, exact-byte download streaming, and owner
 denial. It does not prove production download byte equality or Mac MCP use.
 
-Project instructions now have a proposed owner-scoped storage, create/edit UI,
+Project instructions now have owner-scoped storage, create/edit UI,
 and agent initialization path. The standalone handler probe passed scoped
 create/update. Model context injection, project files, and deletion isolation
-remain unverified; the new code must pass a fresh deployment build first.
+remain unverified. PR #77 (`4d36a259`) passed Render's fresh build and is live
+in deployment `dep-db94ncqjnfac73aihnkg`. The signed-in Create and Edit forms
+both showed an Instructions field; neither form was submitted during that
+read-only check.
