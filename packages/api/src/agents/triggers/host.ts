@@ -836,14 +836,14 @@ async function startRun(
       } else if (response.headers.get('content-type')?.startsWith('text/html')) {
         contentType = 'html';
       }
-      logger.warn('[agent-triggers] invalid success response shape', {
-        mode,
-        httpStatus: response.status,
-        responseShape,
-        contentType,
-        redirected: response.redirected,
-        ...responseFields,
-      });
+      // The production log formatter drops structured fields, so put only
+      // these fixed-classification values in the message itself.
+      logger.warn(
+        `[agent-triggers] invalid success response shape mode=${mode} http=${response.status} ` +
+          `body=${responseShape} type=${contentType} redirected=${response.redirected === true} ` +
+          `start=${responseFields.status} conversation=${responseFields.conversationId} ` +
+          `stream=${responseFields.streamId}`,
+      );
       throw executionError(`Agent trigger ${mode} returned an invalid success response`, {
         mode,
         certainty: 'ambiguous',
