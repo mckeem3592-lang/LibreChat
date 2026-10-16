@@ -74,6 +74,7 @@ export const useAvailableAgentToolsQuery = (): QueryObserverResult<t.TPlugin[]> 
 export const useListAgentsQuery = <TData = t.AgentListResponse>(
   params: t.AgentListParams = defaultAgentParams,
   config?: UseQueryOptions<t.AgentListResponse, unknown, TData>,
+  allowSchedulePicker = false,
 ): QueryObserverResult<TData> => {
   /** The shell owns fetching endpoints. Observe its query, but do not start a second
    * request or couple this shared agent hook to the shell's Recoil gate. */
@@ -83,7 +84,9 @@ export const useListAgentsQuery = <TData = t.AgentListResponse>(
     { enabled: false },
   );
 
-  const enabled = !!endpointsConfig?.[EModelEndpoint.agents];
+  // The managed schedule picker has a dedicated, owner-scoped list route even
+  // when the general Agents model endpoint is not advertised to this profile.
+  const enabled = !!endpointsConfig?.[EModelEndpoint.agents] || allowSchedulePicker;
   return useQuery<t.AgentListResponse, unknown, TData>(
     [QueryKeys.agents, params],
     () => fetchAllAgentPages(params),
