@@ -106,6 +106,23 @@ function expectExecutionError(error: unknown, expected: Partial<AgentTriggerExec
 }
 
 describe('createAgentTriggerExecutionHost fire adapter', () => {
+  it('routes a scheduled fire to the bound listener rather than an external self URL', async () => {
+    const envelope = createFireEnvelope();
+    envelope.event.source.type = 'schedule';
+    const fetcher = fetchMock(async () =>
+      response({ status: 'started', conversationId: 'conversation-1', streamId: 'stream-1' }),
+    );
+    const getBaseUrl = jest.fn((options?: { localOnly?: boolean }) =>
+      options?.localOnly ? 'http://127.0.0.1:3080' : 'https://external.example.test',
+    );
+    const host = createAgentTriggerExecutionHost(deps(fetcher, { getBaseUrl }));
+
+    await host.dispatch(envelope);
+
+    expect(getBaseUrl).toHaveBeenCalledWith({ localOnly: true });
+    expect(fetcher.mock.calls[0][0]).toBe('http://127.0.0.1:3080/api/agents/chat/agents');
+  });
+
   it('rejects malformed serialized envelopes through its promise contract', async () => {
     const host = createAgentTriggerExecutionHost(deps(fetchMock(async () => response({}))));
     const malformed = { ...createFireEnvelope() };

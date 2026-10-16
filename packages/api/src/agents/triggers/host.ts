@@ -618,7 +618,9 @@ async function startRun(
       setupValue(
         () =>
           deps.getBaseUrl(
-            detachedCompletion == null && readyPreparation?.admissionSource == null
+            detachedCompletion == null &&
+              readyPreparation?.admissionSource == null &&
+              !(envelope.mode === 'fire' && envelope.event.source.type === 'schedule')
               ? undefined
               : { localOnly: true },
           ),
@@ -842,6 +844,7 @@ async function startRun(
         `[agent-triggers] invalid success response shape mode=${mode} http=${response.status} ` +
           `body=${responseShape} type=${contentType} redirected=${response.redirected === true} ` +
           `empty=${boundedBody.text.length === 0} plainOk=${boundedBody.text === 'OK'} ` +
+          `local=${['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname)} ` +
           `start=${responseFields.status} conversation=${responseFields.conversationId} ` +
           `stream=${responseFields.streamId}`,
       );
