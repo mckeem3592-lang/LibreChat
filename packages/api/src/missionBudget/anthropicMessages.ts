@@ -200,17 +200,21 @@ export function normalizeAnthropicMessages(value: unknown): {
 
 /** Only validated image bytes are excluded from text-token estimation; visual tokens are reserved separately. */
 export function anthropicReservationPrompt(body: Json): string {
-  const snapshot = JSON.parse(JSON.stringify(body)) as Json;
-  for (const message of snapshot.messages as Json[]) {
+  const imageSources = new WeakSet<object>();
+  for (const message of body.messages as Json[]) {
     if (!Array.isArray(message.content)) continue;
     for (const block of message.content as Json[]) {
-      if (block.type === 'image') (block.source as Json).data = '';
+      if (block.type === 'image') imageSources.add(block.source as object);
       if (block.type === 'tool_result' && Array.isArray(block.content)) {
-        for (const part of block.content as Json[]) if (part.type === 'image') (part.source as Json).data = '';
+        for (const part of block.content as Json[]) {
+          if (part.type === 'image') imageSources.add(part.source as object);
+        }
       }
     }
   }
-  return JSON.stringify(snapshot);
+  return JSON.stringify(body, function (this: object, key, value: unknown) {
+    return key === 'data' && imageSources.has(this) ? '' : value;
+  });
 }
 
 /** Check presentation only after known provider billing has been settled. */

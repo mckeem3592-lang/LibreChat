@@ -239,6 +239,33 @@ test('network, timeout HTTP status, 5xx and invalid success each conservatively 
   }
 });
 
+test('real provider response streams are bounded before JSON parsing and retain conservative accounting', async () => {
+  const valid = fixture({ fetchImpl: async () => new Response(JSON.stringify(completion())) });
+  assert.equal((await valid.bridge.handle(request())).object, 'chat.completion');
+  assert.deepEqual(valid.events.map((entry) => entry.type), ['reserve', 'settle']);
+
+  let cancelled = false;
+  const oversized = fixture({ fetchImpl: async () => ({
+    status: 200,
+    json: async () => assert.fail('stream must be read instead of json()'),
+    body: new ReadableStream({
+      pull(controller) { controller.enqueue(new Uint8Array(1_048_577)); },
+      cancel() { cancelled = true; },
+    }),
+  }) });
+  await assert.rejects(oversized.bridge.handle(request()), { code: 'native_provider_response_invalid' });
+  assert.equal(oversized.events.at(-1).input.actualUsd, oversized.events[0].input.reserveUsd);
+  assert.equal(oversized.events.at(-1).input.usage.estimated, true);
+  assert.equal(cancelled, true);
+
+  const announced = fixture({ fetchImpl: async () => ({
+    status: 200, headers: { get: () => '1048577' },
+    json: async () => assert.fail('announced oversize must not be read'),
+  }) });
+  await assert.rejects(announced.bridge.handle(request()), { code: 'native_provider_response_invalid' });
+  assert.equal(announced.events.at(-1).input.usage.estimated, true);
+});
+
 test('deadline aborts a hanging success-body read and settles the full allowance without waiting for transport', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   let dispatched;
