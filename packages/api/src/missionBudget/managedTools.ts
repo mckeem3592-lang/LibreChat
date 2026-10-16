@@ -372,13 +372,24 @@ export function createManagedToolConfigGuard(options: ManagedToolOptions): Middl
     if (!owner(req, options)) return reject(res);
     try {
       const envelope = githubResumeEnvelope(req.body, true);
+      const coding = GITHUB_DEVICE_CODE && envelope.endpoint === 'MissionAIClaudeCached' &&
+        envelope.spec === 'mission-ai-claude-sonnet' && envelope.ephemeralAgent != null &&
+        object(envelope.ephemeralAgent).execute_code === true;
+      // This guard runs before the route restores the paused job. Use the one
+      // reviewed coding profile only for its configuration probe when the UI
+      // omitted these fields; the restored-context guard checks the real body.
+      const codingProfile = coding ? {
+        codeApprovalMode: 'ask', codeEnvironmentMode: 'attached',
+        codeWorkspaces: [{ environmentId: 'attached-workers', workspaceId: 'primary' }],
+      } : { codeApprovalMode: undefined, codeEnvironmentMode: undefined,
+        codeWorkspaces: undefined };
       const probe = { ...req, body: {
         endpoint: envelope.endpoint, endpointType: envelope.endpointType,
         model: envelope.model, spec: envelope.spec, text: '',
         promptPrefix: envelope.promptPrefix, ephemeralAgent: envelope.ephemeralAgent,
-        codeApprovalMode: envelope.codeApprovalMode,
-        codeEnvironmentMode: envelope.codeEnvironmentMode,
-        codeWorkspaces: envelope.codeWorkspaces,
+        codeApprovalMode: envelope.codeApprovalMode ?? codingProfile.codeApprovalMode,
+        codeEnvironmentMode: envelope.codeEnvironmentMode ?? codingProfile.codeEnvironmentMode,
+        codeWorkspaces: envelope.codeWorkspaces ?? codingProfile.codeWorkspaces,
       } };
       return legacy(probe, res, () => next());
     } catch (error) { traceResumeDenial('configuration', error); return reject(res); }

@@ -114,6 +114,7 @@ test('a paused coding action resumes only with the same attached workspace', () 
       body: structuredClone(resume.body) });
     delete sparse.body[omitted];
     assert.equal(run(admission, sparse).next, 1, `admission accepts omitted ${omitted}`);
+    assert.equal(run(guard, sparse).next, 1, `pre-restore config accepts omitted ${omitted}`);
     // restoreResumeContext pins the paused setting before this guard runs.
     sparse.body[omitted] = resume.body[omitted];
     assert.equal(run(guard, sparse).next, 1, `restored ${omitted} stays bounded`);
@@ -124,6 +125,7 @@ test('a paused coding action resumes only with the same attached workspace', () 
   delete sparse.body.codeApprovalMode;
   delete sparse.body.codeWorkspaces;
   assert.equal(run(admission, sparse).next, 1);
+  assert.equal(run(guard, sparse).next, 1);
   const changed = request({ originalUrl: '/api/agents/chat/resume',
     body: structuredClone(resume.body) });
   changed.body.codeWorkspaces[0].workspaceId = 'other';
