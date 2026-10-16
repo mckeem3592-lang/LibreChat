@@ -20,7 +20,10 @@ export function MyFilesModal({
     select: (files) =>
       files.map((file) => {
         file.context = file.context ?? FileContext.unknown;
-        file.filterSource = file.source === FileSources.firebase ? FileSources.local : file.source;
+        file.filterSource =
+          file.source === FileSources.firebase || file.source === FileSources.mongo_gridfs
+            ? FileSources.local
+            : file.source;
         return file;
       }),
   });

@@ -156,6 +156,7 @@ export function createProvisionService({
    * rather than mis-invoked. */
   const STORAGE_STREAM_SOURCES = new Set([
     FileSources.local,
+    FileSources.mongo_gridfs,
     FileSources.s3,
     FileSources.cloudfront,
     FileSources.azure_blob,

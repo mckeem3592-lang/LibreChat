@@ -34,6 +34,8 @@ export const isLocallyStoredSource = (source?: string): boolean => {
   }
   return [
     FileSources.local,
+    FileSources.mongo_gridfs,
+    FileSources.edited_gridfs,
     FileSources.firebase,
     FileSources.s3,
     FileSources.cloudfront,
