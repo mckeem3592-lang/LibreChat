@@ -19,6 +19,7 @@ const SAFE_BOOTSTRAP_ERRORS = new Set([
   'schedule_agent_acl_changed',
   'schedule_agent_acl_scope_changed',
 ]);
+let bootstrapStage = 'settings';
 
 function bootstrapFailureCode(error) {
   return SAFE_BOOTSTRAP_ERRORS.has(error?.message)
@@ -71,6 +72,7 @@ function isPinnedAgent(agent, expected) {
 
 async function main() {
   if (process.env.MISSION_AI_MANAGED_SCHEDULES !== 'true') return;
+  bootstrapStage = 'settings';
   const id = process.env.MISSION_AI_SCHEDULE_AGENT_ID || '';
   const email = (
     process.env.MISSION_AI_CONTROL_OWNER_EMAIL ||
@@ -88,6 +90,7 @@ async function main() {
     appRequire('librechat-data-provider');
   const { User, Agent, AccessRole, AclEntry } = createModels(mongoose);
   try {
+    bootstrapStage = 'connect';
     await mongoose.connect(process.env.MONGO_URI, {
       serverSelectionTimeoutMS: 10000,
       connectTimeoutMS: 10000,
@@ -98,11 +101,14 @@ async function main() {
     if (mongoose.connection.db.databaseName !== 'MissionAIChatTest') {
       throw new Error('wrong_database');
     }
+    bootstrapStage = 'session';
     const session = await mongoose.startSession();
     try {
+      bootstrapStage = 'transaction';
       const result = await runAsSystem(() =>
         session.withTransaction(
           async () => {
+            bootstrapStage = 'marker';
             await mongoose.connection.db
               .collection('mission_ai_bootstrap')
               .findOneAndUpdate(
@@ -110,6 +116,7 @@ async function main() {
                 { $inc: { revision: 1 }, $setOnInsert: { version: 1 } },
                 { upsert: true, session },
               );
+            bootstrapStage = 'owner';
             const owners = await User.find({ email }).limit(2).session(session).lean();
             if (owners.length !== 1 || owners[0].emailVerified !== true) {
               throw new Error('owner_identity_unavailable');
@@ -117,6 +124,7 @@ async function main() {
             const owner = owners[0];
             const tenantId = owner.tenantId || undefined;
             const tenantQuery = tenantId ? { tenantId } : { tenantId: { $exists: false } };
+            bootstrapStage = 'viewer_role';
             const role = await AccessRole.findOne({
               accessRoleId: AccessRoleIds.AGENT_VIEWER,
               resourceType: ResourceType.AGENT,
@@ -128,9 +136,11 @@ async function main() {
               throw new Error('agent_viewer_role_unavailable');
             }
             const expected = expectedAgent(id, owner);
+            bootstrapStage = 'agent_read';
             let agent = await Agent.findOne({ id }).session(session).lean();
             let status = 'verified';
             if (!agent) {
+              bootstrapStage = 'agent_create';
               const [created] = await Agent.create(
                 [
                   {
@@ -143,6 +153,7 @@ async function main() {
               agent = created.toObject();
               status = 'created';
             }
+            bootstrapStage = 'agent_verify';
             if (!isPinnedAgent(agent, expected)) {
               throw new Error('schedule_agent_changed');
             }
@@ -153,6 +164,7 @@ async function main() {
               resourceId: agent._id,
               ...tenantQuery,
             };
+            bootstrapStage = 'acl_read';
             const existingAcl = await AclEntry.findOne(aclQuery).session(session).lean();
             if (
               existingAcl &&
@@ -163,6 +175,7 @@ async function main() {
               throw new Error('schedule_agent_acl_changed');
             }
             if (!existingAcl) {
+              bootstrapStage = 'acl_create';
               await AclEntry.create(
                 [
                   {
@@ -177,6 +190,7 @@ async function main() {
                 { session },
               );
             }
+            bootstrapStage = 'acl_count';
             const aclCount = await AclEntry.countDocuments({
               resourceType: ResourceType.AGENT,
               resourceId: agent._id,
@@ -184,6 +198,7 @@ async function main() {
             if (aclCount !== 1) {
               throw new Error('schedule_agent_acl_scope_changed');
             }
+            bootstrapStage = 'commit';
             return { status, agent: id };
           },
           {
@@ -206,7 +221,8 @@ async function main() {
 if (require.main === module) {
   main().catch((error) => {
     // Keep credentials, emails, IDs, and database details out of deployment logs.
-    console.error(JSON.stringify({ status: 'failed', code: bootstrapFailureCode(error) }));
+    console.error(JSON.stringify({ status: 'failed', code: bootstrapFailureCode(error),
+      stage: bootstrapStage }));
     process.exitCode = 1;
   });
 }
