@@ -74,6 +74,7 @@ const {
 const { uploadOpenAIFile, deleteOpenAIFile, getOpenAIFileStream } = require('./OpenAI');
 const { deleteCodeEnvFile, getCodeOutputDownloadStream, uploadCodeEnvFile } = require('./Code');
 const editedGridFS = require('./EditedGridFS');
+const mongoGridFS = require('./MongoGridFS');
 const { uploadVectors, deleteVectors } = require('./VectorDB');
 
 /**
@@ -318,6 +319,8 @@ const getStrategyFunctions = (fileSource) => {
       deleteFile: editedGridFS.deleteFile,
       getDownloadStream: editedGridFS.getDownloadStream,
     };
+  } else if (fileSource === FileSources.mongo_gridfs) {
+    return mongoGridFS;
   } else if (fileSource === FileSources.openai) {
     return openAIStrategy();
   } else if (fileSource === FileSources.azure) {

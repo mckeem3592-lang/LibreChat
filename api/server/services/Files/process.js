@@ -611,10 +611,13 @@ const processFileUpload = async ({ req, res, metadata, sseStream, openai: provid
   const retentionExpiryPromise = getRetentionExpiry(req);
   const appConfig = req.config;
   const isAssistantUpload = isAssistantsEndpoint(metadata.endpoint);
+  const { file } = req;
   const assistantSource =
     metadata.endpoint === EModelEndpoint.azureAssistants ? FileSources.azure : FileSources.openai;
   // Use the configured file strategy for regular file uploads (not vectordb)
-  const source = isAssistantUpload ? assistantSource : appConfig.fileStrategy;
+  const source = isAssistantUpload ? assistantSource : getFileStrategy(appConfig, {
+    isImage: file.mimetype.startsWith('image/'),
+  });
   const { handleFileUpload } = getStrategyFunctions(source);
   const { file_id, temp_file_id = null } = metadata;
 
@@ -624,7 +627,6 @@ const processFileUpload = async ({ req, res, metadata, sseStream, openai: provid
     ({ openai } = await getOpenAIClient({ req }));
   }
 
-  const { file } = req;
   const sanitizedUploadFn = createSanitizedUploadWrapper(handleFileUpload);
   const {
     id,
@@ -682,27 +684,39 @@ const processFileUpload = async ({ req, res, metadata, sseStream, openai: provid
     });
   }
 
-  const result = await db.createFile(
-    {
-      user: req.user.id,
-      file_id: id ?? file_id,
-      temp_file_id,
-      bytes,
-      filepath,
-      ...storageMetadata,
-      filename: filename ?? sanitizeFilename(file.originalname),
-      context: isAssistantUpload ? FileContext.assistants : FileContext.message_attachment,
-      model: isAssistantUpload ? req.body.model : undefined,
-      type: file.mimetype,
-      ...(await retentionExpiryPromise),
-      embedded,
-      source,
-      height,
-      width,
-      tenantId: req.user.tenantId,
-    },
-    true,
-  );
+  let result;
+  try {
+    result = await db.createFile(
+      {
+        user: req.user.id,
+        file_id: id ?? file_id,
+        temp_file_id,
+        bytes,
+        filepath,
+        ...storageMetadata,
+        filename: filename ?? sanitizeFilename(file.originalname),
+        context: isAssistantUpload ? FileContext.assistants : FileContext.message_attachment,
+        model: isAssistantUpload ? req.body.model : undefined,
+        type: file.mimetype,
+        ...(await retentionExpiryPromise),
+        embedded,
+        source,
+        height,
+        width,
+        tenantId: req.user.tenantId,
+      },
+      true,
+    );
+  } catch (error) {
+    if (source === FileSources.mongo_gridfs) {
+      try {
+        await getStrategyFunctions(source).deleteFile(req, { source, filepath });
+      } catch (cleanupError) {
+        logger.error('[processFileUpload] Failed to remove orphaned document bytes:', cleanupError);
+      }
+    }
+    throw error;
+  }
   sendUploadSuccess(res, sseStream, 'File uploaded and processed successfully', result);
 };
 
