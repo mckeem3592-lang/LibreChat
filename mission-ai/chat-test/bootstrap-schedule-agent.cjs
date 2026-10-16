@@ -70,6 +70,19 @@ function isPinnedAgent(agent, expected) {
   );
 }
 
+function newOwnerAcl(aclQuery, tenantId, roleId, ownerId, principalModel, viewPermission) {
+  const { tenantId: _tenantQuery, ...identity } = aclQuery;
+  return {
+    ...identity,
+    ...(tenantId ? { tenantId } : {}),
+    principalModel,
+    permBits: viewPermission,
+    roleId,
+    grantedBy: ownerId,
+    grantedAt: new Date(),
+  };
+}
+
 async function main() {
   if (process.env.MISSION_AI_MANAGED_SCHEDULES !== 'true') return;
   bootstrapStage = 'settings';
@@ -178,14 +191,8 @@ async function main() {
               bootstrapStage = 'acl_create';
               await AclEntry.create(
                 [
-                  {
-                    ...aclQuery,
-                    principalModel: PrincipalModel.USER,
-                    permBits: PermissionBits.VIEW,
-                    roleId: role._id,
-                    grantedBy: owner._id,
-                    grantedAt: new Date(),
-                  },
+                  newOwnerAcl(aclQuery, tenantId, role._id, owner._id,
+                    PrincipalModel.USER, PermissionBits.VIEW),
                 ],
                 { session },
               );
@@ -227,4 +234,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { expectedAgent, isPinnedAgent, bootstrapFailureCode, main };
+module.exports = { expectedAgent, isPinnedAgent, newOwnerAcl, bootstrapFailureCode, main };

@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { expectedAgent, isPinnedAgent, bootstrapFailureCode, main } = require('./bootstrap-schedule-agent.cjs');
+const { expectedAgent, isPinnedAgent, newOwnerAcl, bootstrapFailureCode, main } = require('./bootstrap-schedule-agent.cjs');
 
 const owner = { _id: { toString: () => '507f1f77bcf86cd799439011' } };
 const expected = expectedAgent('agent_owner_schedule', owner);
@@ -48,4 +48,16 @@ test('bootstrap logs only fixed internal diagnostic codes', () => {
     'schedule_agent_bootstrap_failed');
   assert.equal(bootstrapFailureCode({ message: 'owner_identity_unavailable' }),
     'owner_identity_unavailable');
+});
+
+test('owner ACL stores a tenant ID string, never the tenant search predicate', () => {
+  const identity = { principalType: 'user', principalId: 'owner', resourceType: 'agent', resourceId: 'agent' };
+  const roleId = 'role';
+  const query = { ...identity, tenantId: { $exists: false } };
+  const personal = newOwnerAcl(query, undefined, roleId, 'owner', 'User', 1);
+  assert.equal(Object.hasOwn(personal, 'tenantId'), false);
+  assert.deepEqual(query.tenantId, { $exists: false });
+  const tenant = newOwnerAcl({ ...identity, tenantId: 'tenant-a' }, 'tenant-a', roleId, 'owner', 'User', 1);
+  assert.equal(tenant.tenantId, 'tenant-a');
+  assert.equal(tenant.permBits, 1);
 });
