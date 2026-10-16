@@ -1,6 +1,6 @@
 # Mission AI functional parity ledger
 
-Last reviewed: 2026-10-16. Baseline: `mission-ai-v1` at `53347905` (PR #73).
+Last reviewed: 2026-10-16. Baseline: `mission-ai-v1` at `744d65f17` (PR #74).
 Deployment: `mission-ai-chat-test-mckee` and `mission-ai-gateway-mckee` on Render.
 
 The goal is to complete practical ChatGPT-like work with a manually selected
@@ -16,8 +16,8 @@ identified as such; it is not a fresh acceptance test.
 | C1: inspect scoped repository | Attached Code API, pinned `primary` Mac worker; Windows companion `repo_list`/`repo_read` with explicit local root | Repeat a selected-model read on deployed head | Windows installed bridge listed checkout and read `package.json`; gateway advertised `repo.scoped` at 14:41:56 UTC | PR #40 reported successful Claude read of checkout `package.json`; current Mac worker disconnected in checked window | **Installed Windows no-model pass; partial prior Mac model success** | Paid model call for fresh E2E; Mac worker connection/version |
 | C2: edit repository files | Mac code worker `write_file` and patch preview; Windows `repo_write` requires prior sha256 | Prove deployed model edit/readback/diff/undo | Disposable repository edit/readback passed offline; installed live edit intentionally untried | Headless worker refuses mutations; detached `screen` helper requires exact local digest approval | **Offline Windows bridge pass; no complete model edit** | Paid model call and local Mac approval |
 | C3: run checks and report changes | Mac Code API command execution; Windows `repo_check` only runs locally named checks | Run model-selected check and verify response cites real changes | Disposable Git diff check failed as expected and returned actual exit/output; installed `status` returned exit 0 | Commands require detached worker and local exact-action approval | **Offline and installed Windows check pass; model summary unverified** | Paid model call and local Mac approval |
-| C4: continue long coding work in background | Core agent jobs/checkpointer code exists; active profile lacks `run_in_background`; Windows companion has named background checks | Deploy detached job worker, then prove installed restart recovery and a model coding job | Offline detached worker completed a check after the launching companion process exited (6/6 focused tests); installed revision still has memory-only jobs | Worker connection/daemon designed to persist, but mutating job awaits local operator | **Offline background check recovery pass; installed and model job unverified** | Local companion rollout, active profile gate, paid model E2E, Mac approval |
-| F1: scoped local file read/write | Device MCP `file_read`/`file_write`; companion confines paths and approvals | Read, mutate, reopen, and confirm ownership on each OS | `windows-work` reconnected after gateway deploy and advertised `files.scoped`; action unverified | `mac-primary` disconnected during deploy and did not reconnect in the checked window | **Unverified full cycle** | Signed-in model call and paired-device acceptance |
+| C4: continue long coding work in background | Core agent jobs/checkpointer code exists; active profile lacks `run_in_background`; Windows companion persists named check results on disk | Prove a selected-model coding job, gateway disconnect recovery, and Mac path | PR #74 worker installed; a real `status` check completed with exit 0 and was read by a fresh launcher process; gateway re-advertised `repo.scoped` at 15:43 UTC | Worker connection/daemon designed to persist, but mutating job awaits local operator | **Installed no-model background check recovery pass; model job unverified** | Active profile gate, paid model E2E, Mac approval |
+| F1: scoped local file read/write | Device MCP `file_read`/`file_write`; companion confines paths and approvals | Read, mutate, reopen, and confirm ownership on each OS | Installed module passed create/read/stale-hash rejection/update/readback with a disposable workspace fixture and a temporary narrowed Documents root; actual configured Documents root is OneDrive and was not written | `mac-primary` disconnected during deploy and did not reconnect in the checked window | **Installed module no-model pass; configured device/model full cycle unverified** | Signed-in model call and paired-device acceptance; Windows configured OneDrive path is outside writable test workspace |
 | F2: upload and analyze documents | PDF/DOCX/XLSX text extraction; bounded upload; optional Local Documents MCP; Mongo GridFS bytes and owner-scoped download link deployed in `53347905` | Compare production download bytes and verify model analysis against source | Local Mongo reconnect and byte readback passed; signed-in production PDF remains listed after a chat service restart and My Files exposes its authenticated download link | Local Documents bridge exists; per-user tool availability not proved | **Production no-model upload/list/link pass; production byte readback and model analysis unverified** | Browser download capture returned no file and browser downloads page is policy-blocked; paid model call prohibited |
 | F3: create/edit/download DOCX, XLSX, PPTX, PDF | Edited-byte GridFS, owner-scoped publisher/download, Office validation, XLSX creator | Format-by-format create, edit, render/open, redeploy, download acceptance | Web client should work, local document editor not established | Local Documents bridge; PR #43 fixed first-response XLSX link | **Partial prior XLSX/document runs; suite incomplete** | Paid model call, connected document tool, render/open checks |
 | F4: file search with citations | File text fallback exists; `fileSearch: false` | Durable ingestion, permission-scoped index, source spans and citation checks | Off | Off | **Not available** | Retrieval backend and storage; no paid index service approved |
@@ -27,7 +27,7 @@ identified as such; it is not a fresh acceptance test.
 | S2: email and other connected services | Browser bridge and selected MCP servers | Add scoped OAuth/native connectors or prove browser save/read/send with result receipts | Browser bridge unverified | Browser Gmail draft save/read unverified | **Not accepted** | Per-service authorization, extension readiness, paid model test |
 | P1: Projects with reusable context | Owner-scoped project CRUD and chat grouping | Project instructions/files and verified context injection, deletion isolation | Web UI present, authenticated acceptance unverified | Same web UI status | **Grouping implementation only** | Schema lacks instructions/files; paid context test |
 | M1: personal memory | Bounded manual CRUD; automatic memory agent off | Confirm CRUD and that a fresh chat uses only authorized memory | Web UI present, live result unknown | Same | **Unverified context use** | Paid fresh-chat check; autonomous extraction intentionally off |
-| T1: schedules/background tasks | Owner-pinned schedule agent, schedule UI, engine and signed trigger | Repair HTTP 200 non-JSON start response, then prove timed fire, retry, recovery and completion notice | Hosted engine is OS-independent; not accepted | Same | **Failed live disposable Run now**: retries dead-lettered Oct 16 | Trigger/controller response contract; free Render sleep; recurring AI spend disallowed |
+| T1: schedules/background tasks | Owner-pinned schedule agent, schedule UI, engine and signed trigger | Verify listener-local admission response, then timed fire, retry, recovery and completion notice | Hosted engine is OS-independent; not accepted | Same | **Failed live disposable Run now**: retries dead-lettered Oct 16 while a chat deploy was starting; HTTP 200 non-JSON body, and no chat-controller entry log | Source of non-JSON response unproven; free Render sleep; recurring AI spend disallowed |
 | K1: reusable skills/agents | General agents and skills code exists; single pinned schedule agent | Durable skill import, authorization, execution and user-facing lifecycle | `skills: false` | `skills: false` | **Not available** | Gated profile and storage/acceptance |
 | R1: live web search and research | Tavily basic search, four results, 15-second timeout | Verify dated sources/citations; add source tracking for deeper research | Cloud feature; same status | Same | **Basic search configured; research unverified** | No no-cost model acceptance; narrow result set |
 | I1: image create/edit | Default-off budget-gated Gemini device MCP image action and reference edit | Generate, edit, return/reopen image with settled cost | Cloud tool; same status | Same | **First paid attempt denied before provider**; no accepted image | Tool gate/provider acceptance and paid call |
@@ -37,8 +37,8 @@ identified as such; it is not a fresh acceptance test.
 
 ## Current acceptance sequence
 
-1. Finish and deploy the Windows background check job, then validate it across
-   a gateway disconnect. Complete C4's model job separately and test Mac.
+1. Validate the installed Windows background check across a gateway disconnect.
+   Complete C4's model job separately and test Mac.
    Model-driven acceptance remains unverified until a paid call is permitted.
 2. Repair the proven schedule trigger contract before creating any recurring AI
    task. A one-shot no-provider delivery test may exercise the transport.
@@ -90,3 +90,19 @@ as the local alternative. WSL2 is not installed on this Windows host. The new
 Windows companion repository bridge deliberately exposes only a locally selected
 checkout and named checks, with per-tool LibreChat approval. It does not provide
 an arbitrary shell, persistent coding job, or a paid-model acceptance result.
+
+PR #74 merged as `744d65f17`. Its Windows detached check worker was installed
+locally and reconnected to the gateway. A named `status` check returned a job ID,
+then a fresh launcher process read its durable completed result with exit 0. An
+installed scoped-file module test used a disposable fixture under a temporary
+workspace root and passed create/read/stale-hash rejection/update/readback. The
+actual configured Documents root points into OneDrive and was not changed for
+this test. Neither result proves a selected-model task.
+
+The October 16 schedule Run now failed during a chat-service rollout. Render
+logged repeated `http=200 body=non_json` start responses and no corresponding
+chat-controller entry. The response origin remains unproven. Trigger dispatch
+now prefers the current process's bound listener after initialization, retaining
+the configured self URL only before a listener exists. A focused offline test
+covers that routing choice; timed or model-driven schedule acceptance remains
+unverified.

@@ -127,6 +127,19 @@ describe('createAgentTriggerService', () => {
     );
   });
 
+  it('uses its own listener for a schedule fire after initialization', async () => {
+    process.env.AGENT_TRIGGERS_SELF_URL = 'https://triggers.internal/base';
+    const fetcher = jest.fn<ReturnType<AgentTriggerFetch>, Parameters<AgentTriggerFetch>>(
+      async () => accepted(),
+    );
+    const service = createAgentTriggerService({ fetch: fetcher, mintToken: () => 'token' });
+    await service.initialize({ address: { address: '0.0.0.0', family: 'IPv4', port: 4123 } });
+
+    await service.dispatch(envelope());
+
+    expect(String(fetcher.mock.calls[0][0])).toBe('http://127.0.0.1:4123/api/agents/chat/agents');
+  });
+
   it('keeps detached completions on the capable local replica despite a self-URL override', async () => {
     process.env.AGENT_TRIGGERS_SELF_URL = 'https://triggers.internal/base';
     const fetcher = jest.fn<ReturnType<AgentTriggerFetch>, Parameters<AgentTriggerFetch>>(

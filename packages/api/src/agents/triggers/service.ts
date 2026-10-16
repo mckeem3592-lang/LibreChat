@@ -314,7 +314,9 @@ function publicReceiptStatus(
 }
 
 function requireDeliveryOrigin(boundOrigin: string | undefined): void {
-  const value = process.env.AGENT_TRIGGERS_SELF_URL ?? boundOrigin;
+  // Once listening, dispatch into this process. A public self URL can pass
+  // through a proxy or a different replica and return a non-admission 200.
+  const value = boundOrigin ?? process.env.AGENT_TRIGGERS_SELF_URL;
   let url: URL;
   try {
     url = new URL(value ?? '');
@@ -365,7 +367,7 @@ export function createAgentTriggerService(deps: AgentTriggerServiceDeps = {}): A
       const origin =
         options?.localOnly === true
           ? boundOrigin
-          : (process.env.AGENT_TRIGGERS_SELF_URL ?? boundOrigin);
+          : (boundOrigin ?? process.env.AGENT_TRIGGERS_SELF_URL);
       if (origin == null) {
         throw new Error('Agent trigger service has not been initialized with a listener address');
       }
