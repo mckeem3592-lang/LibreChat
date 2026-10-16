@@ -19,6 +19,7 @@ const {
   attachAskUserQuestionArgs,
   createMessageFilterPii,
   isAgentTriggerRequest,
+  readScheduleFireContext,
   exemptAgentTriggerFromIpLimiter,
   captureScheduleFireContext,
   exemptFromUserLimiter: exemptScheduleFromUserLimiter,
@@ -1056,6 +1057,10 @@ const managedToolConfigGuard = createManagedToolConfigGuard({
   toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
   ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
   toolToken: process.env.MISSION_AI_TOOL_TOKEN,
+  schedulesEnabled: process.env.MISSION_AI_MANAGED_SCHEDULES === 'true',
+  scheduleAgentId: process.env.MISSION_AI_SCHEDULE_AGENT_ID,
+  verifySignedScheduleTrigger: (req) => isAgentTriggerRequest(req) &&
+    readScheduleFireContext({ _isAgentTrigger: true, body: req.body }) != null,
 });
 if (isEnabled(LIMIT_MESSAGE_IP)) {
   steerLimiters.push(unless(exemptAgentTriggerFromIpLimiter, messageIpLimiter));

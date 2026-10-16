@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createManagedToolAdmission } from './generated/managedTools.js';
+import { createManagedToolAdmission, createManagedToolConfigGuard } from './generated/managedTools.js';
 
 const agentId = 'agent_owner_schedule';
 const scheduleId = 'sched_12345678-1234-1234-1234-123456789abc';
@@ -68,4 +68,33 @@ test('schedule route aliases and unverified trigger posts remain denied', () => 
     ).next,
     1,
   );
+});
+
+test('post-auth schedule fire admits only the owner and a verified fixed-agent trigger', () => {
+  const fire = {
+    method: 'POST',
+    originalUrl: '/api/agents/chat/agents',
+    user: { email: 'owner@example.com' },
+    body: { endpoint: 'agents', agent_id: agentId },
+  };
+  const run = (options, request) => {
+    const guard = createManagedToolConfigGuard({
+      enabled: true,
+      toolsEnabled: true,
+      ownerEmail: 'owner@example.com',
+      schedulesEnabled: true,
+      scheduleAgentId: agentId,
+      verifySignedScheduleTrigger: () => true,
+      ...options,
+    });
+    let next = 0;
+    let status;
+    guard(request, { status(code) { status = code; return this; }, json() {} }, () => next++);
+    return { next, status };
+  };
+  assert.equal(run({}, fire).next, 1);
+  assert.equal(run({}, { ...fire, user: { email: 'other@example.com' } }).status, 403);
+  assert.equal(run({}, { ...fire, body: { ...fire.body, agent_id: 'agent_other' } }).status, 503);
+  assert.equal(run({ verifySignedScheduleTrigger: () => false }, fire).status, 503);
+  assert.equal(run({ schedulesEnabled: false }, fire).status, 503);
 });

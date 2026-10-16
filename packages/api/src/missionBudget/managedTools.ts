@@ -406,6 +406,11 @@ export function createManagedToolConfigGuard(options: ManagedToolOptions): Middl
   if (!options.toolsEnabled) return legacy;
   return (req, res, next) => {
     if (!owner(req, options)) return reject(res);
+    // The schedule host has a signed, fixed-agent request, not a user chat payload.
+    // Native authentication, agent access, and schedule idempotency still run.
+    if (options.schedulesEnabled && options.scheduleAgentId &&
+        isManagedScheduleTrigger(req, options.scheduleAgentId,
+          options.verifySignedScheduleTrigger)) return next();
     let projected: Json;
     try { projected = projectConfiguration(req.config, options); }
     catch { return reject(res, true); }
