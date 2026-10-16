@@ -1,5 +1,6 @@
 import { createSnapshot, pageUrlAllowed, validateSnapshot } from './browser-snapshot.js';
 import { collectPageState, PAGE_ELEMENT_SELECTOR } from './browser-page-state.js';
+import { typeIntoPageElement } from './browser-type.js';
 
 const NATIVE_HOST = 'com.missionai.browser_bridge';
 let latestSnapshot = null;
@@ -269,51 +270,9 @@ async function execute(tool, args) {
     }
     if (value.length > 20_000) throw new Error('text_too_long');
 
-    const result = await execInTab(tab, (elementIndex, elementKey, text, expectedUrl, selector) => {
-      if (location.href !== expectedUrl) throw new Error('browser_snapshot_stale');
-      const all = [...document.querySelectorAll(selector)]
-        .slice(0, 300);
-      const el = all[elementIndex];
-      if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ||
-          (el instanceof HTMLElement && el.isContentEditable))) {
-        throw new Error('element_not_text_input');
-      }
-      const keyFor = (node) => {
-        const tag = node.tagName.toLowerCase();
-        const type = node.getAttribute('type') || '';
-        const name = node.getAttribute('name') || '';
-        const aria = node.getAttribute('aria-label') || '';
-        const visible = (
-          node.innerText ||
-          node.getAttribute('placeholder') ||
-          ''
-        ).trim().slice(0, 120);
-        return [tag, type, name, aria, visible].join('|').slice(0, 400);
-      };
-      if (keyFor(el) !== elementKey) throw new Error('browser_element_stale');
-      if (el instanceof HTMLInputElement && el.type === 'password') {
-        throw new Error('password_field_denied');
-      }
-      if (el.closest('[type="password"],[autocomplete*="password"]') ||
-          /password|passcode|verification code/i.test(el.getAttribute('aria-label') || '')) {
-        throw new Error('credential_field_denied');
-      }
-      if (el.disabled || el.readOnly) throw new Error('element_not_editable');
-      el.focus();
-      if (el.isContentEditable && !(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
-        el.textContent = text;
-      } else {
-        const setter =
-          Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value')?.set ||
-          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-        setter?.call(el, text);
-      }
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-      return { typed: elementIndex, length: text.length };
-    }, [index, expectedKey, value, snapshot.url, PAGE_ELEMENT_SELECTOR]);
-
     latestSnapshot = null;
+    const result = await execInTab(tab, typeIntoPageElement,
+      [index, expectedKey, value, snapshot.url, PAGE_ELEMENT_SELECTOR]);
     return result;
   }
 
