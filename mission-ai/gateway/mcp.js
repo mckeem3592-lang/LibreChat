@@ -20,6 +20,9 @@ function errorResult(error) {
         text: JSON.stringify({
           ok: false,
           error: error instanceof Error ? error.message : 'mission_ai_error',
+          ...(error?.code === 'provider_http_error' &&
+            Number.isInteger(error.status) && error.status >= 400 && error.status <= 599
+            ? { providerStatus: error.status } : {}),
         }),
       },
     ],
