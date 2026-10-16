@@ -119,6 +119,33 @@ describe('LogLink download routing', () => {
     expect(mockDownloadFromUrl).not.toHaveBeenCalled();
   });
 
+  it('downloads MongoDB document bytes through the owner-scoped file route', async () => {
+    mockDownloadFromApi.mockResolvedValue({ data: 'blob:https://app.example.com/document' });
+
+    render(
+      <LogLink
+        user="user-1"
+        file_id="file-1"
+        filename="report.pdf"
+        source={FileSources.mongo_gridfs}
+        href="gridfs:document-id"
+      >
+        report.pdf
+      </LogLink>,
+    );
+
+    fireEvent.click(screen.getByRole('link', { name: 'report.pdf' }));
+
+    await waitFor(() => {
+      expect(mockTriggerDownload).toHaveBeenCalledWith(
+        'blob:https://app.example.com/document',
+        'report.pdf',
+      );
+    });
+    expect(mockDownloadFromApi).toHaveBeenCalledTimes(1);
+    expect(mockDownloadFromUrl).not.toHaveBeenCalled();
+  });
+
   it('routes downloads through the share-scoped route in a shared view', async () => {
     mockShareContext = { shareId: 'share-9' };
     const filename = 'file.pdf';

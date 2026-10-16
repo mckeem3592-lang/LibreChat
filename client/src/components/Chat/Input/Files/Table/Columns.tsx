@@ -13,6 +13,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import type { TFile } from 'librechat-data-provider';
 import ImagePreview from '~/components/Chat/Input/Files/ImagePreview';
 import FilePreview from '~/components/Chat/Input/Files/FilePreview';
+import LogLink from '~/components/Chat/Messages/Content/Parts/LogLink';
 import { TranslationKeys, useLocalize } from '~/hooks';
 import { SortFilterHeader } from './SortFilterHeader';
 import { formatDate, getFileType } from '~/utils';
@@ -123,7 +124,19 @@ export const columns: ColumnDef<TFile>[] = [
       return (
         <div className="flex gap-2">
           {fileType && <FilePreview fileType={fileType} className="relative" file={file} />}
-          <span className="self-center truncate">{file.filename}</span>
+          {file.source === FileSources.mongo_gridfs ? (
+            <LogLink
+              href={`/api/files/download/${encodeURIComponent(file.user)}/${encodeURIComponent(file.file_id)}`}
+              filename={file.filename}
+              file_id={file.file_id}
+              user={file.user}
+              source={file.source}
+            >
+              {file.filename}
+            </LogLink>
+          ) : (
+            <span className="self-center truncate">{file.filename}</span>
+          )}
         </div>
       );
     },

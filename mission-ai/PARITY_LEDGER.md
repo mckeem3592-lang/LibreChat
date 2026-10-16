@@ -1,6 +1,6 @@
 # Mission AI functional parity ledger
 
-Last reviewed: 2026-10-16. Baseline: `mission-ai-v1` at `de53ae86` (PR #70).
+Last reviewed: 2026-10-16. Baseline: `mission-ai-v1` at `eafdeee1` (PR #72).
 Deployment: `mission-ai-chat-test-mckee` and `mission-ai-gateway-mckee` on Render.
 
 The goal is to complete practical ChatGPT-like work with a manually selected
@@ -18,7 +18,7 @@ identified as such; it is not a fresh acceptance test.
 | C3: run checks and report changes | Mac Code API command execution; Windows `repo_check` only runs locally named checks | Run model-selected check and verify response cites real changes | Disposable Git diff check failed as expected and returned actual exit/output; installed `status` returned exit 0 | Commands require detached worker and local exact-action approval | **Offline and installed Windows check pass; model summary unverified** | Paid model call and local Mac approval |
 | C4: continue long coding work in background | Core agent jobs/checkpointer code exists; active profile lacks `run_in_background`; Windows companion now has named background checks | Prove an actual model coding job across process restart and report terminal state | Installed no-model `repo_start_check(status)` completed with exit 0; job survives gateway reconnect while companion stays running but not companion restart | Worker connection/daemon designed to persist, but mutating job awaits local operator | **Installed no-model background check pass; model job unverified** | Active profile gate, paid model E2E, Mac approval, durable job recovery |
 | F1: scoped local file read/write | Device MCP `file_read`/`file_write`; companion confines paths and approvals | Read, mutate, reopen, and confirm ownership on each OS | `windows-work` reconnected after gateway deploy and advertised `files.scoped`; action unverified | `mac-primary` disconnected during deploy and did not reconnect in the checked window | **Unverified full cycle** | Signed-in model call and paired-device acceptance |
-| F2: upload and analyze documents | PDF/DOCX/XLSX text extraction; bounded upload; optional Local Documents MCP; GridFS document storage proposed in the next revision | Verify signed-in upload/reopen/download across Render restart and correct model analysis against source | Local Mongo reconnect test passed; production strategy not deployed | Local Documents bridge exists; per-user tool availability not proved | **Local no-model storage pass; production and model workflow unverified** | Chat deployment and authenticated acceptance; paid model call prohibited |
+| F2: upload and analyze documents | PDF/DOCX/XLSX text extraction; bounded upload; optional Local Documents MCP; Mongo GridFS document bytes deployed in `eafdeee1` | Verify signed-in byte download across Render restart and correct model analysis against source | Local Mongo reconnect and byte readback passed; signed-in production PDF upload appears in My Files after reload | Local Documents bridge exists; per-user tool availability not proved | **Production no-model upload/list pass; byte readback and model analysis unverified** | File list lacked download UI on deployed revision; new UI routing awaiting deployment; paid model call prohibited |
 | F3: create/edit/download DOCX, XLSX, PPTX, PDF | Edited-byte GridFS, owner-scoped publisher/download, Office validation, XLSX creator | Format-by-format create, edit, render/open, redeploy, download acceptance | Web client should work, local document editor not established | Local Documents bridge; PR #43 fixed first-response XLSX link | **Partial prior XLSX/document runs; suite incomplete** | Paid model call, connected document tool, render/open checks |
 | F4: file search with citations | File text fallback exists; `fileSearch: false` | Durable ingestion, permission-scoped index, source spans and citation checks | Off | Off | **Not available** | Retrieval backend and storage; no paid index service approved |
 | B1: enumerate/open/close browser tabs | Device MCP browser tools and companion/Chrome extension | Verify installed extension matches current protocol and tab identity | `windows-work` reconnected with `browser.page_extension`; live action/version unknown | PR #44 found an older installed extension; `mac-primary` did not reconnect in the checked post-deploy window | **Unverified on current install** | Extension reload/pairing and model acceptance |
@@ -66,9 +66,14 @@ PR #70 deployed gateway revision `de53ae86` (Render deploy
 `repo_start_check(status)` returned a running job followed by completed status
 and exit 0. Gateway logs advertised `repo.scoped` after that deploy. An actual
 model-driven coding job, restart recovery, and Mac path remain unverified.
-The subsequent GridFS document-storage work passed a local MongoDB upload,
-client-reconnect, byte-for-byte download and deletion test; it has not yet
-been committed or deployed and is not a production acceptance result.
+The GridFS document-storage work passed a local MongoDB upload,
+client-reconnect, byte-for-byte download and deletion test. PR #71 was merged,
+but its first chat deploy failed on an isolated declaration build error. PR #72
+fixed that error, and chat revision `eafdeee1` became live. A signed-in browser
+uploaded a small PDF to the production chat; My Files listed it after reload.
+This proves upload and metadata persistence, not production byte readback,
+process-restart durability, or model analysis. The PDF parser logged a
+`standardFontDataUrl` warning. A no-cost in-app download/readback is next.
 
 The pinned upstream [code worker](https://github.com/LibreChat-AI/code-interpreter/blob/67d75d859aee891923c40cde1db073489d74a424/packages/code/README.md)
 does not support native Windows; it documents WSL2 on a native Linux filesystem
