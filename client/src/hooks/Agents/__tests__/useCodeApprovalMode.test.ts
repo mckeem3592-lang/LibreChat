@@ -70,6 +70,21 @@ describe('useCodeApprovalMode', () => {
     });
   });
 
+  test('keeps managed Claude coding on Ask even when a broader mode was remembered', () => {
+    mockUseAgentToolPermissions.mockReturnValue({ agent: undefined });
+    const managed = {
+      ...conversation,
+      endpoint: 'MissionAIClaudeCached' as TConversation['endpoint'],
+      spec: 'mission-ai-claude-sonnet',
+      agent_id: undefined,
+      codeApprovalMode: 'fullAccess',
+    } as TConversation;
+    const { result } = renderHook(() => useCodeApprovalMode(managed));
+
+    expect(result.current.selected).toBe('ask');
+    expect(result.current.available).toBe(false);
+  });
+
   test.each(['permitted', 'restricted', 'missing'])(
     'full access requires every reachable machine: %s',
     (policy) => {

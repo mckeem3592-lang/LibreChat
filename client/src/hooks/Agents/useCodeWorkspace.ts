@@ -36,10 +36,10 @@ import {
 import { collectReachableAgents, findExecutionEnvironment } from './useCodeApprovalMode';
 import { useWorkspacePreferences } from './workspacePreferences';
 import useAgentToolPermissions from './useAgentToolPermissions';
+import { ephemeralAgentByConvoId } from '~/store/agents';
 import useHasAccess from '~/hooks/Roles/useHasAccess';
 import useGetAgentsConfig from './useGetAgentsConfig';
 import { useAgentsMapContext } from '~/Providers';
-import { ephemeralAgentByConvoId } from '~/store/agents';
 
 export type CodeWorkspaceState =
   | 'not_required'
@@ -190,19 +190,31 @@ export default function useCodeWorkspace(
   const statefulCodeSessions = agentsConfig?.statefulCodeSessions as
     | TConfig['statefulCodeSessions']
     | undefined;
-  const ephemeral = useRecoilValue(ephemeralAgentByConvoId(conversation?.conversationId ?? Constants.NEW_CONVO));
-  const managedCoding = String(conversation?.endpoint) === 'MissionAI' && isEphemeralAgentId(conversation?.agent_id) &&
-    ephemeral?.execute_code === true && codeEnabled &&
+  const ephemeral = useRecoilValue(
+    ephemeralAgentByConvoId(conversation?.conversationId ?? Constants.NEW_CONVO),
+  );
+  const managedCoding =
+    String(conversation?.endpoint) === 'MissionAIClaudeCached' &&
+    conversation?.spec === 'mission-ai-claude-sonnet' &&
+    isEphemeralAgentId(conversation?.agent_id) &&
+    ephemeral?.execute_code === true &&
+    codeEnabled &&
     statefulCodeSessions?.environments?.length === 1 &&
     statefulCodeSessions.environments[0].id === 'attached-workers' &&
     statefulCodeSessions.environments[0].type === 'attached';
-  const managedAgent = useMemo(() => managedCoding ? {
-    id: 'mission-ai-inline-coding',
-    tools: [Tools.execute_code],
-    stateful_code_sessions: true,
-    stateful_code_environment: 'conversation',
-    code_environment_id: 'attached-workers',
-  } as Agent : undefined, [managedCoding]);
+  const managedAgent = useMemo(
+    () =>
+      managedCoding
+        ? ({
+            id: 'mission-ai-inline-coding',
+            tools: [Tools.execute_code],
+            stateful_code_sessions: true,
+            stateful_code_environment: 'conversation',
+            code_environment_id: 'attached-workers',
+          } as Agent)
+        : undefined,
+    [managedCoding],
+  );
   const primaryAgent = managedAgent ?? savedPrimaryAgent;
   const reachable = useMemo(
     () =>
@@ -210,7 +222,14 @@ export default function useCodeWorkspace(
         managedAgent?.id ?? conversation?.agent_id,
         addedConversation?.agent_id,
       ]),
-    [addedAgent, agentsMap, primaryAgent, managedAgent, conversation?.agent_id, addedConversation?.agent_id],
+    [
+      addedAgent,
+      agentsMap,
+      primaryAgent,
+      managedAgent,
+      conversation?.agent_id,
+      addedConversation?.agent_id,
+    ],
   );
   const workspaceMetadata = useMemo(() => {
     const unique = new Map<string, TPublicCodeEnvironment>();
@@ -265,8 +284,10 @@ export default function useCodeWorkspace(
     statefulCodeSessions?.environments,
   ]);
   const isAgentsConversation =
-    managedCoding || (conversation?.endpointType ?? conversation?.endpoint) === EModelEndpoint.agents;
-  const expectedRoot = managedCoding || conversation?.agent_id != null || addedConversation?.agent_id != null;
+    managedCoding ||
+    (conversation?.endpointType ?? conversation?.endpoint) === EModelEndpoint.agents;
+  const expectedRoot =
+    managedCoding || conversation?.agent_id != null || addedConversation?.agent_id != null;
   const expectedSavedAgent = [conversation?.agent_id, addedConversation?.agent_id].some(
     (agentId) => agentId != null && !isEphemeralAgentId(agentId),
   );

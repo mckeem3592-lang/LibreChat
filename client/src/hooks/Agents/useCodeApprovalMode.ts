@@ -55,8 +55,13 @@ export default function useCodeApprovalMode(
       ),
     [codeEnvironments],
   );
+  const managedCoding =
+    String(conversation?.endpoint) === 'MissionAIClaudeCached' &&
+    conversation?.spec === 'mission-ai-claude-sonnet' &&
+    isEphemeralAgentId(conversation?.agent_id);
   const supported =
-    (conversation?.endpointType ?? conversation?.endpoint) === EModelEndpoint.agents &&
+    ((conversation?.endpointType ?? conversation?.endpoint) === EModelEndpoint.agents ||
+      managedCoding) &&
     statefulCodeSessions?.approvalsEnabled === true;
   const endpointModes = statefulCodeSessions?.approvalModes;
   const available =
