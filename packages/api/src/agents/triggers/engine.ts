@@ -284,6 +284,28 @@ function normalizeFailure(failure: AgentTriggerDeliveryFailure): AgentTriggerDel
   };
 }
 
+function managedScheduleFailureReceipt(
+  delivery: AgentTriggerDeliveryRecord,
+  failure: AgentTriggerDeliveryFailure,
+): string | undefined {
+  const envelope = delivery.envelope as { event?: { type?: unknown } } | null;
+  if (
+    process.env.MISSION_AI_MANAGED_SCHEDULES !== 'true' ||
+    envelope?.event?.type !== 'schedule.occurrence'
+  ) {
+    return undefined;
+  }
+  const code = /^[A-Z][A-Z0-9_]{0,63}$/.test(failure.code) ? failure.code : 'OTHER';
+  const status =
+    typeof failure.status === 'number' &&
+    Number.isInteger(failure.status) &&
+    failure.status >= 100 &&
+    failure.status <= 599
+      ? failure.status
+      : 'none';
+  return `code=${code} status=${status} certainty=${failure.certainty}`;
+}
+
 /** The delay an execution error asked for, as seconds or an HTTP date, clamped. */
 function requestedRetryAfterMs(error: unknown, now: Date): number | undefined {
   if (!(error instanceof AgentTriggerExecutionError) || error.retryAfter == null) {
@@ -532,6 +554,10 @@ export function createAgentTriggerDeliveryEngine(
           return;
         }
         const recorded = normalizeFailure(failure(error, attemptedAt));
+        const scheduleReceipt = managedScheduleFailureReceipt(delivery, recorded);
+        if (scheduleReceipt != null) {
+          logger.warn(`[agent-triggers] managed schedule delivery failure ${scheduleReceipt}`);
+        }
         if (!recorded.retryable || attempt >= maxAttempts) {
           try {
             await deps.settleSourceBeforeDeadLetter?.(delivery.envelope, recorded);
