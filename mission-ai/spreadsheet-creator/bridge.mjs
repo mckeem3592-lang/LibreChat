@@ -122,6 +122,7 @@ export async function publishWorkbook(input, options) {
     bytes: artifact.bytes.length,
     sha256: artifact.sha256,
     downloadUrl: published.downloadUrl,
+    downloadMarkdown: `[Download workbook](${published.downloadUrl})`,
     expiresAt: published.expiredAt,
   };
 }
@@ -151,7 +152,7 @@ export async function main() {
       {
         name: TOOL,
         description:
-          'Create a new XLSX workbook from explicit plain values and publish it as a private, expiring LibreChat download. Does not read existing files or accept formulas.',
+          'Create a new XLSX workbook from explicit plain values and publish it as a private, expiring LibreChat download. Include the returned downloadMarkdown verbatim in your final answer so the owner can click it. Does not read existing files or accept formulas.',
         inputSchema: {
           type: 'object',
           additionalProperties: false,
