@@ -1553,7 +1553,11 @@ export function createManagedChatConfigGuard(
 
     try {
       assertConfiguration(req.config, options);
-    } catch {
+    } catch (error) {
+      const frame = error instanceof Error ? error.stack?.split('\n')[1]?.trim() : undefined;
+      const location = frame?.match(/:(\d+):(\d+)\)?$/);
+      console.warn('[mission-ai] managed chat configuration rejected',
+        location ? `code:${location[1]}:${location[2]}` : 'unknown location');
       return deny(res, true);
     }
 
