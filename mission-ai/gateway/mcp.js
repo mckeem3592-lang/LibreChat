@@ -515,6 +515,39 @@ export function createMissionMcpNodeHandler({
       catch (error) { return errorResult(error); }
     });
 
+    registerTool('repo_list', {
+      description: 'List up to 200 visible entries in the locally configured Git checkout on the paired device. Hidden entries and links are excluded.',
+      inputSchema: z.object({ deviceId: z.string().optional(), directory: z.string().max(2000).optional() }),
+    }, async ({ deviceId, directory = '' }) => {
+      try { return textResult(await invoke(defaultDeviceId(deviceId), 'repo.list', { directory })); }
+      catch (error) { return errorResult(error); }
+    });
+
+    registerTool('repo_read', {
+      description: 'Read a UTF-8 source file in the paired device repository configured locally by the owner. Returns content and sha256; hidden paths and links are excluded.',
+      inputSchema: z.object({ deviceId: z.string().optional(), path: z.string().min(1).max(2000) }),
+    }, async ({ deviceId, path }) => {
+      try { return textResult(await invoke(defaultDeviceId(deviceId), 'repo.read', { path })); }
+      catch (error) { return errorResult(error); }
+    });
+
+    registerTool('repo_write', {
+      description: 'Create or update one source file in the locally configured repository. Updates require sha256 from a fresh repo_read. Reopen the file and inspect the diff after writing.',
+      inputSchema: z.object({ deviceId: z.string().optional(), path: z.string().min(1).max(2000),
+        text: z.string().max(256000), expectedSha256: z.string().regex(/^[a-f0-9]{64}$/).optional() }),
+    }, async ({ deviceId, path, text, expectedSha256 }) => {
+      try { return textResult(await invoke(defaultDeviceId(deviceId), 'repo.write', { path, text, expectedSha256 })); }
+      catch (error) { return errorResult(error); }
+    });
+
+    registerTool('repo_check', {
+      description: 'Run one named check configured locally by the owner for the paired repository. Returns actual exit code and bounded output; arbitrary tool-supplied commands are refused.',
+      inputSchema: z.object({ deviceId: z.string().optional(), checkId: z.string().min(1).max(100) }),
+    }, async ({ deviceId, checkId }) => {
+      try { return textResult(await invoke(defaultDeviceId(deviceId), 'repo.check', { checkId }, 120_000)); }
+      catch (error) { return errorResult(error); }
+    });
+
     registerTool(
       'mac_active_app',
       {

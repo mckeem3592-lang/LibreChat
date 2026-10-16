@@ -117,6 +117,7 @@ const KNOWN_DEVICE_CAPABILITIES = new Set([
   'browser.direct_tabs',
   'browser.page_extension',
   'files.scoped',
+  'repo.scoped',
 ]);
 
 function safeEqual(a, b) {

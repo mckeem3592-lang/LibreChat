@@ -11,6 +11,7 @@ import { reconnectDelayMs } from './reconnect-policy.js';
 import { requireManualApproval } from './approval-gate.js';
 import { createScreenshotGeometryStore } from './screenshot-geometry.js';
 import { createScopedFiles } from './scoped-files.js';
+import { createScopedRepo } from './scoped-repo.js';
 import { validateInputTarget, waitForInputTarget, inputTargetScript } from './foreground-guard.js';
 import {
   normalizeCloseTabRequest,
@@ -35,6 +36,7 @@ const CHROME_EXTENSION_ORIGIN = 'chrome-extension://ggkpmldfojmlehhbadliodeplhne
 const CHROME_EXTENSION_ID = 'ggkpmldfojmlehhbadliodeplhneelmb';
 const MAX_MESSAGE_BYTES = 1_000_000;
 let configuredFileRoots = {};
+let configuredRepo = {};
 if (process.platform === 'win32') {
   try {
     const settings = JSON.parse(await readFile(new URL('./settings.json', import.meta.url), 'utf8'));
@@ -44,6 +46,8 @@ if (process.platform === 'win32') {
     }
     if (settings.fileRoots && typeof settings.fileRoots === 'object' &&
         !Array.isArray(settings.fileRoots)) configuredFileRoots = settings.fileRoots;
+    if (settings.codeRepository && typeof settings.codeRepository === 'object' &&
+        !Array.isArray(settings.codeRepository)) configuredRepo = settings.codeRepository;
   } catch { /* An uninstalled companion keeps per-action approval. */ }
 }
 
@@ -60,6 +64,7 @@ const allowedApps = new Set(
 
 const screenshotGeometry = createScreenshotGeometryStore();
 const scopedFiles = createScopedFiles(os.homedir(), configuredFileRoots);
+const scopedRepo = createScopedRepo(configuredRepo);
 let extensionSocket = null;
 let gatewaySocket = null;
 let gatewayConnected = false;
@@ -71,6 +76,7 @@ function currentCapabilities() {
     ...(process.platform === 'darwin' ? ['mac.control', 'browser.direct_tabs'] : []),
     ...(extensionSocket?.readyState === WebSocket.OPEN ? ['browser.page_extension'] : []),
     'files.scoped',
+    ...(scopedRepo ? ['repo.scoped'] : []),
   ];
 }
 
@@ -344,7 +350,7 @@ async function dispatch(tool, args, deadlineMs) {
   if (tool === 'mac.click') {
     mappedClick = screenshotGeometry.resolve(args, await mainDisplay());
   }
-  if (process.env.MISSION_AI_APPROVAL_MODE !== 'chat' && process.platform !== 'win32') {
+  if (process.env.MISSION_AI_APPROVAL_MODE !== 'chat') {
     await requireManualApproval(tool, mappedClick || args, {
       deadlineMs,
       isConnected: () => gatewayConnected && gatewaySocket?.readyState === WebSocket.OPEN,
@@ -394,6 +400,18 @@ async function dispatch(tool, args, deadlineMs) {
       return await scopedFiles.write(args);
     case 'file.move':
       return await scopedFiles.move(args);
+    case 'repo.read':
+      if (!scopedRepo) throw new Error('repo_not_configured');
+      return await scopedRepo.read(args);
+    case 'repo.list':
+      if (!scopedRepo) throw new Error('repo_not_configured');
+      return await scopedRepo.list(args);
+    case 'repo.write':
+      if (!scopedRepo) throw new Error('repo_not_configured');
+      return await scopedRepo.write(args);
+    case 'repo.check':
+      if (!scopedRepo) throw new Error('repo_not_configured');
+      return await scopedRepo.check(args);
     default:
       throw new Error('tool_not_allowed');
   }

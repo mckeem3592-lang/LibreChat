@@ -1,9 +1,12 @@
 # Local mutation approval
 
 The Windows and Mac installers allow a fixed set of browser actions and scoped
-file writes and moves to run in the background. The Windows list is saved in the
+file writes and moves to run in the background. A locally selected Git checkout
+may also permit hash-checked source edits and checks named in its local settings.
+The Windows list is saved in the
 per-user bridge settings; the Mac list is in its LaunchAgent. Local file access
-stays within Desktop, Documents, and Downloads. Remote tool arguments cannot
+stays within Desktop, Documents, and Downloads. Repository tools stay within
+the configured checkout. Remote tool arguments cannot
 extend the list.
 
 Other mutations require a text-only local terminal preview of the exact tool

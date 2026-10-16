@@ -56,17 +56,39 @@ $manifestPath = Join-Path $destination 'com.missionai.browser_bridge.json'
 $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\Google\Chrome\NativeMessagingHosts\com.missionai.browser_bridge')
 try { $key.SetValue('', $manifestPath) } finally { $key.Close() }
 
+$settingsPath = Join-Path $destination 'settings.json'
+$previousRepo = $null
+if (Test-Path -LiteralPath $settingsPath) {
+  try { $previousRepo = (Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json).codeRepository }
+  catch { $previousRepo = $null }
+}
 $settings = @{
   autonomousTools = @('browser.activate_tab', 'browser.open_new_tab', 'browser.open_url_direct',
     'browser.close_tabs', 'browser.click', 'browser.type', 'browser.scroll', 'browser.open_url',
-    'file.move', 'file.write')
+    'file.move', 'file.write', 'repo.write', 'repo.check')
   fileRoots = @{
     Desktop = [Environment]::GetFolderPath('Desktop')
     Documents = [Environment]::GetFolderPath('MyDocuments')
     Downloads = (Join-Path $env:USERPROFILE 'Downloads')
   }
-} | ConvertTo-Json -Depth 3
-[System.IO.File]::WriteAllText((Join-Path $destination 'settings.json'), $settings)
+}
+if ($env:MISSION_AI_CODE_REPO_ROOT) {
+  $selectedRepo = [System.IO.Path]::GetFullPath($env:MISSION_AI_CODE_REPO_ROOT)
+  if (-not (Test-Path -LiteralPath (Join-Path $selectedRepo '.git'))) {
+    throw 'MISSION_AI_CODE_REPO_ROOT must identify a Git checkout.'
+  }
+  $settings.codeRepository = @{
+    root = $selectedRepo
+    checks = @{
+      'diff-check' = @{ command = 'git'; args = @('diff', '--check') }
+      'status' = @{ command = 'git'; args = @('status', '--short') }
+    }
+  }
+} elseif ($previousRepo) {
+  $settings.codeRepository = $previousRepo
+}
+$settingsJson = $settings | ConvertTo-Json -Depth 6
+[System.IO.File]::WriteAllText($settingsPath, $settingsJson)
 
 $launcherArgs = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $destination 'launch-windows.ps1') + '"'
 $runKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\Microsoft\Windows\CurrentVersion\Run')
