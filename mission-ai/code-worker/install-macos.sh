@@ -10,10 +10,12 @@ CURRENT_LINK="$BASE_DIR/current"
 IDENTITY_DIR="$HOME/.config/librechat/code"
 IDENTITY_FILE="$IDENTITY_DIR/$WORKER_ID.json"
 PLIST="$HOME/Library/LaunchAgents/com.missionai.code-worker.plist"
+WATCHDOG_PLIST="$HOME/Library/LaunchAgents/com.missionai.code-worker-approval-watchdog.plist"
 LOG_DIR="$HOME/Library/Logs/MissionAI"
 DOC_BIN="$HOME/.local/share/mission-ai/document-tools/venv/bin"
 CLI="$RELEASE_DIR/packages/code/dist/cli.js"
 APPROVAL_PATCH="$(cd "$(dirname "$0")" && pwd)/apply-approval-patch.mjs"
+INTERACTIVE_HELPER="$(cd "$(dirname "$0")" && pwd)/interactive-macos.py"
 PAIR_SERVICE="mission-ai-code-pairing-code"
 WORKSPACE_DIR="${MISSION_AI_CODE_WORKSPACE_DIR:-}"
 
@@ -56,6 +58,8 @@ fi
 need node
 need git
 need security
+need screen
+need python3
 
 NODE_VERSION="$(node -p "process.versions.node.split('.').map(Number)")"
 NODE_MAJOR="$(node -p "Number(process.versions.node.split('.')[0])")"
@@ -75,6 +79,10 @@ fi
 
 mkdir -p "$BASE_DIR/releases" "$IDENTITY_DIR" "$HOME/Library/LaunchAgents" "$LOG_DIR"
 chmod 700 "$IDENTITY_DIR"
+install -m 700 "$INTERACTIVE_HELPER" "$BASE_DIR/interactive-macos.py"
+if python3 "$BASE_DIR/interactive-macos.py" status | rg -q 'interactive=True'; then
+  python3 "$BASE_DIR/interactive-macos.py" stop
+fi
 
 if [[ ! -f "$CLI" ]]; then
   TMP="$BASE_DIR/.build-$PIN"
@@ -126,6 +134,7 @@ if [[ ! -f "$IDENTITY_FILE" || ${MISSION_AI_CODE_REFRESH_IDENTITY:-false} == tru
 fi
 
 NODE_PATH="$(command -v node)"
+PYTHON_PATH="$(command -v python3)"
 cat > "$PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -176,6 +185,26 @@ for attempt in 1 2 3; do
 done
 launchctl enable "gui/$(id -u)/com.missionai.code-worker"
 launchctl kickstart -k "gui/$(id -u)/com.missionai.code-worker"
+
+cat > "$WATCHDOG_PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.missionai.code-worker-approval-watchdog</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$PYTHON_PATH</string>
+    <string>$BASE_DIR/interactive-macos.py</string>
+    <string>reconcile</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>30</integer>
+</dict>
+</plist>
+PLIST
+launchctl bootout "gui/$(id -u)/com.missionai.code-worker-approval-watchdog" >/dev/null 2>&1 || true
+launchctl bootstrap "gui/$(id -u)" "$WATCHDOG_PLIST"
 
 echo "Mission AI code worker installed."
 echo "Pinned worker: $PIN"
