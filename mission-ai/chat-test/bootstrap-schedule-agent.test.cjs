@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { expectedAgent, isPinnedAgent, main } = require('./bootstrap-schedule-agent.cjs');
+const { expectedAgent, isPinnedAgent, bootstrapFailureCode, main } = require('./bootstrap-schedule-agent.cjs');
 
 const owner = { _id: { toString: () => '507f1f77bcf86cd799439011' } };
 const expected = expectedAgent('agent_owner_schedule', owner);
@@ -39,4 +39,13 @@ test('changed ownership, provider, tools, and subagents fail startup validation'
   ]) {
     assert.equal(isPinnedAgent({ ...expected, ...changed }, expected), false);
   }
+});
+
+test('bootstrap logs only fixed internal diagnostic codes', () => {
+  assert.equal(bootstrapFailureCode(new Error('agent_viewer_role_unavailable')),
+    'agent_viewer_role_unavailable');
+  assert.equal(bootstrapFailureCode(new Error('db URI with private credential')),
+    'schedule_agent_bootstrap_failed');
+  assert.equal(bootstrapFailureCode({ message: 'owner_identity_unavailable' }),
+    'owner_identity_unavailable');
 });
