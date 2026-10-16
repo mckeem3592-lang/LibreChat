@@ -46,8 +46,8 @@ test('schedule route aliases and unverified trigger posts remain denied', () => 
   assert.equal(invoke(options, base).next, 1);
   assert.equal(invoke(options, { ...base, originalUrl: '/api/schedules?other=1' }).status, 403);
   assert.equal(
-    invoke(options, { method: 'POST', originalUrl: `/api/schedules/${scheduleId}/run` }).status,
-    403,
+    invoke(options, { method: 'POST', originalUrl: `/api/schedules/${scheduleId}/run` }).next,
+    1,
   );
   assert.equal(
     invoke(options, {

@@ -4,7 +4,16 @@ type ScheduleRequest = {
   url?: string;
   headers?: Record<string, string | string[] | undefined>;
   body?: unknown;
+  user?: { id?: string; email?: string };
 };
+
+type ScheduleResponse = {
+  status: (status: number) => ScheduleResponse;
+  json: (body: unknown) => unknown;
+};
+
+const SCHEDULE_ID_PATH =
+  /^\/api\/schedules\/(sched_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(\/run)?$/i;
 
 /** Admission runs before authentication. A server-injected verifier checks the
  * signed schedule trigger; this helper checks the fixed agent pin. The chat
@@ -49,17 +58,11 @@ export function isManagedScheduleRoute(
       (body as Record<string, unknown>).agent_id === expectedAgentId
     );
   }
-  if (
-    typeof path !== 'string' ||
-    !/^\/api\/schedules\/sched_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\/run)?$/i.test(
-      path,
-    )
-  ) {
+  if (typeof path !== 'string' || !SCHEDULE_ID_PATH.test(path)) {
     return false;
   }
-  // Run-now does not carry the stored agent id. It needs a post-auth lookup
-  // before admission, so leave it closed until that check exists.
-  if (path.endsWith('/run')) return false;
+  // Run-now carries only an id; a post-auth guard checks the stored agent pin.
+  if (path.endsWith('/run')) return req.method === 'POST';
   if (req.method === 'GET' || req.method === 'DELETE') return true;
   if (req.method !== 'PATCH') return false;
   const body = req.body;
@@ -67,6 +70,41 @@ export function isManagedScheduleRoute(
     body != null &&
     typeof body === 'object' &&
     !Array.isArray(body) &&
-    (body as Record<string, unknown>).agent_id === expectedAgentId
+    ((body as Record<string, unknown>).agent_id === undefined ||
+      (body as Record<string, unknown>).agent_id === expectedAgentId)
   );
+}
+
+/** This runs after JWT and owner authentication, before native handlers. It
+ * fences edits that omit agent_id as well as run-now and existing-row reads. */
+export function createManagedSchedulePinGuard(options: {
+  enabled: boolean;
+  agentId?: string;
+  getScheduleById: (id: string, userId: string) => Promise<{ agent_id?: string } | null>;
+}) {
+  return async (req: ScheduleRequest, res: ScheduleResponse, next: () => unknown) => {
+    if (!options.enabled) return next();
+    if (
+      !options.agentId ||
+      !/^agent_[A-Za-z0-9_-]{1,200}$/.test(options.agentId) ||
+      !isManagedScheduleRoute(req, options.agentId) ||
+      !req.user?.id
+    ) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const path = req.originalUrl ?? req.url ?? '';
+    if (path === '/api/schedules') return next();
+    const id = SCHEDULE_ID_PATH.exec(path)?.[1];
+    if (!id) return res.status(403).json({ error: 'Forbidden' });
+    try {
+      const row = await options.getScheduleById(id, req.user.id);
+      if (!row) return res.status(404).json({ error: 'Schedule not found' });
+      if (row.agent_id !== options.agentId) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      return next();
+    } catch {
+      return res.status(503).json({ error: 'Schedule target check unavailable' });
+    }
+  };
 }
