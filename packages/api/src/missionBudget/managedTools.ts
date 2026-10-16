@@ -59,10 +59,22 @@ const GITHUB_DEVICE = GITHUB_EDITOR && GITHUB_ENV.MISSION_AI_DEVICE_MCP_ENABLED 
 const GITHUB_DEVICE_CODE = GITHUB_DEVICE && GITHUB_ENV.MISSION_AI_DEVICE_CODE_ENABLED === 'true';
 const GITHUB_RESTORED_PARAMS = ['maxOutputTokens', 'effort', 'thinking', 'promptCache',
   'promptCacheTtl', 'maxContextTokens', 'stop', 'reasoning_effort', 'verbosity',
-  'disableStreaming', 'temperature', 'top_p', 'frequency_penalty', 'presence_penalty'];
+  'disableStreaming', 'temperature', 'top_p', 'frequency_penalty', 'presence_penalty',
+  'modelLabel', 'chatProjectId', 'addedConvo', 'timezone', 'manualSkills'];
 function githubResumeEnvelope(input: unknown, restored = false): Json {
   const body = object(input); exactKeys(body, restored
     ? [...RESUME_FIELDS, ...GITHUB_RESTORED_PARAMS] : RESUME_FIELDS);
+  // These fields are replayed from the paused server-side context, not accepted
+  // from the public resume request. Keep the same narrow shapes as send admission.
+  if (restored) {
+    if (body.modelLabel != null && (typeof body.modelLabel !== 'string' || body.modelLabel.length > 4096)) throw new Error();
+    if (body.chatProjectId != null && (typeof body.chatProjectId !== 'string' ||
+        !/^[a-fA-F0-9]{24}$/.test(body.chatProjectId))) throw new Error();
+    if (body.addedConvo != null) throw new Error();
+    if (body.timezone != null && (typeof body.timezone !== 'string' || body.timezone.length > 100 ||
+        !/^[A-Za-z0-9_+/-]+$/.test(body.timezone))) throw new Error();
+    if (body.manualSkills != null && (!Array.isArray(body.manualSkills) || body.manualSkills.length !== 0)) throw new Error();
+  }
   const nativeDevice = GITHUB_DEVICE && body.endpoint === 'MissionAIClaudeCached';
   const device = nativeDevice && body.spec === 'mission-ai-claude-sonnet';
   const projectDevice = nativeDevice && body.spec === 'mission-ai-project-manager';
