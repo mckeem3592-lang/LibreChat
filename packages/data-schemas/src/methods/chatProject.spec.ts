@@ -69,6 +69,7 @@ describe('ChatProject methods', () => {
     const project = await methods.createChatProject(user, {
       name: 'Customer Alpha',
       description: 'Support work',
+      instructions: 'Use the support checklist.',
     });
 
     expect(project.name).toBe('Customer Alpha');
@@ -76,11 +77,15 @@ describe('ChatProject methods', () => {
 
     const readProject = await methods.getChatProject(user, project._id!.toString());
     expect(readProject?.description).toBe('Support work');
+    expect(readProject?.instructions).toBe('Use the support checklist.');
+    expect(await methods.getChatProject(otherUser, project._id!.toString())).toBeNull();
 
     const updatedProject = await methods.updateChatProject(user, project._id!.toString(), {
       name: 'Customer Alpha Updated',
+      instructions: 'Use the updated checklist.',
     });
     expect(updatedProject?.name).toBe('Customer Alpha Updated');
+    expect(updatedProject?.instructions).toBe('Use the updated checklist.');
 
     const list = await methods.listChatProjects(user, { sortBy: 'name', sortDirection: 'asc' });
     expect(list.projects).toHaveLength(1);

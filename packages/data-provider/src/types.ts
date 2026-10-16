@@ -408,6 +408,7 @@ export type TChatProject = {
   _id: string;
   name: string;
   description?: string;
+  instructions?: string;
   user?: string;
   conversationCount: number;
   lastConversationAt?: string | null;
@@ -419,6 +420,7 @@ export type TChatProject = {
 export type TCreateChatProjectRequest = {
   name: string;
   description?: string;
+  instructions?: string;
 };
 
 export type TUpdateChatProjectRequest = Partial<TCreateChatProjectRequest> & {

@@ -16,6 +16,12 @@ const chatProjectSchema: Schema<IChatProjectDocument> = new Schema<IChatProjectD
       trim: true,
       maxlength: 1000,
     },
+    instructions: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: 8000,
+    },
     user: {
       type: String,
       required: true,

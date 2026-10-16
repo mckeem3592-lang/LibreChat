@@ -749,6 +749,7 @@ const initializeClientWithProvider = async ({
     },
     {
       getFiles: db.getFiles,
+      getChatProject: db.getChatProject,
       getUserKey: db.getUserKey,
       getMessages: db.getMessages,
       getConvoFiles: db.getConvoFiles,
@@ -841,6 +842,7 @@ const initializeClientWithProvider = async ({
       logViolation,
       db: {
         getFiles: db.getFiles,
+        getChatProject: db.getChatProject,
         getUserKey: db.getUserKey,
         getMessages: db.getMessages,
         getConvoFiles: db.getConvoFiles,
@@ -1326,6 +1328,7 @@ const initializeClientWithProvider = async ({
         },
         {
           getFiles: db.getFiles,
+          getChatProject: db.getChatProject,
           getUserKey: db.getUserKey,
           getMessages: db.getMessages,
           getConvoFiles: db.getConvoFiles,

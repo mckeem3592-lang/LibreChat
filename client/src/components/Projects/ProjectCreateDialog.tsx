@@ -10,6 +10,7 @@ import {
 import {
   MAX_CHAT_PROJECT_NAME_LENGTH,
   MAX_CHAT_PROJECT_DESCRIPTION_LENGTH,
+  MAX_CHAT_PROJECT_INSTRUCTIONS_LENGTH,
 } from 'librechat-data-provider';
 import {
   Button,
@@ -45,6 +46,7 @@ export default function ProjectCreateDialog({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [instructions, setInstructions] = useState('');
   const createProject = useCreateProjectMutation();
   const { showToast } = useToastContext();
 
@@ -59,6 +61,7 @@ export default function ProjectCreateDialog({
   const resetForm = () => {
     setName('');
     setDescription('');
+    setInstructions('');
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -80,6 +83,7 @@ export default function ProjectCreateDialog({
       const project = await createProject.mutateAsync({
         name: trimmedName,
         ...(trimmedDescription ? { description: trimmedDescription } : {}),
+        ...(instructions.trim() ? { instructions: instructions.trim() } : {}),
       });
       resetForm();
       onOpenChange(false);
@@ -132,6 +136,25 @@ export default function ProjectCreateDialog({
                 rows={3}
                 maxLength={MAX_CHAT_PROJECT_DESCRIPTION_LENGTH}
                 className="min-h-[4.5rem] bg-transparent"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label
+                htmlFor={`${formId}-instructions`}
+                className="text-sm font-medium text-text-primary"
+              >
+                {localize('com_ui_instructions')}{' '}
+                <span className="font-normal text-text-secondary">
+                  {localize('com_ui_optional')}
+                </span>
+              </Label>
+              <Textarea
+                id={`${formId}-instructions`}
+                value={instructions}
+                onChange={(event) => setInstructions(event.target.value)}
+                rows={4}
+                maxLength={MAX_CHAT_PROJECT_INSTRUCTIONS_LENGTH}
+                className="min-h-[6rem] bg-transparent"
               />
             </div>
           </form>

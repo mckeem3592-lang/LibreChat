@@ -937,6 +937,8 @@ export interface InitializeAgentParams {
  * getConvoFiles not yet in data-schemas but included here for consistency
  */
 export interface InitializeAgentDbMethods extends EndpointDbMethods {
+  /** Resolve project context only through an owner-scoped database read. */
+  getChatProject?: (userId: string, projectId: string) => Promise<{ instructions?: string } | null>;
   /**
    * Names of every MCP server the user can reach (operator config + user DB).
    * Consulted by the legacy-key heal ONLY when a configured name needs
@@ -1078,6 +1080,25 @@ export async function initializeAgent(
 
   if (!db) {
     throw new Error('initializeAgent requires db methods to be passed');
+  }
+
+  const projectId = runtime.requestBody.chatProjectId;
+  let projectInstructions = '';
+  if (typeof projectId === 'string' && projectId.length > 0) {
+    if (!user?.id || !db.getChatProject) {
+      throw new Error('Project context is unavailable');
+    }
+    const project = await db.getChatProject(user.id, projectId);
+    if (!project) {
+      throw new Error('Project not found');
+    }
+    projectInstructions = project.instructions?.trim() ?? '';
+    if (projectInstructions) {
+      assertModelBoundContent({
+        filters: appConfig?.filters,
+        agents: [{ instructions: projectInstructions }],
+      });
+    }
   }
 
   /**
@@ -1323,7 +1344,9 @@ export async function initializeAgent(
 
   const llmConfig = options.llmConfig as Record<string, unknown>;
   attachManagedProjectCost(llmConfig, {
-    enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true' && process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+    enabled:
+      process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
+      process.env.MISSION_AI_MANAGED_TOOLS === 'true',
     gatewayURL: process.env.MISSION_AI_GATEWAY_URL,
     projectId: runtime.requestBody.chatProjectId,
   });
@@ -2287,6 +2310,12 @@ export async function initializeAgent(
     : undefined;
   if (repositoryInstructionBlock) {
     agent.instructions = [agent.instructions, repositoryInstructionBlock]
+      .filter(Boolean)
+      .join('\n\n');
+  }
+
+  if (projectInstructions) {
+    agent.instructions = [agent.instructions, `Project instructions:\n${projectInstructions}`]
       .filter(Boolean)
       .join('\n\n');
   }
