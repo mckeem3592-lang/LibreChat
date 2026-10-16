@@ -1192,9 +1192,10 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
         'https://mission-ai-code-api-mckee.onrender.com/v1' ||
         environment.owner !== 'deployment' || environment.default !== true) throw new Error();
     const pairing = object(environment.pairing);
-    keys(pairing, new Set(['workerId', 'tokenEnv']));
+    keys(pairing, new Set(['workerId', 'tokenEnv', 'allowPrincipalWorkers']));
     if (pairing.workerId !== 'mac-primary-code' ||
-        pairing.tokenEnv !== 'MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN') throw new Error();
+        pairing.tokenEnv !== 'MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN' ||
+        (pairing.allowPrincipalWorkers != null && pairing.allowPrincipalWorkers !== false)) throw new Error();
   } else if (agents.statefulCodeSessions != null) throw new Error();
 
   for (const flag of [
