@@ -28,6 +28,7 @@ export interface NativeBridgeDependencies {
     timeZone: string;
     directCapUsd: number;
     maxOutputTokens?: number;
+    maxReservationUsd?: number;
     allowedToolNames?: readonly string[];
   }>;
   pricingLoader: () => Awaitable<unknown>;
@@ -429,6 +430,10 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
         reserveUsd = amount(deps.estimateCost({
           provider, model, prompt: nativeMessages ? anthropicReservationPrompt(body) : serialized, system: '', maxOutputTokens: outputLimit, pricing, imageInputTokens,
         }), true);
+        if (budget.maxReservationUsd !== undefined) {
+          if (amount(budget.maxReservationUsd, true) > policy.hardUsd) fail('shared_budget_unready', 503);
+          if (reserveUsd > budget.maxReservationUsd) fail('native_request_cost_limit', 403);
+        }
         const reservationId = deps.randomId();
         if (typeof reservationId !== 'string' || !reservationId || reservationId.length > 200) fail('native_accounting_invalid', 503);
         reservation = await deps.ledger.reserve({

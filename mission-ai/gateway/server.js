@@ -26,6 +26,7 @@ import {
   calculateUsageCost,
 } from './cost.js';
 import { acceptanceWindow } from './acceptance-window.js';
+import { normalClaudePolicy } from './normal-claude.js';
 import { createAcceptanceImage } from './acceptance-image.js';
 import { createMongoAcceptanceStore } from './paid-acceptance.js';
 import { deviceMcpAllowedTools } from './device-tool-catalog.js';
@@ -232,6 +233,15 @@ async function nativeBudgetReader({ now }) {
   };
 }
 
+async function claudeBudgetReader({ now }) {
+  const policy = normalClaudePolicy(process.env);
+  if (!policy) return nativeBudgetReader({ now });
+  const shared = await nativeLedger.sharedBudget();
+  if (!shared) throw new Error('shared_budget_unready');
+  await nativeLedger.reconcileStaleReservations({ now });
+  return { ...shared, ...policy, directCapUsd: shared.policy.hardUsd };
+}
+
 const sharedNativeDependencies = {
   ledger: nativeLedger,
   budgetReader: nativeBudgetReader,
@@ -304,11 +314,16 @@ const openAINativeHttp = createNativeHttp({
 const anthropicHttp = createAnthropicHttp({
   enabled: () =>
     process.env.MISSION_AI_NATIVE_ENABLED === 'true' ||
-    Boolean(acceptanceWindow(process.env)),
+    Boolean(acceptanceWindow(process.env)) ||
+    Boolean(normalClaudePolicy(process.env)),
   token: nativeToken,
   safeEqual,
   bridge: createNativeBridge({
     ...anthropicNativeDependencies,
+    budgetReader: claudeBudgetReader,
+    modelAllowed: async (model) =>
+      (!normalClaudePolicy(process.env) || model === 'claude-sonnet-5-5') &&
+      (await anthropicNativeModels()).includes(model),
     protocol: 'anthropic-messages',
   }),
 });
