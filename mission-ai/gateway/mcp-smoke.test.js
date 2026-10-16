@@ -200,6 +200,38 @@ test('opted-in device catalog exposes only the budget-backed image action', asyn
   }
 });
 
+test('image provider failure exposes only the safe HTTP status', async () => {
+  const handler = createMissionMcpNodeHandler({
+    allowedTools: deviceMcpAllowedTools({ imageEnabled: true, imageBudgetReady: true }),
+    generateImage: async () => {
+      const error = new Error('provider_http_error');
+      error.code = 'provider_http_error';
+      error.status = 403;
+      error.privateDetail = 'never-return';
+      throw error;
+    },
+    audit: () => {},
+  });
+  const { server, url } = await listen(handler);
+  const client = new Client({ name: 'mission-ai-image-error-test', version: '1.0.0' });
+  try {
+    await client.connect(new StreamableHTTPClientTransport(url));
+    const result = await client.callTool({
+      name: 'mission_generate_image',
+      arguments: { prompt: 'diagnose image failure' },
+    });
+    assert.equal(result.isError, true);
+    assert.deepEqual(JSON.parse(result.content[0].text), {
+      ok: false,
+      error: 'provider_http_error',
+      providerStatus: 403,
+    });
+  } finally {
+    await client.close().catch(() => {});
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('device MCP routes scoped text tools to the configured Windows device', async () => {
   const previous = process.env.MISSION_AI_DEFAULT_DEVICE_ID;
   process.env.MISSION_AI_DEFAULT_DEVICE_ID = 'windows-work';
