@@ -16,6 +16,7 @@ async function withPage(html, run) {
       'HTMLElement',
       'Event',
       'getComputedStyle',
+      'NodeFilter',
     ].map((key) => [key, globalThis[key]]),
   );
   try {

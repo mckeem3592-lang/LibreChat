@@ -16,7 +16,28 @@ export async function typeIntoPageElement(elementIndex, elementKey, text, expect
     const type = node.getAttribute('type') || '';
     const name = node.getAttribute('name') || '';
     const aria = node.getAttribute('aria-label') || '';
-    const visible = (node.innerText || node.getAttribute('placeholder') || '').trim().slice(0, 120);
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    const chunks = [];
+    let inspected = 0;
+    while (walker.nextNode() && inspected++ < 10000 && chunks.join(' ').length < 120) {
+      const parent = walker.currentNode.parentElement;
+      if (
+        !parent ||
+        parent.closest(
+          'script,style,noscript,template,[type="password"],[hidden],[aria-hidden="true"]',
+        ) ||
+        parent.getClientRects().length === 0
+      )
+        continue;
+      const style = getComputedStyle(parent);
+      if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0')
+        continue;
+      const chunk = (walker.currentNode.nodeValue || '').replace(/\s+/g, ' ').trim();
+      if (chunk) chunks.push(chunk);
+    }
+    const visible = (chunks.join(' ').slice(0, 120) || node.getAttribute('placeholder') || '')
+      .trim()
+      .slice(0, 120);
     return [tag, type, name, aria, visible].join('|').slice(0, 400);
   };
   if (keyFor(el) !== elementKey) throw new Error('browser_element_stale');
@@ -29,10 +50,11 @@ export async function typeIntoPageElement(elementIndex, elementKey, text, expect
     .filter(Boolean)
     .join(' ');
   if (
-    el.closest('[aria-hidden="true"]') ||
+    el.closest('[hidden],[aria-hidden="true"]') ||
     el.getClientRects().length === 0 ||
     getComputedStyle(el).visibility === 'hidden' ||
-    getComputedStyle(el).display === 'none'
+    getComputedStyle(el).display === 'none' ||
+    getComputedStyle(el).opacity === '0'
   ) {
     throw new Error('element_not_visible');
   }
