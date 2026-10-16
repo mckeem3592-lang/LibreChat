@@ -15,6 +15,28 @@ DOC_BIN="$HOME/.local/share/mission-ai/document-tools/venv/bin"
 CLI="$RELEASE_DIR/packages/code/dist/cli.js"
 APPROVAL_PATCH="$(cd "$(dirname "$0")" && pwd)/apply-approval-patch.mjs"
 PAIR_SERVICE="mission-ai-code-pairing-code"
+WORKSPACE_DIR="${MISSION_AI_CODE_WORKSPACE_DIR:-}"
+
+# An existing checkout can live inside the worker's default storage directory.
+# Register that checkout itself, so chat's workspace/ namespace maps to its root.
+WORKSPACE_ARGUMENTS='    <string>--default-workspace</string>'
+if [[ -n "$WORKSPACE_DIR" ]]; then
+  [[ "$WORKSPACE_DIR" == /* && -d "$WORKSPACE_DIR" ]] || {
+    echo 'MISSION_AI_CODE_WORKSPACE_DIR must be an existing absolute directory' >&2
+    exit 1
+  }
+  WORKSPACE_DIR="$(realpath "$WORKSPACE_DIR")"
+  case "$WORKSPACE_DIR" in
+    "$HOME/.local/share/librechat/code/workspaces/"*|"$HOME/Documents/Codex/"*) ;;
+    *) echo 'Code workspace must be inside LibreChat worker storage or Documents/Codex' >&2; exit 1 ;;
+  esac
+  [[ "$WORKSPACE_DIR" != *[\<\>\&\"\']* && "$WORKSPACE_DIR" != *$'\n'* ]] || {
+    echo 'Code workspace path contains unsupported XML characters' >&2
+    exit 1
+  }
+  WORKSPACE_ARGUMENTS="    <string>--worker-dir</string>
+    <string>$WORKSPACE_DIR</string>"
+fi
 
 need() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -116,7 +138,7 @@ cat > "$PLIST" <<PLIST
     <string>$NODE_PATH</string>
     <string>$CLI</string>
     <string>run</string>
-    <string>--default-workspace</string>
+$WORKSPACE_ARGUMENTS
     <string>--workspace-lease-slots</string>
     <string>2</string>
     <string>--allow-workspace-writes</string>

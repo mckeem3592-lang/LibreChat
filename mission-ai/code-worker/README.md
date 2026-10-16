@@ -31,6 +31,12 @@ LibreChat's official outbound `@librechat/code` bridge.
    Mutations require a user-controlled interactive local terminal. Keep the
    worker disabled until the patched build, pairing and live approval checks pass.
 
+For an existing checkout inside the default worker directory, set
+`MISSION_AI_CODE_WORKSPACE_DIR` to the checkout's absolute path when running
+`install-macos.sh`. The installer registers that directory as `primary`, so
+`workspace/package.json` in chat reads its root `package.json`. The path must
+be inside LibreChat worker storage or `Documents/Codex`.
+
 If Code API reports an invalid or expired worker credential, obtain a fresh
 one-time pairing code through the owner-approved pairing flow, then rerun the
 installer with `MISSION_AI_CODE_REFRESH_IDENTITY=true`. The installer pairs to
