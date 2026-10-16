@@ -809,6 +809,41 @@ async function startRun(
     }
     const result = parseStartResult(payload, mode);
     if (result == null) {
+      // A successful loopback response can be an HTML login/fallback page or a
+      // JSON response from the wrong route. Log only its bounded shape, never
+      // the body, URL, headers, or identifiers from the response.
+      let responseShape = 'scalar';
+      if (payload == null) {
+        responseShape = 'non_json';
+      } else if (Array.isArray(payload)) {
+        responseShape = 'array';
+      } else if (typeof payload === 'object') {
+        responseShape = 'object';
+      }
+      const responseFields =
+        payload != null && typeof payload === 'object' && !Array.isArray(payload)
+          ? {
+              status: fireStatus('status' in payload ? payload.status : undefined) ?? 'missing',
+              conversationId:
+                requireString('conversationId' in payload ? payload.conversationId : undefined) !=
+                null,
+              streamId: requireString('streamId' in payload ? payload.streamId : undefined) != null,
+            }
+          : { status: 'missing', conversationId: false, streamId: false };
+      let contentType = 'other';
+      if (response.headers.get('content-type')?.startsWith('application/json')) {
+        contentType = 'json';
+      } else if (response.headers.get('content-type')?.startsWith('text/html')) {
+        contentType = 'html';
+      }
+      logger.warn('[agent-triggers] invalid success response shape', {
+        mode,
+        httpStatus: response.status,
+        responseShape,
+        contentType,
+        redirected: response.redirected,
+        ...responseFields,
+      });
       throw executionError(`Agent trigger ${mode} returned an invalid success response`, {
         mode,
         certainty: 'ambiguous',
