@@ -27,6 +27,8 @@ test('reports incomplete readiness without exposing secrets', () => {
     costDashboard: true,
     delegation: false,
     macDevice: false,
+    macBrowserDirect: false,
+    macBrowserExtension: false,
     browserDirect: false,
     browserExtension: false,
     pairing: true,
@@ -34,7 +36,6 @@ test('reports incomplete readiness without exposing secrets', () => {
   assert.equal(JSON.stringify(result).includes('OPENAI_API_KEY'), false);
   assert.equal(JSON.stringify(result).includes('ANTHROPIC_API_KEY'), false);
 });
-
 
 test('reports direct and extension browser capability readiness separately', () => {
   const result = buildReadiness({
@@ -54,6 +55,8 @@ test('reports direct and extension browser capability readiness separately', () 
   });
 
   assert.equal(result.checks.macDevice, true);
+  assert.equal(result.checks.macBrowserDirect, true);
+  assert.equal(result.checks.macBrowserExtension, false);
   assert.equal(result.checks.browserDirect, true);
   assert.equal(result.checks.browserExtension, false);
   assert.equal(result.ok, false);
@@ -62,7 +65,6 @@ test('reports direct and extension browser capability readiness separately', () 
     'browser.direct_tabs',
   ]);
 });
-
 
 test('connected paired Mac remains pairing-ready after pairing code expires', () => {
   const result = buildReadiness({
@@ -77,4 +79,27 @@ test('connected paired Mac remains pairing-ready after pairing code expires', ()
   assert.equal(result.checks.macDevice, true);
   assert.ok(result.missing.includes('browserExtension'));
   assert.equal(result.missing.includes('pairing'), false);
+});
+
+test('does not count a different device extension as Mac browser readiness', () => {
+  const result = buildReadiness({
+    connectedDevices: ['windows-work', 'mac-primary'],
+    deviceCapabilities: {
+      'windows-work': ['browser.page_extension', 'files.scoped'],
+      'mac-primary': ['mac.control', 'browser.direct_tabs', 'files.scoped'],
+    },
+  });
+
+  assert.equal(result.checks.macDevice, true);
+  assert.equal(result.checks.browserExtension, true);
+  assert.equal(result.checks.macBrowserDirect, true);
+  assert.equal(result.checks.macBrowserExtension, false);
+  assert.ok(result.missing.includes('macBrowserExtension'));
+
+  const windowsOnly = buildReadiness({
+    connectedDevices: ['windows-work'],
+    deviceCapabilities: { 'windows-work': ['browser.page_extension', 'files.scoped'] },
+  });
+  assert.equal(windowsOnly.checks.macDevice, false);
+  assert.equal(windowsOnly.checks.macBrowserExtension, false);
 });

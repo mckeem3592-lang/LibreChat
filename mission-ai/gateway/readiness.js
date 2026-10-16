@@ -19,6 +19,9 @@ export function buildReadiness({
       Array.isArray(deviceCapabilities?.[deviceId]) ? deviceCapabilities[deviceId] : [],
     ),
   );
+  const macCapabilities = connectedDevices
+    .map((deviceId) => deviceCapabilities?.[deviceId])
+    .filter((capabilities) => Array.isArray(capabilities) && capabilities.includes('mac.control'));
 
   const checks = {
     openai: providerMap.openai === true,
@@ -27,7 +30,13 @@ export function buildReadiness({
     codeApi: Boolean(codeApiConfigured),
     costDashboard: Boolean(costDashboardConfigured),
     delegation: Boolean(delegationEnabled),
-    macDevice: connectedDevices.length > 0,
+    macDevice: macCapabilities.length > 0,
+    macBrowserDirect: macCapabilities.some((capabilities) =>
+      capabilities.includes('browser.direct_tabs'),
+    ),
+    macBrowserExtension: macCapabilities.some((capabilities) =>
+      capabilities.includes('browser.page_extension'),
+    ),
     browserDirect: capabilitySet.has('browser.direct_tabs'),
     browserExtension: capabilitySet.has('browser.page_extension'),
     pairing: Boolean(pairingConfigured) || connectedDevices.length > 0,
