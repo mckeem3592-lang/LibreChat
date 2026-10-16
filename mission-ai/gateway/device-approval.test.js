@@ -32,4 +32,8 @@ test('local document reads stay available and all other actions require approval
     (await decide({ toolName: 'read_document_mcp_mission-ai-local-documents-extra' })).decision,
     'ask',
   );
+  assert.equal(
+    (await decide({ toolName: 'create_spreadsheet_mcp_mission-ai-spreadsheet-creator' })).decision,
+    'ask',
+  );
 });

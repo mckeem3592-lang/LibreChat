@@ -16,6 +16,9 @@ export default function githubEditorApproval() {
           .some((tool) => name === `${tool}_mcp_mission-ai-local-documents`)) {
       return { decision: 'ask', reason: 'Review the Mission AI local documents action.' };
     }
+    if (name === 'create_spreadsheet_mcp_mission-ai-spreadsheet-creator') {
+      return { decision: 'ask', reason: 'Review the new workbook and private publish action.' };
+    }
     return {};
   };
 }

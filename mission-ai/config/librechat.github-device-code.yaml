@@ -244,7 +244,7 @@ modelSpecs:
   list:
     - name: 'mission-ai-project-manager'
       label: 'Mission AI Project Manager — Claude Sonnet 5.5 (Paid)'
-      mcpServers: [github-code-editor, mission-ai-device, mission-ai-local-documents]
+      mcpServers: [github-code-editor, mission-ai-device, mission-ai-local-documents, mission-ai-spreadsheet-creator]
       preset:
         endpoint: 'MissionAIClaudeCached'
         model: 'claude-sonnet-5-5'
@@ -324,7 +324,7 @@ modelSpecs:
 
     - name: 'mission-ai-gpt-luna'
       label: 'Mission AI — GPT-6 Luna (Paid — Manual)'
-      mcpServers: [mission-ai-device, mission-ai-local-documents]
+      mcpServers: [mission-ai-device, mission-ai-local-documents, mission-ai-spreadsheet-creator]
       preset:
         endpoint: 'MissionAIOpenAI'
         model: 'gpt-6-luna'
@@ -343,7 +343,7 @@ modelSpecs:
 
     - name: 'mission-ai-gpt-4o'
       label: 'Mission AI — GPT-4o (Paid — Manual)'
-      mcpServers: [mission-ai-device, mission-ai-local-documents]
+      mcpServers: [mission-ai-device, mission-ai-local-documents, mission-ai-spreadsheet-creator]
       preset:
         endpoint: 'MissionAIOpenAI'
         model: 'gpt-4o'
@@ -362,7 +362,7 @@ modelSpecs:
 
     - name: 'mission-ai-gpt-sol'
       label: 'Mission AI — GPT-6 Sol (Paid — Manual)'
-      mcpServers: [mission-ai-device, mission-ai-local-documents]
+      mcpServers: [mission-ai-device, mission-ai-local-documents, mission-ai-spreadsheet-creator]
       preset:
         endpoint: 'MissionAIOpenAI'
         model: 'gpt-6-sol'
@@ -381,7 +381,7 @@ modelSpecs:
 
     - name: 'mission-ai-gpt-astra'
       label: 'Mission AI — GPT-6 Astra (Paid — Manual)'
-      mcpServers: [mission-ai-device, mission-ai-local-documents]
+      mcpServers: [mission-ai-device, mission-ai-local-documents, mission-ai-spreadsheet-creator]
       preset:
         endpoint: 'MissionAIOpenAI'
         model: 'gpt-6-astra'
@@ -400,7 +400,7 @@ modelSpecs:
 
     - name: 'mission-ai-claude-haiku'
       label: 'Mission AI — Claude Haiku 4.5 (Paid — Manual)'
-      mcpServers: [mission-ai-device, mission-ai-local-documents]
+      mcpServers: [mission-ai-device, mission-ai-local-documents, mission-ai-spreadsheet-creator]
       preset:
         endpoint: 'MissionAIClaude'
         model: 'claude-haiku-4-5'
@@ -419,7 +419,7 @@ modelSpecs:
 
     - name: 'mission-ai-claude-sonnet'
       label: 'Mission AI — Claude Sonnet 5.5 (Paid — Manual)'
-      mcpServers: [mission-ai-device, mission-ai-local-documents]
+      mcpServers: [mission-ai-device, mission-ai-local-documents, mission-ai-spreadsheet-creator]
       preset:
         endpoint: 'MissionAIClaudeCached'
         model: 'claude-sonnet-5-5'
@@ -440,7 +440,7 @@ modelSpecs:
 
     - name: 'mission-ai-claude-opus'
       label: 'Mission AI — Claude Opus 5.5 (Paid — Manual)'
-      mcpServers: [mission-ai-device, mission-ai-local-documents]
+      mcpServers: [mission-ai-device, mission-ai-local-documents, mission-ai-spreadsheet-creator]
       preset:
         endpoint: 'MissionAIClaude'
         model: 'claude-opus-5-5'
@@ -477,6 +477,20 @@ mcpServers:
       Authorization: 'Bearer ${MISSION_AI_DEVICE_MCP_TOKEN}'
     timeout: 120000
     chatMenu: false
+  mission-ai-spreadsheet-creator:
+    title: Mission AI Spreadsheet Creator
+    type: stdio
+    command: node
+    args: ['mission-ai/spreadsheet-creator/bridge.mjs']
+    env:
+      MISSION_AI_SPREADSHEET_USER_ID: '{{LIBRECHAT_USER_ID}}'
+      LOCAL_MCP_TOKEN: '${LOCAL_MCP_TOKEN}'
+      PORT: '${PORT}'
+    chatMenu: false
+    timeout: 120000
+    initTimeout: 30000
+    stderr: ignore
+
   github-code-editor:
     title: Mission Program Hub GitHub Editor
     type: stdio

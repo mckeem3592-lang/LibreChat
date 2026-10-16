@@ -129,6 +129,8 @@ const DEVICE_MCP = GITHUB_EDITOR && RUNTIME_ENV.MISSION_AI_DEVICE_MCP_ENABLED ==
 const DEVICE_CODE = DEVICE_MCP && RUNTIME_ENV.MISSION_AI_DEVICE_CODE_ENABLED === 'true';
 const DEVICE_SERVER = 'mission-ai-device';
 const DOCUMENT_SERVER = 'mission-ai-local-documents';
+const SPREADSHEET_SERVER = 'mission-ai-spreadsheet-creator';
+const DEVICE_SERVER_SET = [DEVICE_SERVER, DOCUMENT_SERVER, ...(DEVICE_CODE ? [SPREADSHEET_SERVER] : [])];
 const DEVICE_SPECS = new Set([
   'mission-ai-gpt-luna', 'mission-ai-gpt-4o', 'mission-ai-gpt-sol',
   'mission-ai-gpt-astra', 'mission-ai-claude-haiku',
@@ -710,7 +712,7 @@ function chatBody(value: unknown): ObjectValue {
       if (value == null) continue;
       if (key === 'mcp') {
         if (approved.name === 'mission-ai-project-manager') {
-          sameStrings(value, [GITHUB_SERVER, ...(DEVICE_MCP ? [DEVICE_SERVER, DOCUMENT_SERVER] : [])]);
+          sameStrings(value, [GITHUB_SERVER, ...(DEVICE_MCP ? DEVICE_SERVER_SET : [])]);
         } else if (GITHUB_EDITOR && (approved.spec.endpoint === CLAUDE_ENDPOINT ||
             approved.name === 'mission-ai-claude-sonnet' ||
             DEVICE_MCP && DEVICE_SPECS.has(approved.name))) {
@@ -719,7 +721,7 @@ function chatBody(value: unknown): ObjectValue {
           const allowed = [
             ...(approved.spec.endpoint === CLAUDE_ENDPOINT ||
               approved.name === 'mission-ai-claude-sonnet' ? [GITHUB_SERVER] : []),
-            ...(DEVICE_MCP ? [DEVICE_SERVER, DOCUMENT_SERVER] : []),
+            ...(DEVICE_MCP ? DEVICE_SERVER_SET : []),
           ];
           if (!Array.isArray(value) || value.length > allowed.length ||
               new Set(value).size !== value.length ||
@@ -1029,10 +1031,13 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
            (DEVICE_MCP && ['/api/mcp/servers/mission-ai-device',
              '/api/mcp/connection/status/mission-ai-device',
              '/api/mcp/servers/mission-ai-local-documents',
-             '/api/mcp/connection/status/mission-ai-local-documents'].includes(path)))) return next();
+             '/api/mcp/connection/status/mission-ai-local-documents',
+             ...(DEVICE_CODE ? ['/api/mcp/servers/mission-ai-spreadsheet-creator',
+               '/api/mcp/connection/status/mission-ai-spreadsheet-creator'] : [])].includes(path)))) return next();
 
       if (DEVICE_MCP && method === 'POST' && query === '' &&
-          path === '/api/mcp/mission-ai-local-documents/reinitialize') {
+          (path === '/api/mcp/mission-ai-local-documents/reinitialize' ||
+           DEVICE_CODE && path === '/api/mcp/mission-ai-spreadsheet-creator/reinitialize')) {
         if (req.body != null) keys(object(req.body), new Set());
         return next();
       }
@@ -1354,9 +1359,9 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
     if (spec.webSearch != null) throw new Error();
 
     if (name === 'mission-ai-project-manager') {
-      sameStrings(spec.mcpServers, [GITHUB_SERVER, ...(DEVICE_MCP ? [DEVICE_SERVER, DOCUMENT_SERVER] : [])]);
+      sameStrings(spec.mcpServers, [GITHUB_SERVER, ...(DEVICE_MCP ? DEVICE_SERVER_SET : [])]);
     } else if (DEVICE_MCP && DEVICE_SPECS.has(name)) {
-      sameStrings(spec.mcpServers, [DEVICE_SERVER, DOCUMENT_SERVER]);
+      sameStrings(spec.mcpServers, DEVICE_SERVER_SET);
     } else if (spec.mcpServers != null) throw new Error();
 
     if (approved.default) {
@@ -1463,8 +1468,8 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
   if (GITHUB_EDITOR) {
     for (const value of [config.mcpConfig, raw.mcpServers]) {
       const servers = object(value);
-      keys(servers, new Set([GITHUB_SERVER, ...(DEVICE_MCP ? [DEVICE_SERVER, DOCUMENT_SERVER] : [])]));
-      if (Object.keys(servers).length !== (DEVICE_MCP ? 3 : 1)) throw new Error();
+      keys(servers, new Set([GITHUB_SERVER, ...(DEVICE_MCP ? DEVICE_SERVER_SET : [])]));
+      if (Object.keys(servers).length !== 1 + (DEVICE_MCP ? DEVICE_SERVER_SET.length : 0)) throw new Error();
       const server = object(servers[GITHUB_SERVER]);
       keys(server, new Set(['title', 'type', 'command', 'args', 'env',
         'chatMenu', 'timeout', 'initTimeout', 'stderr']));
@@ -1508,6 +1513,22 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
             .includes(documentHeaders.Authorization as string) ||
             documentHeaders['X-LibreChat-User-ID'] !== '{{LIBRECHAT_USER_ID}}' ||
             documentHeaders['ngrok-skip-browser-warning'] !== 'true') throw new Error();
+
+        if (DEVICE_CODE) {
+          const spreadsheet = object(servers[SPREADSHEET_SERVER]);
+          keys(spreadsheet, new Set(['title', 'type', 'command', 'args', 'env',
+            'chatMenu', 'timeout', 'initTimeout', 'stderr']));
+          if (spreadsheet.title !== 'Mission AI Spreadsheet Creator' ||
+              spreadsheet.type !== 'stdio' || spreadsheet.command !== 'node' ||
+              spreadsheet.chatMenu !== false || spreadsheet.timeout !== 120000 ||
+              spreadsheet.initTimeout !== 30000 || spreadsheet.stderr !== 'ignore') throw new Error();
+          sameStrings(spreadsheet.args, ['mission-ai/spreadsheet-creator/bridge.mjs']);
+          const spreadsheetEnv = object(spreadsheet.env);
+          keys(spreadsheetEnv, new Set(['MISSION_AI_SPREADSHEET_USER_ID', 'LOCAL_MCP_TOKEN', 'PORT']));
+          if (spreadsheetEnv.MISSION_AI_SPREADSHEET_USER_ID !== '{{LIBRECHAT_USER_ID}}' ||
+              ![documentsToken, '${LOCAL_MCP_TOKEN}'].includes(spreadsheetEnv.LOCAL_MCP_TOKEN as string) ||
+              ![RUNTIME_ENV.PORT, '${PORT}'].includes(spreadsheetEnv.PORT as string)) throw new Error();
+        }
       }
     }
   } else {
