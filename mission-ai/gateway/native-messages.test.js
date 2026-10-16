@@ -239,20 +239,68 @@ test('malformed tool output retains known billing and ambiguous usage retains th
     assert(settled.actualUsd > 0);
   }
 });
-test('buffered Messages SSE reconstructs signature and tool arguments only after settlement', async () => {
-  const f = await fixture(); let output = '';
+test('Messages SSE forwards incremental signed blocks and settles before the terminal event', async () => {
+  const event = (type, fields) => `event: ${type}\ndata: ${JSON.stringify({ type, ...fields })}\n\n`;
+  const frames = [
+    event('message_start', { message: { type: 'message', id: 'msg_fixture', role: 'assistant', model,
+      content: [], stop_reason: null, usage: { input_tokens: 20, output_tokens: 1, service_tier: 'standard' } } }),
+    event('content_block_start', { index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } }),
+    event('content_block_delta', { index: 0, delta: { type: 'signature_delta', signature: 'synthetic-signed-block' } }),
+    event('content_block_stop', { index: 0 }),
+    event('content_block_start', { index: 1, content_block: { type: 'tool_use', id: 'toolu_fixture', name: tool.name, input: {} } }),
+    event('content_block_delta', { index: 1, delta: { type: 'input_json_delta', partial_json: '{}' } }),
+    event('content_block_stop', { index: 1 }),
+    event('message_delta', { delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: 10 } }),
+    event('message_stop', {}),
+  ];
+  const f = await fixture(answer(), { fetchImpl: async (_url, init) => {
+    f.events.push({ type: 'fetch', init });
+    return { status: 200, body: new ReadableStream({ start(controller) {
+      for (const frame of frames) controller.enqueue(new TextEncoder().encode(frame));
+      controller.close();
+    } }) };
+  } });
+  let output = '';
   const http = createAnthropicHttp({ enabled: () => true, token: 'x'.repeat(32), safeEqual: (a, b) => a === b, bridge: f.bridge });
   const res = { setHeader() {}, write(value) {
-    assert.equal(f.events[f.events.length - 1].type, 'settle'); output += value;
+    const text = new TextDecoder().decode(value);
+    if (text.includes('event: message_stop')) assert.equal(f.events.at(-1).type, 'settle');
+    else assert.equal(f.events.some((entry) => entry?.type === 'settle'), false);
+    output += text;
+    return true;
   }, end() {}, status() { return this; }, json() { assert.fail('SSE expected'); } };
   await http.complete({ body: request({ stream: true }), get() { return undefined; } }, res);
-  const frames = output.trim().split('\n\n').map((value) => JSON.parse(value.split('\ndata: ')[1]));
-  assert.equal(frames[0].type, 'message_start');
-  assert.equal(frames.find((frame) => frame.delta?.type === 'signature_delta').delta.signature, 'synthetic-signed-block');
-  assert.deepEqual(JSON.parse(frames.find((frame) => frame.delta?.type === 'input_json_delta').delta.partial_json), {});
-  assert.equal(frames[frames.length - 2].delta.stop_reason, 'tool_use');
-  assert.equal(frames[frames.length - 2].usage.output_tokens, 10);
-  assert.equal(frames[frames.length - 1].type, 'message_stop');
+  const parsed = output.trim().split('\n\n').map((value) => JSON.parse(value.split('\ndata: ')[1]));
+  assert.equal(parsed[0].type, 'message_start');
+  assert.equal(parsed.find((frame) => frame.delta?.type === 'signature_delta').delta.signature, 'synthetic-signed-block');
+  assert.deepEqual(JSON.parse(parsed.find((frame) => frame.delta?.type === 'input_json_delta').delta.partial_json), {});
+  assert.equal(parsed[parsed.length - 2].delta.stop_reason, 'tool_use');
+  assert.equal(parsed[parsed.length - 2].usage.output_tokens, 10);
+  assert.equal(parsed[parsed.length - 1].type, 'message_stop');
+  assert.equal(JSON.parse(f.events.find((entry) => entry?.type === 'fetch').init.body).stream, true);
+});
+test('stream cancellation aborts upstream and conservatively settles recorded partial usage', async () => {
+  const controller = new AbortController();
+  const frame = (type, fields) => new TextEncoder().encode(
+    `event: ${type}\ndata: ${JSON.stringify({ type, ...fields })}\n\n`);
+  const f = await fixture(answer(), { fetchImpl: async (_url, init) => {
+    f.events.push({ type: 'fetch', init });
+    return { status: 200, body: new ReadableStream({ start(stream) {
+      stream.enqueue(frame('message_start', { message: { model, usage: {
+        input_tokens: 20, output_tokens: 1, service_tier: 'standard' } } }));
+      stream.enqueue(frame('message_delta', { delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 4 } }));
+    } }) };
+  } });
+  await assert.rejects(f.bridge.handle(request({ stream: true }), {
+    signal: controller.signal,
+    stream: { write: async () => { controller.abort(); } },
+  }), { code: 'native_client_cancelled' });
+  assert.equal(f.events.find((entry) => entry?.type === 'fetch').init.signal.aborted, true);
+  const settlement = f.events.find((entry) => entry?.type === 'settle').input;
+  assert.equal(settlement.usage.estimated, true);
+  assert.equal(settlement.usage.lastKnownInputTokens, 20);
+  assert.equal(settlement.usage.lastKnownOutputTokens, 1);
+  assert(settlement.actualUsd > 0);
 });
 test('native token, disabled gate and query checks deny without calling a provider', () => {
   let called = 0;

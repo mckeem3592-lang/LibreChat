@@ -3,15 +3,17 @@ import { NativeBridgeError } from './native.js';
 type Json = Record<string, unknown>;
 interface Request { body?: unknown; query?: Record<string, unknown>; get(name: string): string | undefined }
 interface Response {
-  destroyed?: boolean; writableEnded?: boolean;
-  on?(event: 'close', listener: () => void): unknown;
-  off?(event: 'close', listener: () => void): unknown;
+  destroyed?: boolean; writableEnded?: boolean; headersSent?: boolean;
+  on?(event: 'close' | 'drain', listener: () => void): unknown;
+  off?(event: 'close' | 'drain', listener: () => void): unknown;
+  once?(event: 'close' | 'drain', listener: () => void): unknown;
   status(code: number): Response; json(body: unknown): unknown;
-  setHeader(name: string, value: string): unknown; write(data: string): unknown; end(): unknown;
+  setHeader(name: string, value: string): unknown; write(data: string | Uint8Array): unknown; end(): unknown;
 }
 interface Dependencies {
   enabled: () => boolean; token: string; safeEqual: (left: string, right: string) => boolean;
-  bridge: { handle(body: unknown, context?: { projectId?: unknown; signal?: AbortSignal }): Promise<Json> };
+  bridge: { handle(body: unknown, context?: { projectId?: unknown; signal?: AbortSignal;
+    stream?: { write(chunk: Uint8Array): Promise<void> } }): Promise<Json> };
 }
 function error(res: Response, status: number, code: string, providerHttpStatus?: number,
   providerErrorCategory?: string, providerRequestId?: string): unknown {
@@ -21,7 +23,6 @@ function error(res: Response, status: number, code: string, providerHttpStatus?:
     ...(providerRequestId !== undefined ? { provider_request_id: providerRequestId } : {}) } });
 }
 
-/** Buffered native SSE preserves signed blocks. Nothing is delivered before durable settlement. */
 export function createAnthropicHttp(deps: Dependencies): {
   authorize(req: Request, res: Response, next: () => void): unknown;
   complete(req: Request, res: Response): Promise<unknown>;
@@ -37,6 +38,8 @@ export function createAnthropicHttp(deps: Dependencies): {
     },
     async complete(req, res) {
       const controller = new AbortController();
+      const streaming = (req.body as Json | undefined)?.stream === true;
+      let started = false;
       const onClose = (): void => {
         if (!res.writableEnded) controller.abort();
       };
@@ -46,8 +49,30 @@ export function createAnthropicHttp(deps: Dependencies): {
         const message = await deps.bridge.handle(req.body, {
           projectId: req.get('x-mission-ai-project') ?? undefined,
           signal: controller.signal,
+          ...(streaming ? { stream: { write: async (chunk: Uint8Array): Promise<void> => {
+            if (controller.signal.aborted || res.destroyed || res.writableEnded) {
+              throw new NativeBridgeError('native_client_cancelled', 499);
+            }
+            if (!started) {
+              res.setHeader('Content-Type', 'text/event-stream');
+              res.setHeader('Cache-Control', 'no-cache, no-transform');
+              res.setHeader('X-Accel-Buffering', 'no');
+              started = true;
+            }
+            if (res.write(chunk) === false) {
+              await new Promise<void>((resolve, reject) => {
+                const drain = (): void => { cleanup(); resolve(); };
+                const close = (): void => { cleanup(); reject(new NativeBridgeError('native_client_cancelled', 499)); };
+                const cleanup = (): void => { res.off?.('drain', drain); res.off?.('close', close); };
+                res.once?.('drain', drain);
+                res.once?.('close', close);
+                if (controller.signal.aborted || res.destroyed) close();
+              });
+            }
+          } } } : {}),
         });
         if (res.destroyed || res.writableEnded) return;
+        if (streaming && message.streamed === true) return res.end();
         if ((req.body as Json).stream !== true) return res.json(message);
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -81,6 +106,11 @@ export function createAnthropicHttp(deps: Dependencies): {
         return res.end();
       } catch (cause) {
         if (res.destroyed || res.writableEnded) return;
+        if (started || res.headersSent) {
+          const code = cause instanceof NativeBridgeError ? cause.code : 'native_accounting_unready';
+          res.write(`event: error\ndata: ${JSON.stringify({ type: 'error', error: { type: 'mission_budget_error', message: code } })}\n\n`);
+          return res.end();
+        }
         return cause instanceof NativeBridgeError ? error(res, cause.status, cause.code, cause.providerHttpStatus,
           cause.providerErrorCategory, cause.providerRequestId)
           : error(res, 503, 'native_accounting_unready');
