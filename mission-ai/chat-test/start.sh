@@ -298,6 +298,10 @@ if [[ ${MISSION_AI_BOOTSTRAP_OWNER-false} == true ]]; then
   node mission-ai/chat-test/bootstrap.cjs
 fi
 
+if [[ ${MISSION_AI_MANAGED_SCHEDULES-false} == true ]]; then
+  node mission-ai/chat-test/bootstrap-schedule-agent.cjs
+fi
+
 export MISSION_AI_CONTROL_OWNER_EMAIL="${MISSION_AI_CONTROL_OWNER_EMAIL:-${MISSION_AI_OWNER_EMAIL-}}"
 unset MISSION_AI_BOOTSTRAP_OWNER MISSION_AI_OWNER_EMAIL MISSION_AI_OWNER_PASSWORD
 
