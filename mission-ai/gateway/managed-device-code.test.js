@@ -125,3 +125,30 @@ test('a paused coding action resumes only with the same attached workspace', () 
   unknownMcp.body.ephemeralAgent.mcp = ['unreviewed-server'];
   assert.equal(run(admission, unknownMcp).status, 403);
 });
+
+test('server-restored coding context admits the display and scope fields captured at pause', () => {
+  const admission = createManagedToolAdmission(options);
+  const guard = createManagedToolConfigGuard(options);
+  const resume = request({ originalUrl: '/api/agents/chat/resume', body: {
+    conversationId: 'conversation-1', actionId: 'action-1', generationCreatedAt: 1,
+    endpoint: 'MissionAIClaudeCached', endpointType: 'custom',
+    model: 'claude-sonnet-5-5', spec: 'mission-ai-claude-sonnet',
+    ephemeralAgent: { mcp: ['mission-ai-device'], execute_code: true },
+    codeWorkspaces: [{ environmentId: 'attached-workers', workspaceId: 'primary' }],
+    codeEnvironmentMode: 'attached', codeApprovalMode: 'ask',
+    decisions: [{ tool_call_id: 'tool-1', decision: 'approve', scope: 'once' }],
+  } });
+  assert.equal(run(admission, resume).next, 1);
+  // restoreResumeContext replays these fields from the paused job before the
+  // second config guard; the client is not allowed to inject them at admission.
+  const restored = { ...resume, body: { ...resume.body,
+    modelLabel: 'Mission AI — Claude Sonnet 5.5',
+    chatProjectId: '507f1f77bcf86cd799439011',
+    timezone: 'America/Denver', manualSkills: [], addedConvo: null,
+  } };
+  assert.equal(run(guard, restored).next, 1);
+  const injected = { ...resume, body: { ...restored.body } };
+  assert.equal(run(admission, injected).status, 403);
+  const skills = { ...restored, body: { ...restored.body, manualSkills: ['unreviewed'] } };
+  assert.equal(run(guard, skills).status, 403);
+});
