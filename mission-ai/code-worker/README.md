@@ -21,6 +21,13 @@ LibreChat's official outbound `@librechat/code` bridge.
 - Daemon file writes, commands and programmatic execution fail closed. Static
   reads remain available. Named environment scripts and implicit worktree
   provisioning are refused because their resolved changes cannot be previewed.
+- `interactive-macos.py` can temporarily replace the read-only launchd process
+  with the same paired worker in a detached local terminal. It prints the exact
+  pending action and a SHA-256 digest; `approve DIGEST` sends one literal `y`
+  only while that same local prompt is fresh. An expired or already answered
+  prompt cannot be replayed. The private preview log is stored with mode 0600.
+  A small launchd watchdog restores the ordinary worker if the detached
+  terminal ends unexpectedly.
 
 ## Install flow
 
@@ -42,6 +49,25 @@ one-time pairing code through the owner-approved pairing flow, then rerun the
 installer with `MISSION_AI_CODE_REFRESH_IDENTITY=true`. The installer pairs to
 a private replacement file and replaces the old identity only after pairing
 succeeds. It clears the temporary Keychain pairing code after use.
+
+## Exact-action local approval handoff
+
+The installed helper lives at `~/.local/share/mission-ai/code-worker/interactive-macos.py`.
+Run `python3 .../interactive-macos.py start` to start the paired worker in a
+detached local terminal and pause its normal launchd service. When LibreChat
+shows a pending write or command, approve that specific card, then run
+`python3 .../interactive-macos.py review` locally. Check its full JSON preview
+against the intended action and pass the printed digest to
+`python3 .../interactive-macos.py approve DIGEST` within 15 seconds. The worker
+still enforces its own 20-second limit. Run `python3 .../interactive-macos.py
+stop` to restore the ordinary read-only launchd service. The helper does not
+create a remote approval endpoint or accept approval through tool arguments.
+
+If the detached session ends unexpectedly, the watchdog restores launchd on
+its next 30-second check after a five-second startup grace. `stop` restores it
+immediately. No write or command can
+execute through the headless worker without an interactive local approval.
+Only one approval prompt can be active at a time.
 
 Additional project repositories can be registered later as explicit, non-overlapping
 workspace roots. Do not register `~`, SSH/config directories, browser profiles, or
