@@ -13,6 +13,7 @@ export interface ManagedChatRequest {
   method?: string;
   originalUrl?: string;
   url?: string;
+  headers?: Record<string, string | string[] | undefined>;
   body?: unknown;
   config?: unknown;
   user?: { email?: string };

@@ -28,6 +28,8 @@ const {
   performStartupChecks,
   handleJsonParseError,
   createManagedToolAdmission,
+  isAgentTriggerRequest,
+  readScheduleFireContext,
   GenerationJobManager,
   QUERY_DEVTOOLS_HEADER,
   createStreamServices,
@@ -337,7 +339,11 @@ const startServer = async () => {
   app.use(express.urlencoded({ extended: true, limit: '3mb' }));
   app.use(handleJsonParseError);
   app.use(createManagedToolAdmission({ enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
-    toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true' }));
+    toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+    schedulesEnabled: process.env.MISSION_AI_MANAGED_SCHEDULES === 'true',
+    scheduleAgentId: process.env.MISSION_AI_SCHEDULE_AGENT_ID,
+    verifySignedScheduleTrigger: (req) => isAgentTriggerRequest(req) &&
+      readScheduleFireContext({ _isAgentTrigger: true, body: req.body }) != null }));
 
   /**
    * Express 5 Compatibility: Make req.query writable for mongoSanitize

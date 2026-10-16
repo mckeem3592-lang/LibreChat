@@ -4,11 +4,14 @@ import {
 } from './managedChat.js';
 
 import { admitManagedData } from './managedData.js';
+import { isManagedScheduleRoute, isManagedScheduleTrigger } from './managedSchedule.js';
 
 type Json = Record<string, unknown>;
 interface Request extends ManagedChatRequest { user?: { email?: string; id?: string } }
 export interface ManagedToolOptions extends ManagedChatOptions {
   toolsEnabled?: boolean; ownerEmail?: string; toolToken?: string;
+  schedulesEnabled?: boolean; scheduleAgentId?: string;
+  verifySignedScheduleTrigger?: (req: ManagedChatRequest) => boolean;
 }
 type Middleware = (req: Request, res: ManagedChatResponse, next: () => unknown) => unknown;
 const WORKSPACE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -276,6 +279,10 @@ export function createManagedToolAdmission(options: ManagedToolOptions): Middlew
   if (!options.toolsEnabled) return legacy;
   return (req, res, next) => {
     const path = req.originalUrl ?? req.url ?? '';
+    if (options.schedulesEnabled && options.scheduleAgentId &&
+        (isManagedScheduleRoute(req, options.scheduleAgentId) ||
+          isManagedScheduleTrigger(req, options.scheduleAgentId,
+            options.verifySignedScheduleTrigger))) return next();
     try { if (admitManagedData(req.method, path, req.body)) return next(); } catch { return reject(res); }
     if (req.method === 'GET' && (MCP_READS.has(path) || path === '/api/code-environments' ||
         path === '/api/code-environments/attached-workers/status')) return next();
