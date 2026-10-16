@@ -1,5 +1,5 @@
 # Mission AI multimodel configuration with owner-only attached Mac coding.
-# This profile is opt-in and leaves the working device profile unchanged.
+# This is the deployed Mission AI chat profile.
 # Gemini is the only default/free route.
 # OpenAI and Anthropic models are manual-selection paid routes through the guarded gateway.
 version: 1.3.17
@@ -69,9 +69,13 @@ speech:
     # Browser speech synthesis uses local voices; no external TTS provider is configured.
     textToSpeech: true
 
+fileStrategies:
+  # Keep images on the existing path; persist document uploads in the existing MongoDB.
+  document: mongo_gridfs
+
 fileConfig:
   # Built-in parsers extract PDF, Word, and spreadsheet text without a RAG service.
-  # Uploaded bytes use LibreChat's local strategy on the free Render instance.
+  # Document bytes use the existing MongoDB GridFS connection across Render restarts.
   serverFileSizeLimit: 10
   textFallbackWithoutTools: true
   defaultLLMDeliveryPath:

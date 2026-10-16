@@ -275,6 +275,7 @@ export const allowedAddressesSchema = z.array(allowedAddressEntrySchema).optiona
 /** Storage backend strategies only — use for config fields that set where files are stored. */
 const FILE_STORAGE_BACKENDS = [
   FileSources.local,
+  FileSources.mongo_gridfs,
   FileSources.firebase,
   FileSources.s3,
   FileSources.azure_blob,

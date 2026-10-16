@@ -29,6 +29,12 @@ test('managed document profile prunes old tool results without model summarizati
   assert.match(text, /minPrunableToolChars: 4000/);
 });
 
+test('active coding profile persists document attachments without changing image storage', async () => {
+  const text = await readFile(new URL('../config/librechat.github-device-code-schedules.yaml', import.meta.url), 'utf8');
+  assert.match(text, /fileStrategies:\s*\r?\n(?:.*\r?\n)*?\s+document: mongo_gridfs/);
+  assert.doesNotMatch(text, /\s+image: mongo_gridfs/);
+});
+
 test('approved Claude presets use the native tool-capable Anthropic transport', async () => {
   for (const profile of ['librechat.free-baseline.yaml', 'librechat.github-editor.yaml',
     'librechat.github-device.yaml']) {

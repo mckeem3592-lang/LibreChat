@@ -10,6 +10,7 @@ export * from './editedDocuments';
 export * from './encode';
 export * from './filter';
 export * from './mime';
+export * from './mongoGridFS';
 export * from './mistral/crud';
 export * from './ocr';
 export * from './parse';
