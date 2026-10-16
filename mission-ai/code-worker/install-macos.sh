@@ -73,7 +73,12 @@ node "$APPROVAL_PATCH" "$RELEASE_DIR" runtime
 
 ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
 
-if [[ ! -f "$IDENTITY_FILE" ]]; then
+case "${MISSION_AI_CODE_REFRESH_IDENTITY:-false}" in
+  true|false) ;;
+  *) echo "MISSION_AI_CODE_REFRESH_IDENTITY must be true or false" >&2; exit 1 ;;
+esac
+
+if [[ ! -f "$IDENTITY_FILE" || ${MISSION_AI_CODE_REFRESH_IDENTITY:-false} == true ]]; then
   PAIR_CODE="${MISSION_AI_CODE_PAIRING_CODE:-}"
   if [[ -z "$PAIR_CODE" ]]; then
     PAIR_CODE="$(security find-generic-password -a "$USER" -s "$PAIR_SERVICE" -w 2>/dev/null || true)"
@@ -82,8 +87,20 @@ if [[ ! -f "$IDENTITY_FILE" ]]; then
     read -r -s -p "Mission AI Code pairing code: " PAIR_CODE
     echo
   fi
-  node "$CLI" pair "$CODE_API_URL" "$PAIR_CODE" --worker-id "$WORKER_ID" --identity "$IDENTITY_FILE"
+  if [[ -f "$IDENTITY_FILE" ]]; then
+    # Pair to a private replacement first so a failed or expired code leaves
+    # the existing worker identity intact.
+    REPLACEMENT="$IDENTITY_DIR/.$WORKER_ID.pending-$$.json"
+    [[ ! -e "$REPLACEMENT" ]] || { echo "Pairing replacement path exists" >&2; exit 1; }
+    trap '[[ ! -e "$REPLACEMENT" ]] || rm -- "$REPLACEMENT"' EXIT
+    node "$CLI" pair "$CODE_API_URL" "$PAIR_CODE" --worker-id "$WORKER_ID" --identity "$REPLACEMENT"
+    mv -- "$REPLACEMENT" "$IDENTITY_FILE"
+    trap - EXIT
+  else
+    node "$CLI" pair "$CODE_API_URL" "$PAIR_CODE" --worker-id "$WORKER_ID" --identity "$IDENTITY_FILE"
+  fi
   unset PAIR_CODE
+  security delete-generic-password -a "$USER" -s "$PAIR_SERVICE" >/dev/null 2>&1 || true
 fi
 
 NODE_PATH="$(command -v node)"
@@ -127,7 +144,14 @@ cat > "$PLIST" <<PLIST
 PLIST
 
 launchctl bootout "gui/$(id -u)/com.missionai.code-worker" >/dev/null 2>&1 || true
-launchctl bootstrap "gui/$(id -u)" "$PLIST"
+for attempt in 1 2 3; do
+  if launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null; then break; fi
+  if (( attempt == 3 )); then
+    echo "Mission AI code worker could not be registered with launchd" >&2
+    exit 1
+  fi
+  sleep 1
+done
 launchctl enable "gui/$(id -u)/com.missionai.code-worker"
 launchctl kickstart -k "gui/$(id -u)/com.missionai.code-worker"
 

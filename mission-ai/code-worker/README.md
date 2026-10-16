@@ -31,6 +31,12 @@ LibreChat's official outbound `@librechat/code` bridge.
    Mutations require a user-controlled interactive local terminal. Keep the
    worker disabled until the patched build, pairing and live approval checks pass.
 
+If Code API reports an invalid or expired worker credential, obtain a fresh
+one-time pairing code through the owner-approved pairing flow, then rerun the
+installer with `MISSION_AI_CODE_REFRESH_IDENTITY=true`. The installer pairs to
+a private replacement file and replaces the old identity only after pairing
+succeeds. It clears the temporary Keychain pairing code after use.
+
 Additional project repositories can be registered later as explicit, non-overlapping
 workspace roots. Do not register `~`, SSH/config directories, browser profiles, or
 folders containing unrelated credentials.
