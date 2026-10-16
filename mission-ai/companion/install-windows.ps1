@@ -12,6 +12,11 @@ $extensionDestination = Join-Path $env:LOCALAPPDATA 'MissionAI\ChromeExtension'
 if (-not (Test-Path (Join-Path $extensionSource 'manifest.json'))) { throw 'Chrome extension package is missing.' }
 New-Item -ItemType Directory -Force -Path $destination | Out-Null
 New-Item -ItemType Directory -Force -Path $extensionDestination | Out-Null
+$installedScript = Join-Path $destination 'companion.js'
+$installedNode = Join-Path $destination 'node.exe'
+Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
+  Where-Object { $_.ExecutablePath -eq $installedNode -and $_.CommandLine -like "*$installedScript*" } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -ErrorAction Stop }
 Get-ChildItem -Path $source -File | Where-Object { $_.Extension -in '.js', '.json', '.cs' } |
   ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $destination -Force }
 Copy-Item -LiteralPath (Join-Path $source 'launch-windows.ps1') -Destination $destination -Force
@@ -79,6 +84,7 @@ if ($env:MISSION_AI_CODE_REPO_ROOT) {
   }
   $settings.codeRepository = @{
     root = $selectedRepo
+    jobDirectory = (Join-Path $destination 'repo-check-jobs')
     checks = @{
       'diff-check' = @{ command = 'git'; args = @('diff', '--check') }
       'status' = @{ command = 'git'; args = @('status', '--short') }
@@ -86,6 +92,7 @@ if ($env:MISSION_AI_CODE_REPO_ROOT) {
   }
 } elseif ($previousRepo) {
   $settings.codeRepository = $previousRepo
+  $settings.codeRepository | Add-Member -NotePropertyName jobDirectory -NotePropertyValue (Join-Path $destination 'repo-check-jobs') -Force
 }
 $settingsJson = $settings | ConvertTo-Json -Depth 6
 [System.IO.File]::WriteAllText($settingsPath, $settingsJson)

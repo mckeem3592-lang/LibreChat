@@ -105,3 +105,52 @@ test('a named check continues while the caller is away and exposes its terminal 
     { checkId: 'lint', exitCode: 0, stdout: 'clean', stderr: '' });
   assert.equal(repo.checkStatus({ jobId: started.jobId }).status, 'completed');
 });
+
+test('a detached check result survives a new companion repository instance', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'mission-repo-durable-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await execFileAsync('git', ['init', '-q', root]);
+  const jobDirectory = path.join(root, 'jobs');
+  const config = { root, jobDirectory, checks: {
+    status: { command: 'git', args: ['status', '--short'] },
+  } };
+  const first = createScopedRepo(config);
+  const started = await first.startCheck({ checkId: 'status' });
+  const restarted = createScopedRepo(config);
+  let final;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    final = restarted.checkStatus({ jobId: started.jobId });
+    if (final.status !== 'running') break;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  assert.equal(final.status, 'completed');
+  assert.equal(final.result.exitCode, 0);
+  assert.equal(final.result.checkId, 'status');
+  assert.match(final.result.stdout, /jobs\//);
+});
+
+test('a detached check finishes after its launching companion process exits', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'mission-repo-process-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await execFileAsync('git', ['init', '-q', root]);
+  const config = { root, jobDirectory: path.join(root, 'jobs'), checks: {
+    wait: { command: 'node', args: ['-e', 'setTimeout(() => console.log("finished"), 350)'] },
+  } };
+  const moduleUrl = new URL('./scoped-repo.js', import.meta.url).href;
+  const script = `import { createScopedRepo } from ${JSON.stringify(moduleUrl)};
+    const repo = createScopedRepo(JSON.parse(process.argv[1]));
+    console.log(JSON.stringify(await repo.startCheck({ checkId: 'wait' })));`;
+  const { stdout } = await execFileAsync(process.execPath,
+    ['--input-type=module', '-e', script, JSON.stringify(config)],
+    { env: { ...process.env, PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH}` } });
+  const { jobId } = JSON.parse(stdout.trim());
+  const restarted = createScopedRepo(config);
+  let final;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    final = restarted.checkStatus({ jobId });
+    if (final.status !== 'running') break;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  assert.equal(final.status, 'completed');
+  assert.match(final.result.stdout, /finished/);
+});

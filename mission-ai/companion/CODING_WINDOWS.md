@@ -6,10 +6,10 @@ MCP as `repo_list`, `repo_read`, `repo_write`, `repo_check`,
 required. The bridge is independent of the pinned Code API worker, whose native
 Windows runtime is unsupported. It does not provide a shell, code sandbox,
 automatic test selection, or a persistent agent job. A named check started in
-the background keeps running across a gateway disconnect while the companion
-process stays alive. Its result is held in companion memory for up to one hour
-or 20 jobs; a companion restart loses that job. It does not continue model
-reasoning.
+the background runs in a detached local worker and continues across a gateway
+disconnect or companion restart. Its bounded result is stored under the current
+user's Mission AI bridge directory for one hour. It does not continue model
+reasoning or start arbitrary commands.
 
 Set `MISSION_AI_CODE_REPO_ROOT` to the absolute checkout path when running
 `install-windows.ps1`. The installer records the path in the local per-user
