@@ -3,6 +3,7 @@ import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import { auditEvent } from './audit-log.js';
 import { requireBrowserTabIdentity } from './browser-tab-identity.js';
+import { requireBrowserTypeRetention } from './browser-type-integrity.js';
 
 function textResult(value) {
   return {
@@ -369,7 +370,7 @@ export function createMissionMcpNodeHandler({
     registerTool(
       'browser_type',
       {
-        description: 'Type into an indexed text field in the tab bound to a fresh browser_get_state snapshot, including a background tab. Password fields are denied locally.',
+        description: 'Type into an indexed visible, noncredential text field in the tab bound to a fresh browser_get_state snapshot. The result confirms DOM retention only, not a website save; if the extension reports browser_text_unverified_after_action, inspect the page before retrying.',
         inputSchema: z.object({
           deviceId: z.string().optional(),
           snapshotId: z.string().min(1),
@@ -381,12 +382,12 @@ export function createMissionMcpNodeHandler({
       async ({ deviceId, snapshotId, elementKey, index, text }) => {
         try {
           return textResult(
-            await invoke(defaultDeviceId(deviceId), 'browser.type', {
+            requireBrowserTypeRetention(await invoke(defaultDeviceId(deviceId), 'browser.type', {
               snapshotId,
               elementKey,
               index,
               text,
-            }),
+            }), text.length),
           );
         } catch (error) {
           return errorResult(error);
