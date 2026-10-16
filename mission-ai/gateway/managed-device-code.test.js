@@ -31,7 +31,7 @@ function request(overrides = {}) {
     body: { endpoint: 'MissionAIClaudeCached', endpointType: 'custom',
       model: 'claude-sonnet-5-5', spec: 'mission-ai-claude-sonnet',
       text: 'List files in the approved workspace.', promptCache: true, promptCacheTtl: '5m',
-      ephemeralAgent: { mcp: ['mission-ai-device', 'mission-ai-local-documents'], execute_code: true },
+      ephemeralAgent: { mcp: ['mission-ai-device', 'mission-ai-local-documents', 'mission-ai-spreadsheet-creator'], execute_code: true },
       codeWorkspaces: [{ environmentId: 'attached-workers', workspaceId: 'primary' }],
       codeEnvironmentMode: 'attached', codeApprovalMode: 'ask' }, ...overrides };
 }
@@ -70,6 +70,8 @@ test('device coding rejects configuration changes to workspace, approval, and co
     req => { req.config.endpoints.agents.statefulCodeSessions.environments[0].baseURL = 'https://other.invalid/v1'; },
     req => { req.config.endpoints.agents.toolApproval.ask = []; },
     req => { req.config.interfaceConfig.runCode = false; },
+    req => { req.config.mcpConfig['mission-ai-spreadsheet-creator'].env.MISSION_AI_SPREADSHEET_USER_ID = 'fixed-user'; },
+    req => { req.config.mcpConfig['mission-ai-spreadsheet-creator'].args = ['unreviewed.mjs']; },
   ]) {
     const req = request(); change(req);
     assert.equal(run(guard, req).status, 503);
@@ -102,7 +104,7 @@ test('a paused coding action resumes only with the same attached workspace', () 
     conversationId: 'conversation-1', actionId: 'action-1', generationCreatedAt: 1,
     endpoint: 'MissionAIClaudeCached', endpointType: 'custom',
     model: 'claude-sonnet-5-5', spec: 'mission-ai-claude-sonnet',
-    ephemeralAgent: { mcp: ['mission-ai-device', 'mission-ai-local-documents'], execute_code: true },
+    ephemeralAgent: { mcp: ['mission-ai-device', 'mission-ai-local-documents', 'mission-ai-spreadsheet-creator'], execute_code: true },
     codeWorkspaces: [{ environmentId: 'attached-workers', workspaceId: 'primary' }],
     codeEnvironmentMode: 'attached', codeApprovalMode: 'ask',
     decisions: [{ tool_call_id: 'tool-1', decision: 'approve', scope: 'once' }],

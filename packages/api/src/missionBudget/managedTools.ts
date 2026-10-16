@@ -96,13 +96,15 @@ function githubResumeEnvelope(input: unknown, restored = false): Json {
       'artifacts', 'skills', 'ask_user_question', 'run_in_background', 'describe_intent']);
     if (device) {
       const selected = agent.mcp ?? [];
-      const allowed = ['mission-ai-device', 'mission-ai-local-documents'];
+      const allowed = ['mission-ai-device', 'mission-ai-local-documents',
+        ...(GITHUB_DEVICE_CODE ? ['mission-ai-spreadsheet-creator'] : [])];
       if (!Array.isArray(selected) || selected.length > allowed.length ||
           new Set(selected).size !== selected.length ||
           selected.some((name) => !allowed.includes(name))) throw new Error();
     } else {
       same(agent.mcp, projectDevice
-        ? ['github-code-editor', 'mission-ai-device', 'mission-ai-local-documents']
+        ? ['github-code-editor', 'mission-ai-device', 'mission-ai-local-documents',
+          ...(GITHUB_DEVICE_CODE ? ['mission-ai-spreadsheet-creator'] : [])]
         : ['github-code-editor']);
     }
     for (const key of ['memory', 'web_search', 'file_search', 'skills',
