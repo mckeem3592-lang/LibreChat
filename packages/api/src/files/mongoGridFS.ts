@@ -16,6 +16,23 @@ type Bucket = {
   delete: (id: string) => Promise<void>;
 };
 
+type UploadInput = {
+  filePath: string;
+  fileName: string;
+  fileId: string;
+  userId: string;
+  tenantId?: string;
+  maxBytes: number;
+};
+
+type StoredUpload = { id: string; filepath: string; bytes: number };
+
+type MongoGridFSStore = {
+  upload: (input: UploadInput) => Promise<StoredUpload>;
+  download: (reference: string) => Readable;
+  delete: (reference: string) => Promise<void>;
+};
+
 function parseId(reference: string): string {
   if (typeof reference !== 'string' || !reference.startsWith(PREFIX)) {
     throw new Error('Invalid document storage reference');
@@ -26,16 +43,9 @@ function parseId(reference: string): string {
 }
 
 /** File bytes live in the existing MongoDB connection, across web service restarts. */
-export function createMongoGridFSStore(getBucket: () => Bucket) {
+export function createMongoGridFSStore(getBucket: () => Bucket): MongoGridFSStore {
   return {
-    async upload(input: {
-      filePath: string;
-      fileName: string;
-      fileId: string;
-      userId: string;
-      tenantId?: string;
-      maxBytes: number;
-    }) {
+    async upload(input: UploadInput): Promise<StoredUpload> {
       if (
         !FILE_ID.test(input.fileId) ||
         !input.userId ||
@@ -54,10 +64,10 @@ export function createMongoGridFSStore(getBucket: () => Bucket) {
       await pipeline(createReadStream(input.filePath), upload);
       return { id: input.fileId, filepath: `${PREFIX}${input.fileId}`, bytes: info.size };
     },
-    download(reference: string) {
+    download(reference: string): Readable {
       return getBucket().openDownloadStream(parseId(reference));
     },
-    async delete(reference: string) {
+    async delete(reference: string): Promise<void> {
       try {
         await getBucket().delete(parseId(reference));
       } catch (error) {
