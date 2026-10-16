@@ -4,11 +4,14 @@ import {
 } from './managedChat.js';
 
 import { admitManagedData } from './managedData.js';
+import { isManagedScheduleAgentRead, isManagedScheduleRoute, isManagedScheduleTrigger } from './managedSchedule.js';
 
 type Json = Record<string, unknown>;
 interface Request extends ManagedChatRequest { user?: { email?: string; id?: string } }
 export interface ManagedToolOptions extends ManagedChatOptions {
   toolsEnabled?: boolean; ownerEmail?: string; toolToken?: string;
+  schedulesEnabled?: boolean; scheduleAgentId?: string;
+  verifySignedScheduleTrigger?: (req: ManagedChatRequest) => boolean;
 }
 type Middleware = (req: Request, res: ManagedChatResponse, next: () => unknown) => unknown;
 const WORKSPACE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -266,16 +269,24 @@ function payload(input: unknown): { compatible: Json; restore(body: unknown): Js
 export function createManagedToolAdmission(options: ManagedToolOptions): Middleware {
   const legacy = createManagedChatAdmission(options);
   if (!options.enabled) return legacy;
+  const admitSchedule = (req: Request) => options.schedulesEnabled && options.scheduleAgentId &&
+    (isManagedScheduleRoute(req, options.scheduleAgentId) ||
+      isManagedScheduleAgentRead(req, options.scheduleAgentId) ||
+      isManagedScheduleTrigger(req, options.scheduleAgentId,
+        options.verifySignedScheduleTrigger));
   if (!options.toolsEnabled && GITHUB_EDITOR) return (req, res, next) => {
+    if (admitSchedule(req)) return next();
     if (req.method === 'POST' && (req.originalUrl ?? req.url) === RESUME_PATH) {
       try { githubResumeEnvelope(req.body); return next(); }
       catch (error) { traceResumeDenial('admission', error); return reject(res); }
     }
     return legacy(req, res, next);
   };
-  if (!options.toolsEnabled) return legacy;
+  if (!options.toolsEnabled) return (req, res, next) =>
+    admitSchedule(req) ? next() : legacy(req, res, next);
   return (req, res, next) => {
     const path = req.originalUrl ?? req.url ?? '';
+    if (admitSchedule(req)) return next();
     try { if (admitManagedData(req.method, path, req.body)) return next(); } catch { return reject(res); }
     if (req.method === 'GET' && (MCP_READS.has(path) || path === '/api/code-environments' ||
         path === '/api/code-environments/attached-workers/status')) return next();
@@ -370,6 +381,11 @@ export function createManagedToolConfigGuard(options: ManagedToolOptions): Middl
   const legacy = createManagedChatConfigGuard(options);
   if (!options.enabled) return legacy;
   if (!options.toolsEnabled && GITHUB_EDITOR) return (req, res, next) => {
+    if (options.schedulesEnabled && options.scheduleAgentId &&
+        isManagedScheduleTrigger(req, options.scheduleAgentId,
+          options.verifySignedScheduleTrigger)) {
+      return owner(req, options) ? next() : reject(res);
+    }
     if ((req.originalUrl ?? req.url) !== RESUME_PATH) return legacy(req, res, next);
     if (!owner(req, options)) return reject(res);
     try {
@@ -399,6 +415,11 @@ export function createManagedToolConfigGuard(options: ManagedToolOptions): Middl
   if (!options.toolsEnabled) return legacy;
   return (req, res, next) => {
     if (!owner(req, options)) return reject(res);
+    // The schedule host has a signed, fixed-agent request, not a user chat payload.
+    // Native authentication, agent access, and schedule idempotency still run.
+    if (options.schedulesEnabled && options.scheduleAgentId &&
+        isManagedScheduleTrigger(req, options.scheduleAgentId,
+          options.verifySignedScheduleTrigger)) return next();
     let projected: Json;
     try { projected = projectConfiguration(req.config, options); }
     catch { return reject(res, true); }
@@ -435,7 +456,7 @@ export function createManagedResumeConfigGuard(options: ManagedToolOptions): Mid
 }
 
 export function createManagedToolOwnerGuard(options: ManagedToolOptions): Middleware {
-  return (req, res, next) => !options.enabled || !options.toolsEnabled || owner(req, options) ? next() : reject(res);
+  return (req, res, next) => !options.enabled || (!options.toolsEnabled && !options.schedulesEnabled) || owner(req, options) ? next() : reject(res);
 }
 
 /** Project context must be owned before endpoint construction can dispatch a paid model request. */

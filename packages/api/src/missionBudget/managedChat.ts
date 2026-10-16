@@ -13,6 +13,7 @@ export interface ManagedChatRequest {
   method?: string;
   originalUrl?: string;
   url?: string;
+  headers?: Record<string, string | string[] | undefined>;
   body?: unknown;
   config?: unknown;
   user?: { email?: string };
@@ -29,6 +30,7 @@ export interface ManagedChatOptions {
   nativeToken?: string;
   titleConvo?: string;
   ownerEmail?: string;
+  schedulesEnabled?: boolean;
 }
 
 type Middleware = (
@@ -1539,15 +1541,18 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
   for (const view of [config.interfaceConfig, raw.interface]) {
     const ui = object(view);
 
-    for (const key of [
-      'multiConvo',
-      'agents',
-      'schedules',
-      'skills',
-      'fileSearch',
-    ]) {
+    for (const key of ['multiConvo', 'skills', 'fileSearch']) {
       if (ui[key] !== false) throw new Error();
     }
+    if (options.schedulesEnabled) {
+      const agents = object(ui.agents);
+      keys(agents, new Set(['use', 'create', 'share', 'public']));
+      if (agents.use !== true || agents.create !== false ||
+          agents.share !== false || agents.public !== false) throw new Error();
+      const schedules = object(ui.schedules);
+      keys(schedules, new Set(['use', 'create']));
+      if (schedules.use !== true || schedules.create !== true) throw new Error();
+    } else if (ui.agents !== false || ui.schedules !== false) throw new Error();
 
     if (ui.runCode !== DEVICE_CODE) throw new Error();
 

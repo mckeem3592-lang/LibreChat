@@ -11,5 +11,6 @@
     "rootDir": "../../packages/api/src/missionBudget",
     "outDir": "./generated"
   },
-  "include": ["../../packages/api/src/missionBudget/**/*.ts"]
+  "include": ["../../packages/api/src/missionBudget/**/*.ts"],
+  "exclude": ["../../packages/api/src/missionBudget/**/*.spec.ts", "../../packages/api/src/missionBudget/**/*.test.ts"]
 }

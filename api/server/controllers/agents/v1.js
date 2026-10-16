@@ -1735,6 +1735,14 @@ const getListAgentsHandler = async (req, res) => {
     const canReturnSkillConfig = hasEditBit(requiredPermission);
     // Base filter
     const filter = {};
+    if (process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
+        process.env.MISSION_AI_MANAGED_SCHEDULES === 'true') {
+      const pinnedAgentId = process.env.MISSION_AI_SCHEDULE_AGENT_ID;
+      if (!/^agent_[A-Za-z0-9_-]{1,200}$/.test(pinnedAgentId ?? '')) {
+        return res.status(503).json({ error: 'Schedule agent unavailable' });
+      }
+      filter.id = pinnedAgentId;
+    }
 
     // Handle category filter - only apply if category is defined
     if (category !== undefined && category.trim() !== '') {

@@ -5,6 +5,8 @@ const {
   SCHEDULE_FILE_HOLD,
   generateCheckAccess,
   createSchedulesHandlers,
+  createManagedToolOwnerGuard,
+  createManagedSchedulePinGuard,
 } = require('@librechat/api');
 const { requireJwtAuth, configMiddleware, messageIpLimiter } = require('~/server/middleware');
 const {
@@ -20,6 +22,23 @@ const { getRoleByName } = methods;
 
 const router = express.Router();
 router.use(requireJwtAuth);
+router.use(
+  createManagedToolOwnerGuard({
+    enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
+    toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+    schedulesEnabled: process.env.MISSION_AI_MANAGED_SCHEDULES === 'true',
+    ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
+  }),
+);
+router.use(
+  createManagedSchedulePinGuard({
+    enabled:
+      process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
+      process.env.MISSION_AI_MANAGED_SCHEDULES === 'true',
+    agentId: process.env.MISSION_AI_SCHEDULE_AGENT_ID,
+    getScheduleById: (id, userId) => methods.getScheduleById(id, userId),
+  }),
+);
 router.use(configMiddleware);
 
 const checkSchedulesAccess = generateCheckAccess({
