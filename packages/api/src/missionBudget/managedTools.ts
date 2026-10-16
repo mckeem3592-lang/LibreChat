@@ -49,6 +49,7 @@ const GITHUB_ENV = ((globalThis as unknown as {
 const GITHUB_EDITOR = GITHUB_ENV.MISSION_AI_GITHUB_EDITOR === 'true' &&
   GITHUB_ENV.MISSION_AI_FREE_BASELINE === 'true';
 const GITHUB_DEVICE = GITHUB_EDITOR && GITHUB_ENV.MISSION_AI_DEVICE_MCP_ENABLED === 'true';
+const GITHUB_DEVICE_CODE = GITHUB_DEVICE && GITHUB_ENV.MISSION_AI_DEVICE_CODE_ENABLED === 'true';
 const GITHUB_RESTORED_PARAMS = ['maxOutputTokens', 'effort', 'thinking', 'promptCache',
   'promptCacheTtl', 'maxContextTokens', 'stop', 'reasoning_effort', 'verbosity',
   'disableStreaming', 'temperature', 'top_p', 'frequency_penalty', 'presence_penalty'];
@@ -76,10 +77,12 @@ function githubResumeEnvelope(input: unknown, restored = false): Json {
       'artifacts', 'skills', 'ask_user_question', 'run_in_background', 'describe_intent']);
     same(agent.mcp, projectDevice ? ['github-code-editor', 'mission-ai-device', 'mission-ai-local-documents'] :
       device ? ['mission-ai-device', 'mission-ai-local-documents'] : ['github-code-editor']);
-    for (const key of ['execute_code', 'memory', 'web_search', 'file_search', 'skills',
+    for (const key of ['memory', 'web_search', 'file_search', 'skills',
       'ask_user_question', 'run_in_background', 'describe_intent']) {
       if (agent[key] != null && agent[key] !== false) throw new Error();
     }
+    if (agent.execute_code != null && agent.execute_code !== false &&
+        !(GITHUB_DEVICE_CODE && device && agent.execute_code === true)) throw new Error();
     if (agent.artifacts != null && agent.artifacts !== false && agent.artifacts !== '') throw new Error();
   }
   if (!Array.isArray(body.decisions) || body.decisions.length < 1 || body.decisions.length > 32) throw new Error();
@@ -92,8 +95,18 @@ function githubResumeEnvelope(input: unknown, restored = false): Json {
     ids.add(decision.tool_call_id);
   }
   if (body.codeApprovalMode != null && body.codeApprovalMode !== 'ask') throw new Error();
-  if (body.codeEnvironmentMode != null && body.codeEnvironmentMode !== 'without_attached') throw new Error();
-  if (body.codeWorkspaces != null) same(body.codeWorkspaces, []);
+  const coding = GITHUB_DEVICE_CODE && device &&
+    body.ephemeralAgent != null && object(body.ephemeralAgent).execute_code === true;
+  if (coding) {
+    if (body.codeEnvironmentMode !== 'attached' || body.codeApprovalMode !== 'ask' ||
+        !Array.isArray(body.codeWorkspaces) || body.codeWorkspaces.length !== 1) throw new Error();
+    const workspace = object(body.codeWorkspaces[0]);
+    exactKeys(workspace, ['environmentId', 'workspaceId']);
+    if (workspace.environmentId !== 'attached-workers' || workspace.workspaceId !== 'primary') throw new Error();
+  } else {
+    if (body.codeEnvironmentMode != null && body.codeEnvironmentMode !== 'without_attached') throw new Error();
+    if (body.codeWorkspaces != null) same(body.codeWorkspaces, []);
+  }
   return body;
 }
 const INLINE_AGENT_ID = 'MissionAI__claude-sonnet-5-5___Mission AI — Claude Sonnet 5.5 (offline)';
@@ -328,6 +341,9 @@ export function createManagedToolConfigGuard(options: ManagedToolOptions): Middl
         endpoint: envelope.endpoint, endpointType: envelope.endpointType,
         model: envelope.model, spec: envelope.spec, text: '',
         promptPrefix: envelope.promptPrefix, ephemeralAgent: envelope.ephemeralAgent,
+        codeApprovalMode: envelope.codeApprovalMode,
+        codeEnvironmentMode: envelope.codeEnvironmentMode,
+        codeWorkspaces: envelope.codeWorkspaces,
       } };
       return legacy(probe, res, () => next());
     } catch { return reject(res); }

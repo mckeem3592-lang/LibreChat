@@ -80,11 +80,14 @@ export function createEndpointsConfigService(deps: EndpointsConfigDeps): {
       };
     }
 
+    const managedInlineEndpoint = process.env.MISSION_AI_DEVICE_CODE_ENABLED === 'true'
+      ? 'MissionAIClaudeCached' : 'MissionAI';
     const managedInline = process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
-      process.env.MISSION_AI_MANAGED_TOOLS === 'true' &&
+      (process.env.MISSION_AI_MANAGED_TOOLS === 'true' ||
+       process.env.MISSION_AI_DEVICE_CODE_ENABLED === 'true') &&
       !!process.env.MISSION_AI_CONTROL_OWNER_EMAIL &&
       req.user?.email?.toLowerCase() === process.env.MISSION_AI_CONTROL_OWNER_EMAIL.toLowerCase() &&
-      !!mergedConfig.MissionAI;
+      !!mergedConfig[managedInlineEndpoint];
     if ((mergedConfig[EModelEndpoint.agents] || managedInline) && appConfig?.endpoints?.[EModelEndpoint.agents]) {
       const {
         disableBuilder,
@@ -141,7 +144,7 @@ export function createEndpointsConfigService(deps: EndpointsConfigDeps): {
         mergedConfig[EModelEndpoint.agents] = publicAgentsConfig;
       }
       if (managedInline) {
-        mergedConfig.MissionAI = { ...mergedConfig.MissionAI,
+        mergedConfig[managedInlineEndpoint] = { ...mergedConfig[managedInlineEndpoint],
           inlineAgents: { capabilities, statefulCodeSessions: clientStatefulCodeSessions } };
       }
     }

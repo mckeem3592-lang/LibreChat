@@ -126,6 +126,7 @@ const FREE_BASELINE = RUNTIME_ENV.MISSION_AI_FREE_BASELINE === 'true';
 const GITHUB_EDITOR = FREE_BASELINE && RUNTIME_ENV.MISSION_AI_GITHUB_EDITOR === 'true';
 const GITHUB_SERVER = 'github-code-editor';
 const DEVICE_MCP = GITHUB_EDITOR && RUNTIME_ENV.MISSION_AI_DEVICE_MCP_ENABLED === 'true';
+const DEVICE_CODE = DEVICE_MCP && RUNTIME_ENV.MISSION_AI_DEVICE_CODE_ENABLED === 'true';
 const DEVICE_SERVER = 'mission-ai-device';
 const DOCUMENT_SERVER = 'mission-ai-local-documents';
 const DEVICE_SPECS = new Set([
@@ -395,7 +396,7 @@ const NULL_ONLY_FIELDS = new Set([
 ]);
 
 const FALSE_ONLY_FIELDS = new Set(['useResponsesApi', 'web_search', 'compact']);
-const EMPTY_ARRAY_FIELDS = new Set(['manualSkills', 'codeWorkspaces', 'quotes']);
+const EMPTY_ARRAY_FIELDS = new Set(['manualSkills', 'quotes']);
 
 const PARAM_LIMITS: Readonly<Record<string, readonly [number, number]>> = {
   temperature: [0, 2],
@@ -445,6 +446,7 @@ const BODY_FIELDS = new Set([
   'imageDetail',
   'codeApprovalMode',
   'codeEnvironmentMode',
+  'codeWorkspaces',
   'expectedPredecessorCreatedAt',
   'generationProtocolVersion',
   'files',
@@ -728,18 +730,28 @@ function chatBody(value: unknown): ObjectValue {
           (approved.name === 'mission-ai-claude-sonnet' &&
            ['default', 'shadcnui', 'custom'].includes(value as string)))) continue;
       else if (key === 'web_search' && GITHUB_EDITOR && value === true) {
-        out.ephemeralAgent = { web_search: true };
+        out.ephemeralAgent = { ...object(out.ephemeralAgent ?? {}), web_search: true };
+      } else if (key === 'execute_code' && DEVICE_CODE &&
+          approved.name === 'mission-ai-claude-sonnet' && value === true) {
+        out.ephemeralAgent = { ...object(out.ephemeralAgent ?? {}), execute_code: true };
       } else disabled(value);
     }
   }
 
   if (input.codeApprovalMode != null && input.codeApprovalMode !== 'ask') throw new Error();
-  if (
-    input.codeEnvironmentMode != null &&
-    input.codeEnvironmentMode !== 'without_attached'
-  ) {
-    throw new Error();
-  }
+  const coding = object(out.ephemeralAgent ?? {}).execute_code === true;
+  const workspaces = input.codeWorkspaces ?? [];
+  if (!Array.isArray(workspaces) || workspaces.length !== (coding ? 1 : 0)) throw new Error();
+  if (coding) {
+    const workspace = object(workspaces[0]);
+    keys(workspace, new Set(['environmentId', 'workspaceId']));
+    if (workspace.environmentId !== 'attached-workers' || workspace.workspaceId !== 'primary' ||
+        input.codeEnvironmentMode !== 'attached' || input.codeApprovalMode !== 'ask') throw new Error();
+    out.codeWorkspaces = [{ environmentId: 'attached-workers', workspaceId: workspace.workspaceId }];
+    out.codeEnvironmentMode = 'attached';
+    out.codeApprovalMode = 'ask';
+  } else if (input.codeEnvironmentMode != null &&
+      input.codeEnvironmentMode !== 'without_attached') throw new Error();
   if (input.imageDetail != null && input.imageDetail !== 'auto') throw new Error();
 
   if (input.resendFiles != null && typeof input.resendFiles !== 'boolean') {
@@ -963,6 +975,10 @@ export function createManagedChatAdmission(options: ManagedChatOptions): Middlew
         return next();
       }
 
+      if (DEVICE_CODE && method === 'GET' && query === '' &&
+          ['/api/code-environments', '/api/code-environments/attached-workers/status']
+            .includes(path)) return next();
+
       // Manual memories and projects use the stock authenticated, owner-partitioned routers.
       // These data routes do not start a model call.
       if (DEVICE_MCP && (path.startsWith('/api/memories') ||
@@ -1152,16 +1168,34 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
   if (agents.disableBuilder !== true) throw new Error();
   sameStrings(agents.allowedProviders, ENDPOINTS);
   if (GITHUB_EDITOR) {
-    sameStrings(agents.capabilities, ['tools', 'web_search']);
+    sameStrings(agents.capabilities, ['tools', 'web_search',
+      ...(DEVICE_CODE ? ['execute_code', 'stateful_code_sessions'] : [])]);
     const approval = object(agents.toolApproval);
-    if (approval.enabled !== true || approval.mode !== 'bypass') throw new Error();
+    if (approval.enabled !== true || approval.mode !== (DEVICE_CODE ? 'default' : 'bypass')) throw new Error();
     emptyArray(approval.allow);
-    sameStrings(approval.ask, DEVICE_MCP ? [] : ['mcp:*:*']);
+    sameStrings(approval.ask, DEVICE_CODE ? ['*'] : DEVICE_MCP ? [] : ['mcp:*:*']);
     if (!Array.isArray(approval.hooks) || approval.hooks.length !== 1 ||
         object(approval.hooks[0]).module !== './mission-ai/github-code-editor/approval.mjs') {
       throw new Error();
     }
   } else emptyArray(agents.capabilities);
+
+  if (DEVICE_CODE) {
+    const sessions = object(agents.statefulCodeSessions);
+    keys(sessions, new Set(['allowedEnvironments', 'environments']));
+    sameStrings(sessions.allowedEnvironments, ['conversation']);
+    if (!Array.isArray(sessions.environments) || sessions.environments.length !== 1) throw new Error();
+    const environment = object(sessions.environments[0]);
+    keys(environment, new Set(['id', 'name', 'type', 'baseURL', 'owner', 'default', 'pairing']));
+    if (environment.id !== 'attached-workers' || environment.name !== 'Mission AI Mac' ||
+        environment.type !== 'attached' || environment.baseURL !==
+        'https://mission-ai-code-api-mckee.onrender.com/v1' ||
+        environment.owner !== 'deployment' || environment.default !== true) throw new Error();
+    const pairing = object(environment.pairing);
+    keys(pairing, new Set(['workerId', 'tokenEnv']));
+    if (pairing.workerId !== 'mac-primary-code' ||
+        pairing.tokenEnv !== 'MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN') throw new Error();
+  } else if (agents.statefulCodeSessions != null) throw new Error();
 
   for (const flag of [
     'titleConvo',
@@ -1488,11 +1522,12 @@ function assertConfiguration(value: unknown, options: ManagedChatOptions): void 
       'agents',
       'schedules',
       'skills',
-      'runCode',
       'fileSearch',
     ]) {
       if (ui[key] !== false) throw new Error();
     }
+
+    if (ui.runCode !== DEVICE_CODE) throw new Error();
 
     if (ui.memories !== DEVICE_MCP) throw new Error();
 

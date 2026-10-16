@@ -109,6 +109,33 @@ describe('createEndpointsConfigService', () => {
       } finally { process.env = previous; }
     });
 
+    it('advertises attached coding only on the owner paid Claude endpoint when device coding is enabled', async () => {
+      const previous = { ...process.env };
+      try {
+        Object.assign(process.env, { MISSION_AI_MANAGED_CHAT: 'true', MISSION_AI_MANAGED_TOOLS: 'false',
+          MISSION_AI_DEVICE_CODE_ENABLED: 'true', MISSION_AI_CONTROL_OWNER_EMAIL: 'owner@example.invalid' });
+        const deps = createMockDeps({
+          getAppConfig: jest.fn().mockResolvedValue(appConfig({ endpoints: { agents: {
+            capabilities: ['execute_code', 'stateful_code_sessions'],
+            statefulCodeSessions: { allowedEnvironments: ['conversation'], environments: [{ id: 'attached-workers', name: 'Mission AI Mac', type: 'attached', baseURL: 'https://private.invalid', pairing: { workerId: 'private-worker', tokenEnv: 'PRIVATE_TOKEN' } }] },
+            toolApproval: { enabled: true, mode: 'default', ask: ['*'] },
+          } } })),
+          loadDefaultEndpointsConfig: jest.fn().mockResolvedValue({}),
+          loadCustomEndpointsConfig: jest.fn().mockReturnValue({ MissionAI: {}, MissionAIClaudeCached: {} }),
+        });
+        const { getEndpointsConfig } = createEndpointsConfigService(deps);
+        const req = fakeReq();
+        req.user!.email = 'owner@example.invalid';
+        const result = await getEndpointsConfig(req);
+        expect(result?.MissionAI).not.toHaveProperty('inlineAgents');
+        expect(result?.MissionAIClaudeCached).toHaveProperty('inlineAgents.statefulCodeSessions.environments',
+          [{ id: 'attached-workers', name: 'Mission AI Mac', type: 'attached' }]);
+        expect(JSON.stringify(result)).not.toMatch(/private.invalid|private-worker|PRIVATE_TOKEN/);
+        req.user!.email = 'other@example.invalid';
+        expect((await getEndpointsConfig(req))?.MissionAIClaudeCached).not.toHaveProperty('inlineAgents');
+      } finally { process.env = previous; }
+    });
+
     it('adds azureOpenAI when configured', async () => {
       const deps = createMockDeps({
         getAppConfig: jest.fn().mockResolvedValue(

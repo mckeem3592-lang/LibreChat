@@ -35,7 +35,8 @@ const requireCodeEnvironmentManage = requireCapability(SystemCapabilities.MANAGE
 router.use(requireJwtAuth);
 router.use(createManagedToolOwnerGuard({
   enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
-  toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+  toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true' ||
+    process.env.MISSION_AI_DEVICE_CODE_ENABLED === 'true',
   ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
 }));
 router.get('/', (req, res, next) => getHandlers().list(req, res, next));
