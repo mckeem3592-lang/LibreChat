@@ -25,7 +25,8 @@ for variable in $(compgen -e); do
     MISSION_AI_OWNER_EMAIL|MISSION_AI_OWNER_PASSWORD|MISSION_AI_CONTROL_OWNER_EMAIL|MISSION_AI_FREE_BASELINE|\
     MISSION_AI_GITHUB_EDITOR|MISSION_AI_GITHUB_MCP_TOKEN|MISSION_AI_DEVICE_MCP_ENABLED|MISSION_AI_DEVICE_MCP_TOKEN|\
     MISSION_AI_DEVICE_CODE_ENABLED|MISSION_AI_MANAGED_SCHEDULES|MISSION_AI_SCHEDULE_AGENT_ID|\
-    MISSION_AI_FREE_TITLES|LOCAL_MCP_PUBLIC_URL|LOCAL_MCP_TOKEN)
+    MISSION_AI_FREE_TITLES|LOCAL_MCP_PUBLIC_URL|LOCAL_MCP_TOKEN|LOCAL_MCP_WORKER_DIAGNOSTIC|\
+    LOCAL_MCP_ROOT|LOCAL_MCP_OWNER_USER_ID|LOCAL_MCP_ALLOWED_ORIGINS)
       continue ;;
     GOOGLE_KEY)
       [[ ${MISSION_AI_FREE_BASELINE-false} == true ]] ||
@@ -79,6 +80,21 @@ local_mcp_token="${LOCAL_MCP_TOKEN-}"
    $local_mcp_token != "${MISSION_AI_NATIVE_TOKEN-}" &&
    $local_mcp_token != "${MISSION_AI_DEVICE_MCP_TOKEN-}" ]] ||
   fail 'LOCAL_MCP_TOKEN must be a distinct private token of at least 40 characters'
+case "${LOCAL_MCP_WORKER_DIAGNOSTIC-false}" in
+  false)
+    [[ -z ${LOCAL_MCP_ROOT-} && -z ${LOCAL_MCP_OWNER_USER_ID-} &&
+       -z ${LOCAL_MCP_ALLOWED_ORIGINS-} ]] ||
+      fail 'local worker settings require LOCAL_MCP_WORKER_DIAGNOSTIC=true' ;;
+  true)
+    [[ -n ${LOCAL_MCP_ROOT-} && -d ${LOCAL_MCP_ROOT} &&
+       ${LOCAL_MCP_OWNER_USER_ID-} =~ ^[[:xdigit:]]{24}$ &&
+       -n ${LOCAL_MCP_ALLOWED_ORIGINS-} ]] ||
+      fail 'local worker diagnostic requires a scoped root, owner id, and browser origins'
+    command -v python3 >/dev/null || fail 'local worker diagnostic requires Python 3'
+    [[ -f mission-ai/local-worker/local_mcp_agent.py ]] ||
+      fail 'local worker agent is missing' ;;
+  *) fail 'LOCAL_MCP_WORKER_DIAGNOSTIC must be true or false' ;;
+esac
 
 native_token="${MISSION_AI_NATIVE_TOKEN-}"
 [[ ${#native_token} -ge 32 && $native_token != *[[:space:]]* ]] ||
@@ -304,5 +320,16 @@ fi
 
 export MISSION_AI_CONTROL_OWNER_EMAIL="${MISSION_AI_CONTROL_OWNER_EMAIL:-${MISSION_AI_OWNER_EMAIL-}}"
 unset MISSION_AI_BOOTSTRAP_OWNER MISSION_AI_OWNER_EMAIL MISSION_AI_OWNER_PASSWORD
+
+if [[ ${LOCAL_MCP_WORKER_DIAGNOSTIC-false} == true ]]; then
+  python3 -c 'import mcp, docx, openpyxl, playwright, pymupdf, uvicorn' >/dev/null 2>&1 ||
+    fail 'local worker diagnostic dependencies are unavailable'
+  python3 -u mission-ai/local-worker/local_mcp_agent.py \
+    >>"$extension_dir/local-mcp-worker.log" 2>&1 &
+  local_worker_pid=$!
+  sleep 1
+  kill -0 "$local_worker_pid" 2>/dev/null ||
+    fail 'local worker diagnostic exited; inspect the private worker log'
+fi
 
 exec node api/server/index.js
