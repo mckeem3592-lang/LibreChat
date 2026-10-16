@@ -37,6 +37,31 @@ async function fixture(raw = answer(), overrides = {}) {
   return { bridge, events, ledger };
 }
 
+test('durable per-request ceiling refuses an oversized Claude request before reservation or dispatch', async () => {
+  const f = await fixture(answer(), {
+    budgetReader: () => ({ mode: 'shared', policy: { targetUsd: 100, economyUsd: 125, hardUsd: 175 },
+      timeZone: 'America/Denver', directCapUsd: 175, maxOutputTokens: 4096,
+      maxReservationUsd: 0.000001 }),
+  });
+  await assert.rejects(f.bridge.handle(request()), { code: 'native_request_cost_limit', status: 403 });
+  assert.deepEqual(f.events, []);
+});
+
+test('durable Claude ceiling permits a priced request and settles within the shared ledger', async () => {
+  const f = await fixture(answer(), {
+    budgetReader: () => ({ mode: 'shared', policy: { targetUsd: 100, economyUsd: 125, hardUsd: 175 },
+      timeZone: 'America/Denver', directCapUsd: 175, maxOutputTokens: 4096,
+      maxReservationUsd: 1 }),
+  });
+  const result = await f.bridge.handle(request());
+  assert.equal(result.type, 'message');
+  assert.deepEqual(f.events.map((event) => typeof event === 'string' ? event : event.type),
+    ['reserve', 'fetch', 'settle']);
+  const summary = await f.ledger.summary({ now });
+  assert.equal(summary.reservedUsd, 0);
+  assert.ok(summary.settledUsd > 0);
+});
+
 test('cancelled request before reservation never dispatches or charges', async () => {
   const f = await fixture();
   const controller = new AbortController();
