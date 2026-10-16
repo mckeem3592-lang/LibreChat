@@ -161,6 +161,12 @@ router.use(guardSubagentThreadTurn);
 router.use(buildEndpointOption);
 
 const controller = async (req, res, next) => {
+  if (req._isAgentTrigger === true && req.body?.agentTrigger != null) {
+    logger.info('[agent-triggers] chat controller reached');
+    res.once('finish', () => {
+      logger.info(`[agent-triggers] chat controller response http=${res.statusCode}`);
+    });
+  }
   await AgentController(req, res, next, initializeClient, addTitle);
 };
 
