@@ -1735,8 +1735,10 @@ const getListAgentsHandler = async (req, res) => {
     const canReturnSkillConfig = hasEditBit(requiredPermission);
     // Base filter
     const filter = {};
-    if (process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
-        process.env.MISSION_AI_MANAGED_SCHEDULES === 'true') {
+    if (
+      process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
+      process.env.MISSION_AI_MANAGED_SCHEDULES === 'true'
+    ) {
       const pinnedAgentId = process.env.MISSION_AI_SCHEDULE_AGENT_ID;
       if (!/^agent_[A-Za-z0-9_-]{1,200}$/.test(pinnedAgentId ?? '')) {
         return res.status(503).json({ error: 'Schedule agent unavailable' });
@@ -1873,6 +1875,18 @@ const getListAgentsHandler = async (req, res) => {
     });
 
     const agents = data?.data ?? [];
+    if (
+      process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
+      process.env.MISSION_AI_MANAGED_SCHEDULES === 'true' &&
+      req.user.email?.toLowerCase() === process.env.MISSION_AI_CONTROL_OWNER_EMAIL?.toLowerCase() &&
+      requiredPermission === PermissionBits.VIEW &&
+      filter.id === process.env.MISSION_AI_SCHEDULE_AGENT_ID
+    ) {
+      // Count-only receipt for the pinned owner picker; never log identities or documents.
+      logger.info(
+        `[mission-ai] schedule agent picker accessible=${accessibleIds == null ? 'manager' : accessibleIds.length} returned=${agents.length}`,
+      );
+    }
     if (!agents.length) {
       return res.json(data);
     }
