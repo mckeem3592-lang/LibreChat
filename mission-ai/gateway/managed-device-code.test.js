@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import yaml from 'yaml';
 import { agentsEndpointSchema } from 'librechat-data-provider';
+import { AppService } from '@librechat/data-schemas';
 
 process.env.MISSION_AI_FREE_BASELINE = 'true';
 process.env.MISSION_AI_GITHUB_EDITOR = 'true';
@@ -85,6 +86,13 @@ test('device coding accepts the parsed pairing default but rejects principal wor
   enrollment.config.endpoints.agents = agentsEndpointSchema.parse(enrollment.config.endpoints.agents);
   enrollment.config.endpoints.agents.statefulCodeSessions.environments[0].pairing.allowPrincipalWorkers = true;
   assert.equal(run(guard, enrollment).status, 503);
+});
+
+test('device coding accepts the LibreChat AppService config', async () => {
+  const guard = createManagedToolConfigGuard(options);
+  const req = request();
+  req.config = await AppService({ config: structuredClone(raw) });
+  assert.equal(run(guard, req).next, 1);
 });
 
 test('a paused coding action resumes only with the same attached workspace', () => {
