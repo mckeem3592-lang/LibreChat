@@ -283,7 +283,7 @@ test('device MCP routes scoped text tools to the configured Windows device', asy
 test('device MCP exposes scoped repository read, write and named checks without accepting a command', async () => {
   const calls = [];
   const handler = createMissionMcpNodeHandler({
-    allowedTools: new Set(['repo_read', 'repo_write', 'repo_check']),
+    allowedTools: new Set(['repo_list', 'repo_read', 'repo_write', 'repo_check']),
     invoke: async (...args) => { calls.push(args); return { ok: true }; },
     audit: () => {},
   });
@@ -292,12 +292,14 @@ test('device MCP exposes scoped repository read, write and named checks without 
   try {
     await client.connect(new StreamableHTTPClientTransport(url));
     assert.deepEqual((await client.listTools()).tools.map(tool => tool.name).sort(),
-      ['repo_check', 'repo_read', 'repo_write']);
+      ['repo_check', 'repo_list', 'repo_read', 'repo_write']);
+    await client.callTool({ name: 'repo_list', arguments: { deviceId: 'windows-work', directory: 'src' } });
     await client.callTool({ name: 'repo_read', arguments: { deviceId: 'windows-work', path: 'src/app.js' } });
     await client.callTool({ name: 'repo_write', arguments: { deviceId: 'windows-work', path: 'src/app.js',
       text: 'new', expectedSha256: 'a'.repeat(64) } });
     await client.callTool({ name: 'repo_check', arguments: { deviceId: 'windows-work', checkId: 'diff-check' } });
     assert.deepEqual(calls, [
+      ['windows-work', 'repo.list', { directory: 'src' }],
       ['windows-work', 'repo.read', { path: 'src/app.js' }],
       ['windows-work', 'repo.write', { path: 'src/app.js', text: 'new', expectedSha256: 'a'.repeat(64) }],
       ['windows-work', 'repo.check', { checkId: 'diff-check' }, 120_000],

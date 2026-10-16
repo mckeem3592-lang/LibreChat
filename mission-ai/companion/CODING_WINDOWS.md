@@ -1,7 +1,7 @@
 # Windows scoped repository bridge
 
 The Windows companion can expose one owner-selected Git checkout to the device
-MCP as `repo_read`, `repo_write`, and `repo_check`. No new service or AI call is
+MCP as `repo_list`, `repo_read`, `repo_write`, and `repo_check`. No new service or AI call is
 required. The bridge is independent of the pinned Code API worker, whose native
 Windows runtime is unsupported. It does not provide a shell, code sandbox,
 automatic test selection, or a persistent agent job.
@@ -22,7 +22,7 @@ created only under an existing directory. Hidden paths, links, and binary or
 large text are rejected. Reopen the file and run a named check after writing.
 
 For this project's no-credit acceptance, the local test creates a disposable
-Git checkout, reads and edits a file, then runs `git diff --check` and verifies
+Git checkout, lists, reads and edits a file, then runs `git diff --check` and verifies
 the actual failing exit code. The gateway MCP transport test verifies the three
 tool routes. Neither test establishes that a paid model completed a coding task
 through the deployed chat; record that result separately in the parity ledger.

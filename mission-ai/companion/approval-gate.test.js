@@ -10,6 +10,7 @@ test('background companion approves only configured local actions', async () => 
     await requireManualApproval('file.move', { sourcePath: 'a', destinationPath: 'b' });
     await requireManualApproval('file.read', { path: 'a.txt' });
     await requireManualApproval('repo.read', { path: 'src/app.js' });
+    await requireManualApproval('repo.list', { directory: 'src' });
     await requireManualApproval('repo.write', { path: 'src/app.js', text: 'new' });
     await requireManualApproval('repo.check', { checkId: 'diff-check' });
     await assert.rejects(requireManualApproval('browser.type', { text: 'x' }),

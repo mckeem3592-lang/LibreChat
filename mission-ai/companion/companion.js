@@ -403,6 +403,9 @@ async function dispatch(tool, args, deadlineMs) {
     case 'repo.read':
       if (!scopedRepo) throw new Error('repo_not_configured');
       return await scopedRepo.read(args);
+    case 'repo.list':
+      if (!scopedRepo) throw new Error('repo_not_configured');
+      return await scopedRepo.list(args);
     case 'repo.write':
       if (!scopedRepo) throw new Error('repo_not_configured');
       return await scopedRepo.write(args);

@@ -515,6 +515,14 @@ export function createMissionMcpNodeHandler({
       catch (error) { return errorResult(error); }
     });
 
+    registerTool('repo_list', {
+      description: 'List up to 200 visible entries in the locally configured Git checkout on the paired device. Hidden entries and links are excluded.',
+      inputSchema: z.object({ deviceId: z.string().optional(), directory: z.string().max(2000).optional() }),
+    }, async ({ deviceId, directory = '' }) => {
+      try { return textResult(await invoke(defaultDeviceId(deviceId), 'repo.list', { directory })); }
+      catch (error) { return errorResult(error); }
+    });
+
     registerTool('repo_read', {
       description: 'Read a UTF-8 source file in the paired device repository configured locally by the owner. Returns content and sha256; hidden paths and links are excluded.',
       inputSchema: z.object({ deviceId: z.string().optional(), path: z.string().min(1).max(2000) }),

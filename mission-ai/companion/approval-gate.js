@@ -2,7 +2,7 @@ import { createInterface } from 'node:readline';
 
 const readOnlyTools = new Set([
   'mac.active_app', 'mac.screenshot', 'browser.list_tabs', 'browser.get_state',
-  'file.list', 'file.read', 'repo.read',
+  'file.list', 'file.read', 'repo.list', 'repo.read',
 ]);
 const autonomousTools = new Set([
   'browser.activate_tab', 'browser.open_new_tab', 'browser.open_url_direct',

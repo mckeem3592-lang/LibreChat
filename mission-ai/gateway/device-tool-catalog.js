@@ -16,6 +16,7 @@ const DEVICE_TOOLS = [
   'file_read',
   'file_write',
   'file_move',
+  'repo_list',
   'repo_read',
   'repo_write',
   'repo_check',

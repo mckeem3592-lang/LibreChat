@@ -24,6 +24,8 @@ test('scoped repository reads, edits, checks, and rejects stale or escaping writ
     invocation = { command, args, cwd: options.cwd };
     return { stdout: 'clean\n', stderr: '' };
   } });
+  assert.deepEqual((await repo.list()).entries, [{ name: 'src', type: 'directory' }]);
+  assert.deepEqual((await repo.list({ directory: 'src' })).entries, [{ name: 'app.js', type: 'file' }]);
   assert.equal((await repo.read({ path: 'src/app.js' })).sha256, hash('old\n'));
   await assert.rejects(repo.write({ path: 'src/app.js', text: 'bad\n', expectedSha256: hash('wrong') }),
     /repo_file_changed/);

@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
-import { lstat, readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import { lstat, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
@@ -58,6 +58,17 @@ export function createScopedRepo(config = {}, { run = execFileAsync } = {}) {
   }
 
   return {
+    async list({ directory = '' } = {}) {
+      const base = await root();
+      const full = directory ? path.resolve(base, relativeFile(directory)) : base;
+      if (full !== base && !within(base, full)) throw new Error('repo_path_not_allowed');
+      const entry = await lstat(full);
+      if (!entry.isDirectory() || await realpath(full) !== full) throw new Error('repo_directory_not_allowed');
+      const entries = await readdir(full, { withFileTypes: true });
+      return { directory, entries: entries.filter(item => !item.name.startsWith('.') && !item.isSymbolicLink())
+        .slice(0, 200).map(item => ({ name: item.name, type: item.isDirectory() ? 'directory' :
+          item.isFile() ? 'file' : 'other' })) };
+    },
     async read({ path: relativePath }) {
       const { full } = await target(relativePath);
       const bytes = await readFile(full);
