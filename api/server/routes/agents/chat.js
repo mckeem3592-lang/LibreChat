@@ -30,6 +30,12 @@ const { createMissionAutoSearch } = require('./missionAutoSearch');
 const { getFiles, getRoleByName, getChatProject } = require('~/models');
 
 const router = express.Router();
+const denyManagedResume = (res, stage) => {
+  // A stage label is enough to locate a rejected approval without logging the
+  // conversation, user, pending action, or request body.
+  logger.warn(`[mission-ai] coding resume context denied stage=${stage}`);
+  return res.status(403).json({ error: { code: 'managed_tools_denied' } });
+};
 
 const checkAgentAccess = generateCheckAccess({
   permissionType: PermissionTypes.AGENTS,
@@ -57,18 +63,27 @@ const restoreResumeContext = async (req, res, next) => {
     const streamId = req.body?.conversationId;
     if (streamId) {
       const job = await GenerationJobManager.getJob(streamId);
-      if (process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
-          (process.env.MISSION_AI_MANAGED_TOOLS === 'true' ||
-           process.env.MISSION_AI_GITHUB_EDITOR === 'true') &&
-          (!job || job.metadata?.userId !== req.user?.id ||
-           (job.metadata?.tenantId != null && job.metadata.tenantId !== req.user?.tenantId))) {
-        return res.status(403).json({ error: { code: 'managed_tools_denied' } });
+      if (
+        process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
+        (process.env.MISSION_AI_MANAGED_TOOLS === 'true' ||
+          process.env.MISSION_AI_GITHUB_EDITOR === 'true') &&
+        (!job ||
+          job.metadata?.userId !== req.user?.id ||
+          (job.metadata?.tenantId != null && job.metadata.tenantId !== req.user?.tenantId))
+      ) {
+        let stage = 'tenant_mismatch';
+        if (!job) stage = 'job_missing';
+        else if (job.metadata?.userId !== req.user?.id) stage = 'owner_mismatch';
+        return denyManagedResume(res, stage);
       }
       const resumeContext = job?.metadata?.pendingAction?.resumeContext;
-      if (process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
-          (process.env.MISSION_AI_MANAGED_TOOLS === 'true' ||
-           process.env.MISSION_AI_GITHUB_EDITOR === 'true') && !resumeContext) {
-        return res.status(403).json({ error: { code: 'managed_tools_denied' } });
+      if (
+        process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
+        (process.env.MISSION_AI_MANAGED_TOOLS === 'true' ||
+          process.env.MISSION_AI_GITHUB_EDITOR === 'true') &&
+        !resumeContext
+      ) {
+        return denyManagedResume(res, 'context_missing');
       }
       applyResumeContext(req.body, resumeContext);
       // Replay the paused turn's resolved model parameters. Ephemeral agents derive these
@@ -78,40 +93,50 @@ const restoreResumeContext = async (req, res, next) => {
       // spread), not part of the RESUME_CONTEXT_KEYS allowlist, so merge them back here.
       // Generation params are authoritative, but routing, graph identity, and resume-action
       // fields remain owned by the restored context/request envelope.
-      const managed = process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
+      const managed =
+        process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
         (process.env.MISSION_AI_MANAGED_TOOLS === 'true' ||
-         process.env.MISSION_AI_GITHUB_EDITOR === 'true');
-      applyResumeModelParameters(req.body, managed
-        ? projectManagedResumeParameters(resumeContext?.model_parameters)
-        : resumeContext?.model_parameters);
+          process.env.MISSION_AI_GITHUB_EDITOR === 'true');
+      applyResumeModelParameters(
+        req.body,
+        managed
+          ? projectManagedResumeParameters(resumeContext?.model_parameters)
+          : resumeContext?.model_parameters,
+      );
     }
   } catch (err) {
     logger.warn('[agents/chat] Failed to restore resume context', getSafeErrorMetadata(err));
-    if (process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
-        (process.env.MISSION_AI_MANAGED_TOOLS === 'true' ||
-         process.env.MISSION_AI_GITHUB_EDITOR === 'true')) {
-      return res.status(403).json({ error: { code: 'managed_tools_denied' } });
+    if (
+      process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
+      (process.env.MISSION_AI_MANAGED_TOOLS === 'true' ||
+        process.env.MISSION_AI_GITHUB_EDITOR === 'true')
+    ) {
+      return denyManagedResume(res, 'restore_error');
     }
   }
   next();
 };
 
 router.use(restoreResumeContext);
-router.use(createManagedResumeConfigGuard({
-  enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
-  toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
-  ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
-  gatewayURL: process.env.MISSION_AI_GATEWAY_URL,
-  nativeToken: process.env.MISSION_AI_NATIVE_TOKEN,
-  toolToken: process.env.MISSION_AI_TOOL_TOKEN,
-  titleConvo: process.env.TITLE_CONVO,
-}));
-router.use(createManagedProjectGuard({
-  enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
-  toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
-  ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
-  projectOwned: async (userId, projectId) => (await getChatProject(userId, projectId)) != null,
-}));
+router.use(
+  createManagedResumeConfigGuard({
+    enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
+    toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+    ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
+    gatewayURL: process.env.MISSION_AI_GATEWAY_URL,
+    nativeToken: process.env.MISSION_AI_NATIVE_TOKEN,
+    toolToken: process.env.MISSION_AI_TOOL_TOKEN,
+    titleConvo: process.env.TITLE_CONVO,
+  }),
+);
+router.use(
+  createManagedProjectGuard({
+    enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
+    toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+    ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
+    projectOwned: async (userId, projectId) => (await getChatProject(userId, projectId)) != null,
+  }),
+);
 router.use(
   createMessageFilterPii({
     onTraversalFailure: reportLocatorTraversalFailure,
@@ -121,11 +146,14 @@ router.use(
   }),
 );
 router.use(moderateText);
-router.use(createMissionAutoSearch({
-  enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
-    process.env.MISSION_AI_GITHUB_EDITOR === 'true',
-  ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
-}));
+router.use(
+  createMissionAutoSearch({
+    enabled:
+      process.env.MISSION_AI_MANAGED_CHAT === 'true' &&
+      process.env.MISSION_AI_GITHUB_EDITOR === 'true',
+    ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
+  }),
+);
 router.use(checkAgentAccess);
 router.use(checkAgentResourceAccess);
 router.use(validateConvoAccess);

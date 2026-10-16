@@ -88,25 +88,51 @@ describe('agents chat content filtering', () => {
   });
 });
 
-
 describe('managed resume owner boundary', () => {
   const previousChat = process.env.MISSION_AI_MANAGED_CHAT;
   const previousTools = process.env.MISSION_AI_MANAGED_TOOLS;
-  beforeEach(() => { process.env.MISSION_AI_MANAGED_CHAT = 'true'; process.env.MISSION_AI_MANAGED_TOOLS = 'true'; });
-  afterEach(() => {
-    if (previousChat == null) delete process.env.MISSION_AI_MANAGED_CHAT; else process.env.MISSION_AI_MANAGED_CHAT = previousChat;
-    if (previousTools == null) delete process.env.MISSION_AI_MANAGED_TOOLS; else process.env.MISSION_AI_MANAGED_TOOLS = previousTools;
+  beforeEach(() => {
+    process.env.MISSION_AI_MANAGED_CHAT = 'true';
+    process.env.MISSION_AI_MANAGED_TOOLS = 'true';
   });
-  it.each([undefined, { metadata: { userId: 'other', pendingAction: { resumeContext: {} } } },
-    { metadata: { userId: 'owner', tenantId: 'other', pendingAction: { resumeContext: {} } } },
-    { metadata: { userId: 'owner' } }])('denies a missing, foreign or context-less job before restoration', async (job) => {
+  afterEach(() => {
+    if (previousChat == null) delete process.env.MISSION_AI_MANAGED_CHAT;
+    else process.env.MISSION_AI_MANAGED_CHAT = previousChat;
+    if (previousTools == null) delete process.env.MISSION_AI_MANAGED_TOOLS;
+    else process.env.MISSION_AI_MANAGED_TOOLS = previousTools;
+  });
+  it.each([
+    [undefined, 'job_missing'],
+    [{ metadata: { userId: 'other', pendingAction: { resumeContext: {} } } }, 'owner_mismatch'],
+    [
+      { metadata: { userId: 'owner', tenantId: 'other', pendingAction: { resumeContext: {} } } },
+      'tenant_mismatch',
+    ],
+    [{ metadata: { userId: 'owner' } }, 'context_missing'],
+  ])('denies a missing, foreign or context-less job before restoration', async (job, stage) => {
     const api = require('@librechat/api');
-    const restore = require('../chat').stack.find(layer => layer.handle?.name === 'restoreResumeContext').handle;
+    const restore = require('../chat').stack.find(
+      (layer) => layer.handle?.name === 'restoreResumeContext',
+    ).handle;
     api.GenerationJobManager.getJob.mockResolvedValueOnce(job);
     api.applyResumeContext.mockClear();
-    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() }; const next = jest.fn();
-    await restore({ path: '/resume', body: { conversationId: 'fixture' }, user: { id: 'owner', tenantId: 'mine' } }, res, next);
-    expect(res.status).toHaveBeenCalledWith(403); expect(next).not.toHaveBeenCalled();
+    mockLogger.warn.mockClear();
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    const next = jest.fn();
+    await restore(
+      {
+        path: '/resume',
+        body: { conversationId: 'fixture' },
+        user: { id: 'owner', tenantId: 'mine' },
+      },
+      res,
+      next,
+    );
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
     expect(api.applyResumeContext).not.toHaveBeenCalled();
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      `[mission-ai] coding resume context denied stage=${stage}`,
+    );
   });
 });
