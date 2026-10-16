@@ -279,3 +279,31 @@ test('device MCP routes scoped text tools to the configured Windows device', asy
     else process.env.MISSION_AI_DEFAULT_DEVICE_ID = previous;
   }
 });
+
+test('device MCP exposes scoped repository read, write and named checks without accepting a command', async () => {
+  const calls = [];
+  const handler = createMissionMcpNodeHandler({
+    allowedTools: new Set(['repo_read', 'repo_write', 'repo_check']),
+    invoke: async (...args) => { calls.push(args); return { ok: true }; },
+    audit: () => {},
+  });
+  const { server, url } = await listen(handler);
+  const client = new Client({ name: 'mission-ai-repo-test', version: '1.0.0' });
+  try {
+    await client.connect(new StreamableHTTPClientTransport(url));
+    assert.deepEqual((await client.listTools()).tools.map(tool => tool.name).sort(),
+      ['repo_check', 'repo_read', 'repo_write']);
+    await client.callTool({ name: 'repo_read', arguments: { deviceId: 'windows-work', path: 'src/app.js' } });
+    await client.callTool({ name: 'repo_write', arguments: { deviceId: 'windows-work', path: 'src/app.js',
+      text: 'new', expectedSha256: 'a'.repeat(64) } });
+    await client.callTool({ name: 'repo_check', arguments: { deviceId: 'windows-work', checkId: 'diff-check' } });
+    assert.deepEqual(calls, [
+      ['windows-work', 'repo.read', { path: 'src/app.js' }],
+      ['windows-work', 'repo.write', { path: 'src/app.js', text: 'new', expectedSha256: 'a'.repeat(64) }],
+      ['windows-work', 'repo.check', { checkId: 'diff-check' }, 120_000],
+    ]);
+  } finally {
+    await client.close().catch(() => {});
+    await new Promise(resolve => server.close(resolve));
+  }
+});
