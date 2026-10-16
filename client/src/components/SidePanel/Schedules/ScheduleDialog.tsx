@@ -230,6 +230,7 @@ export default function ScheduleDialog({
   const { data: agents } = useListAgentsQuery(
     { requiredPermission: PermissionBits.VIEW },
     { select: (res) => res.data },
+    true,
   );
 
   const agentItems = useMemo(

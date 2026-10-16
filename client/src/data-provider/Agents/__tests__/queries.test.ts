@@ -50,6 +50,24 @@ describe('useListAgentsQuery', () => {
     jest.clearAllMocks();
   });
 
+  it('lets the schedule picker list its pinned agent without the general Agents endpoint', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData([QueryKeys.endpoints], {});
+    listAgents.mockResolvedValue(page(['agent_mission_ai_schedule_owner_20261016'], null));
+
+    const { result } = renderHook(
+      () => useListAgentsQuery({ requiredPermission: PermissionBits.VIEW }, undefined, true),
+      { wrapper: createWrapper(queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.data[0].id).toBe('agent_mission_ai_schedule_owner_20261016');
+    expect(listAgents).toHaveBeenCalledWith({
+      requiredPermission: PermissionBits.VIEW,
+      limit: 1000,
+    });
+  });
+
   it('requests the server maximum page size so a typical agent set resolves in one round trip', async () => {
     listAgents.mockResolvedValue(page(['a', 'b'], null));
 
