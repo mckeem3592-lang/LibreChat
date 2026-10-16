@@ -38,6 +38,13 @@ function reject(res: ManagedChatResponse, configuration = false): unknown {
   return res.status(configuration ? 503 : 403).json({ error: {
     code: 'managed_tools_denied', message: 'Mission AI tools are unavailable.' } });
 }
+function traceResumeDenial(stage: 'admission' | 'configuration', error: unknown): void {
+  const frames = error instanceof Error ? error.stack?.split('\n').slice(1, 3) ?? [] : [];
+  const locations = frames.map((frame) => frame.match(/:(\d+):(\d+)\)?$/))
+    .filter((match): match is RegExpMatchArray => match != null)
+    .map((match) => `${match[1]}:${match[2]}`).join(',');
+  console.warn(`[mission-ai] coding resume denied stage=${stage} code=${locations || 'unknown'}`);
+}
 function owner(req: Request, options: ManagedToolOptions): boolean {
   return !!options.ownerEmail && !!req.user?.email &&
     req.user.email.toLowerCase() === options.ownerEmail.toLowerCase();
@@ -241,7 +248,8 @@ export function createManagedToolAdmission(options: ManagedToolOptions): Middlew
   if (!options.enabled) return legacy;
   if (!options.toolsEnabled && GITHUB_EDITOR) return (req, res, next) => {
     if (req.method === 'POST' && (req.originalUrl ?? req.url) === RESUME_PATH) {
-      try { githubResumeEnvelope(req.body); return next(); } catch { return reject(res); }
+      try { githubResumeEnvelope(req.body); return next(); }
+      catch (error) { traceResumeDenial('admission', error); return reject(res); }
     }
     return legacy(req, res, next);
   };
@@ -355,7 +363,7 @@ export function createManagedToolConfigGuard(options: ManagedToolOptions): Middl
         codeWorkspaces: envelope.codeWorkspaces,
       } };
       return legacy(probe, res, () => next());
-    } catch { return reject(res); }
+    } catch (error) { traceResumeDenial('configuration', error); return reject(res); }
   };
   if (!options.toolsEnabled) return legacy;
   return (req, res, next) => {
