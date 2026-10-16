@@ -89,11 +89,11 @@
     "claude-sonnet-5-5": {
       "provider": "anthropic",
       "input": 2,
-      "cachedInput": 0.2,
+      "cachedInput": 0.1,
       "cacheWrite": 2.5,
       "cacheWrite1h": 4,
       "output": 10,
-      "verifiedOn": "2026-09-29",
+      "verifiedOn": "2026-10-16",
       "source": "https://platform.claude.com/docs/en/models/sonnet-5-5/overview"
     },
 
