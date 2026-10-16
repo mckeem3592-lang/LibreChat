@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { createMissionMcpNodeHandler } from './mcp.js';
+import { deviceMcpAllowedTools } from './device-tool-catalog.js';
 
 async function listen(handler) {
   const server = http.createServer((req, res) => {
@@ -77,7 +78,10 @@ test('MCP streamable HTTP initializes, lists tools, calls readiness, and audits 
     });
     assert.equal(browser.isError, undefined);
 
-    assert.equal(audits.some((event) => event.action === 'mcp:mission_readiness'), true);
+    assert.equal(
+      audits.some((event) => event.action === 'mcp:mission_readiness'),
+      true,
+    );
     const browserAudit = audits.find((event) => event.action === 'mcp:browser_get_state');
     assert.ok(browserAudit);
     assert.equal(browserAudit.deviceId, 'mac-primary');
@@ -111,29 +115,88 @@ test('device MCP catalog exposes browser tools without paid delegation or deskto
   }
 });
 
+test('opted-in device catalog exposes only the budget-backed image action', async () => {
+  const calls = [];
+  const handler = createMissionMcpNodeHandler({
+    allowedTools: deviceMcpAllowedTools({ imageEnabled: true, imageBudgetReady: true }),
+    generateImage: async (input) => {
+      calls.push(input);
+      return {
+        ok: true,
+        images: [{ mimeType: 'image/png', data: 'cG5n' }],
+        cost: { totalUsd: 0.01 },
+      };
+    },
+    audit: () => {},
+  });
+  const { server, url } = await listen(handler);
+  const client = new Client({ name: 'mission-ai-image-test', version: '1.0.0' });
+  try {
+    await client.connect(new StreamableHTTPClientTransport(url));
+    const names = (await client.listTools()).tools.map((tool) => tool.name);
+    assert.equal(names.includes('mission_generate_image'), true);
+    assert.equal(names.includes('mission_delegate'), false);
+    assert.equal(names.includes('mission_cost_dashboard'), false);
+    const result = await client.callTool({
+      name: 'mission_generate_image',
+      arguments: { prompt: 'one original test image' },
+    });
+    assert.equal(result.isError, undefined);
+    assert.equal(
+      result.content.some((block) => block.type === 'image'),
+      true,
+    );
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].prompt, 'one original test image');
+  } finally {
+    await client.close().catch(() => {});
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('device MCP routes scoped text tools to the configured Windows device', async () => {
   const previous = process.env.MISSION_AI_DEFAULT_DEVICE_ID;
   process.env.MISSION_AI_DEFAULT_DEVICE_ID = 'windows-work';
   const calls = [];
   const handler = createMissionMcpNodeHandler({
     allowedTools: new Set(['file_read', 'file_write']),
-    invoke: async (...args) => { calls.push(args); return { ok: true }; },
+    invoke: async (...args) => {
+      calls.push(args);
+      return { ok: true };
+    },
     audit: () => {},
   });
   const { server, url } = await listen(handler);
   const client = new Client({ name: 'mission-ai-file-test', version: '1.0.0' });
   try {
     await client.connect(new StreamableHTTPClientTransport(url));
-    assert.deepEqual((await client.listTools()).tools.map(tool => tool.name).sort(),
-      ['file_read', 'file_write']);
-    await client.callTool({ name: 'file_read', arguments: { root: 'Documents', path: 'notes.txt' } });
-    await client.callTool({ name: 'file_write', arguments: { root: 'Documents',
-      path: 'notes.txt', text: 'updated', expectedSha256: 'a'.repeat(64) } });
-    assert.deepEqual(calls.map(([device, tool]) => [device, tool]),
-      [['windows-work', 'file.read'], ['windows-work', 'file.write']]);
+    assert.deepEqual((await client.listTools()).tools.map((tool) => tool.name).sort(), [
+      'file_read',
+      'file_write',
+    ]);
+    await client.callTool({
+      name: 'file_read',
+      arguments: { root: 'Documents', path: 'notes.txt' },
+    });
+    await client.callTool({
+      name: 'file_write',
+      arguments: {
+        root: 'Documents',
+        path: 'notes.txt',
+        text: 'updated',
+        expectedSha256: 'a'.repeat(64),
+      },
+    });
+    assert.deepEqual(
+      calls.map(([device, tool]) => [device, tool]),
+      [
+        ['windows-work', 'file.read'],
+        ['windows-work', 'file.write'],
+      ],
+    );
   } finally {
     await client.close().catch(() => {});
-    await new Promise(resolve => server.close(resolve));
+    await new Promise((resolve) => server.close(resolve));
     if (previous === undefined) delete process.env.MISSION_AI_DEFAULT_DEVICE_ID;
     else process.env.MISSION_AI_DEFAULT_DEVICE_ID = previous;
   }
