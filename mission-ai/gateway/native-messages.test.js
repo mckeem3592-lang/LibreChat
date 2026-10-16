@@ -397,6 +397,8 @@ test('multi-step screenshot history fits the bounded image transport without est
   const value = normalizeAnthropicMessages(request({ messages: [{ role: 'user', content: screenshots }] }));
   assert.equal(value.imageInputTokens, 5 * 4784);
   assert(anthropicReservationPrompt(value.body).length < 2000);
+  assert.equal(value.body.messages[0].content[0].source.data.length, 262144,
+    'cost projection must not mutate bytes sent to the provider');
   assert.throws(() => normalizeAnthropicMessages(request({ messages: [{ role: 'user', content: 'x'.repeat(1048576) }] })), /native_request_too_large/);
 });
 

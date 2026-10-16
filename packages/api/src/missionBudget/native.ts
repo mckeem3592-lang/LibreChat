@@ -48,6 +48,7 @@ export interface NativeBridgeDependencies {
     pricing: unknown,
   ) => { totalUsd: number; pricingVerifiedOn?: string | null };
   fetchImpl: (url: string, init: RequestInit) => Promise<Pick<Response, 'status' | 'json'> & {
+    body?: ReadableStream<Uint8Array> | null;
     headers?: { get(name: string): string | null };
   }>;
   providerKey: string;
@@ -103,6 +104,46 @@ const MAX_BODY_BYTES = 1_048_576;
 const MAX_OUTPUT_TOKENS = 32_768;
 const PROVIDER_TIMEOUT_MS = 30_000;
 const UPSTREAM_URL = 'https://api.openai.com/v1/chat/completions';
+
+/** Real fetch responses are read under the existing protocol ceiling before JSON parsing. */
+async function readProviderJson(response: Pick<Response, 'json'> & {
+  body?: ReadableStream<Uint8Array> | null;
+  headers?: { get(name: string): string | null };
+}, controller: AbortController): Promise<unknown> {
+  const length = response.headers?.get('content-length');
+  if (length != null && /^\d+$/.test(length) && Number(length) > MAX_BODY_BYTES) {
+    controller.abort();
+    fail('native_provider_response_invalid', 502);
+  }
+  // In-memory test transports supply json() without a response stream.
+  if (response.body === undefined) return response.json();
+  if (response.body === null) fail('native_provider_response_invalid', 502);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_BODY_BYTES) {
+        controller.abort();
+        void reader.cancel().catch(() => {});
+        fail('native_provider_response_invalid', 502);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+}
 const ALLOWED_FIELDS = new Set([
   'model', 'messages', 'max_tokens', 'max_completion_tokens', 'n', 'service_tier',
   'stream', 'stream_options', 'tools', 'tool_choice', 'parallel_tool_calls',
@@ -488,7 +529,7 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
                 requestId: providerRequestId(upstream.headers),
               } : undefined);
             }
-            const raw = await upstream.json();
+            const raw = await readProviderJson(upstream, controller);
             return provider === 'anthropic' ? anthropicUsage(raw, model) : responseUsage(raw, model);
           })(),
           new Promise<never>((_resolve, reject) => {
