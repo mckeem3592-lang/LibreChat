@@ -8,13 +8,13 @@ import {
   resolveInlineMedia,
   toAbsoluteFilePath,
 } from '~/utils';
+import { getEditedDocumentFilename, getEditedDocumentLink } from '~/utils/editedDocumentLink';
 import Mermaid, { MermaidErrorBoundary } from '~/components/Messages/Content/Mermaid';
 import { useCodeBlockContext, useMediaContext } from '~/Providers';
 import CodeBlock from '~/components/Messages/Content/CodeBlock';
 import useHasAccess from '~/hooks/Roles/useHasAccess';
 import { useFileDownload } from '~/data-provider';
 import { useLocalize } from '~/hooks';
-import { getEditedDocumentFilename, getEditedDocumentLink } from '~/utils/editedDocumentLink';
 import store from '~/store';
 
 type TCodeProps = {
@@ -149,9 +149,11 @@ export const a: React.ElementType = memo(function MarkdownAnchor({ href, childre
         if (!(response.data instanceof Blob) || response.data.size === 0) {
           throw new Error('Edited document response was empty');
         }
+        const disposition = response.headers['content-disposition'];
+        const contentType = response.headers['content-type'];
         const filename = getEditedDocumentFilename(
-          response.headers['content-disposition'],
-          response.headers['content-type'],
+          typeof disposition === 'string' ? disposition : undefined,
+          typeof contentType === 'string' ? contentType : undefined,
           editedDocument.fileId,
         );
         triggerDownload(URL.createObjectURL(response.data), filename);

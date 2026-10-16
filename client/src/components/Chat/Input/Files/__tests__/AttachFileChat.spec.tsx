@@ -30,12 +30,10 @@ let mockFileConfigDataPresent = true;
 
 jest.mock('~/data-provider', () => ({
   useGetEndpointsQuery: () => ({ data: mockEndpointsConfig }),
-  useGetFileConfig: ({ select }: { select?: (data: unknown) => unknown }) => ({
-    data: mockFileConfigDataPresent
-      ? (select != null ? select(mockFileConfig) : mockFileConfig)
-      : null,
-    isSuccess: mockFileConfigLoaded,
-  }),
+  useGetFileConfig: ({ select }: { select?: (data: unknown) => unknown }) => {
+    const data = select != null ? select(mockFileConfig) : mockFileConfig;
+    return { data: mockFileConfigDataPresent ? data : null, isSuccess: mockFileConfigLoaded };
+  },
   useGetAgentByIdQuery: () => ({ data: mockAgentQueryData }),
 }));
 
@@ -320,7 +318,7 @@ describe('AttachFileChat upload config gating', () => {
     mockFileConfigDataPresent = true;
   });
 
-  it('leaves the attach menu inert' until the file config resolves', () => {
+  it('leaves the attach menu inert until the file config resolves', () => {
     /* The menu is an action, not just a display: offering the chooser here submits an
      * explicit destination a unified deployment would have inferred, and after a failed
      * fetch it would keep offering it. */
