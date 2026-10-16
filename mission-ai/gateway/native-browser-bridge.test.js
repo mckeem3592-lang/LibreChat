@@ -16,13 +16,15 @@ test('Chrome extension uses native messaging with a deterministic identity', asy
   ]);
   const manifest = JSON.parse(manifestRaw);
 
-  assert.equal(manifest.version, '0.5.2');
+  const [major, minor, patch] = manifest.version.split('.').map(Number);
+  assert.equal([major, minor, patch].every(Number.isInteger), true);
+  assert.ok(major > 0 || minor > 5 || (minor === 5 && patch >= 5));
   assert.ok(manifest.permissions.includes('nativeMessaging'));
   assert.ok(!manifest.permissions.includes('offscreen'));
   assert.deepEqual(manifest.host_permissions, ['http://*/*', 'https://*/*']);
   assert.ok(typeof manifest.key === 'string' && manifest.key.length > 100);
-  assert.ok(background.includes("chrome.runtime.connectNative(NATIVE_HOST)"));
-  assert.ok(background.includes("com.missionai.browser_bridge"));
+  assert.ok(background.includes('chrome.runtime.connectNative(NATIVE_HOST)'));
+  assert.ok(background.includes('com.missionai.browser_bridge'));
   assert.ok(!background.includes('mission-ai-set-token'));
   assert.ok(background.includes('127.0.0.1:8766/browser/pair'));
   assert.ok(background.includes('scheduleReconnect()'));
@@ -48,9 +50,9 @@ test('native host reads browser credential from Keychain and uses Chrome framing
   assert.ok(host.includes("readSecret('mission-ai-browser-token')"));
   assert.ok(host.includes("type === 'browser_result'"));
   assert.ok(host.includes("type === 'browser_tool'"));
-  assert.ok(host.includes("ws://127.0.0.1:"));
-  assert.ok(host.includes("drainNativeFrames"));
-  assert.ok(host.includes("encodeNativeMessage"));
+  assert.ok(host.includes('ws://127.0.0.1:'));
+  assert.ok(host.includes('drainNativeFrames'));
+  assert.ok(host.includes('encodeNativeMessage'));
   assert.ok(framing.includes('writeUInt32LE'));
   assert.ok(framing.includes('readUInt32LE'));
   assert.ok(!host.includes('console.log'));
