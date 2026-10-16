@@ -161,7 +161,7 @@ const logSafeApprovalFailure = (error: unknown): void => {
     typeof rawCode === 'string' && /^[a-zA-Z0-9_]{1,64}$/.test(rawCode)
       ? rawCode
       : 'unavailable';
-  console.warn('Mission AI approval request failed', { status, code });
+  console.warn(`Mission AI approval request failed status=${status} code=${code}`);
 };
 
 /**

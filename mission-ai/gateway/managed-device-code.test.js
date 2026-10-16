@@ -113,4 +113,15 @@ test('a paused coding action resumes only with the same attached workspace', () 
     body: structuredClone(resume.body) });
   changed.body.codeWorkspaces[0].workspaceId = 'other';
   assert.equal(run(admission, changed).status, 403);
+
+  const withoutMcp = request({ originalUrl: '/api/agents/chat/resume',
+    body: structuredClone(resume.body) });
+  withoutMcp.body.ephemeralAgent.mcp = [];
+  assert.equal(run(admission, withoutMcp).next, 1);
+  assert.equal(run(guard, withoutMcp).next, 1);
+
+  const unknownMcp = request({ originalUrl: '/api/agents/chat/resume',
+    body: structuredClone(resume.body) });
+  unknownMcp.body.ephemeralAgent.mcp = ['unreviewed-server'];
+  assert.equal(run(admission, unknownMcp).status, 403);
 });
