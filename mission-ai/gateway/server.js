@@ -3,7 +3,7 @@ import http from 'node:http';
 import express from 'express';
 import WebSocket, { WebSocketServer } from 'ws';
 import { pairDevice, authorizeDeviceCredential } from './pairing.js';
-import { providerStatus } from './providers.js';
+import { providerConfig, providerStatus } from './providers.js';
 import { handleRoute } from './route-handler.js';
 import { buildReadiness } from './readiness.js';
 import { queryMissionDashboard } from './mission-dashboard.js';
@@ -28,6 +28,7 @@ import {
 import { acceptanceWindow } from './acceptance-window.js';
 import { createAcceptanceImage } from './acceptance-image.js';
 import { createMongoAcceptanceStore } from './paid-acceptance.js';
+import { deviceMcpAllowedTools } from './device-tool-catalog.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const DEVICE_TOKEN = process.env.MISSION_AI_DEVICE_TOKEN || '';
@@ -555,13 +556,17 @@ const mcpOptions = {
   getSearchStatus: freeSearch.status,
 };
 const missionMcp = createMissionMcpNodeHandler(mcpOptions);
+const imageWindow = acceptanceWindow(process.env)?.scope === 'final-workflows';
+const imageMongo = mongoConfiguration();
+const imageBudgetReady = providerConfig('google')?.hasApiKey &&
+  ((process.env.MISSION_AI_DELEGATION_ENABLED === 'true' &&
+    imageMongo.nativeConfigured && imageMongo.ledgerConfigured) || imageWindow);
 const deviceMcp = createMissionMcpNodeHandler({
   ...mcpOptions,
-  allowedTools: new Set(['mission_readiness', 'browser_list_tabs', 'browser_activate_tab', 'browser_open_new_tab',
-    'browser_close_tabs', 'browser_get_state', 'browser_click', 'browser_type',
-    'browser_scroll', 'browser_open_url', 'file_list', 'file_read', 'file_write',
-    'file_move', 'mac_active_app', 'mac_open_app', 'mac_screenshot', 'mac_click',
-    'mac_type', 'mac_key']),
+  allowedTools: deviceMcpAllowedTools({
+    imageEnabled: process.env.MISSION_AI_DEVICE_IMAGE_ENABLED === 'true',
+    imageBudgetReady,
+  }),
 });
 
 /* -------------------------------------------------------------------------- */
