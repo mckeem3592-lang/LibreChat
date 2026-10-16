@@ -412,6 +412,12 @@ async function dispatch(tool, args, deadlineMs) {
     case 'repo.check':
       if (!scopedRepo) throw new Error('repo_not_configured');
       return await scopedRepo.check(args);
+    case 'repo.start_check':
+      if (!scopedRepo) throw new Error('repo_not_configured');
+      return await scopedRepo.startCheck(args);
+    case 'repo.check_status':
+      if (!scopedRepo) throw new Error('repo_not_configured');
+      return scopedRepo.checkStatus(args);
     default:
       throw new Error('tool_not_allowed');
   }

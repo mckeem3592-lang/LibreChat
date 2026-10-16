@@ -548,6 +548,22 @@ export function createMissionMcpNodeHandler({
       catch (error) { return errorResult(error); }
     });
 
+    registerTool('repo_start_check', {
+      description: 'Start one locally configured repository check on the paired device and return a job ID immediately. The check continues across a gateway disconnect while the companion stays running; poll repo_check_status for the actual result.',
+      inputSchema: z.object({ deviceId: z.string().optional(), checkId: z.string().min(1).max(100) }),
+    }, async ({ deviceId, checkId }) => {
+      try { return textResult(await invoke(defaultDeviceId(deviceId), 'repo.start_check', { checkId })); }
+      catch (error) { return errorResult(error); }
+    });
+
+    registerTool('repo_check_status', {
+      description: 'Get the running or terminal result of one repository check job on the paired device. Results are retained in companion memory for up to one hour or 20 jobs; a restart loses them.',
+      inputSchema: z.object({ deviceId: z.string().optional(), jobId: z.string().uuid() }),
+    }, async ({ deviceId, jobId }) => {
+      try { return textResult(await invoke(defaultDeviceId(deviceId), 'repo.check_status', { jobId })); }
+      catch (error) { return errorResult(error); }
+    });
+
     registerTool(
       'mac_active_app',
       {

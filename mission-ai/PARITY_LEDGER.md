@@ -1,6 +1,6 @@
 # Mission AI functional parity ledger
 
-Last reviewed: 2026-10-16. Baseline: `mission-ai-v1` at `744a31a53` (PR #68).
+Last reviewed: 2026-10-16. Baseline: `mission-ai-v1` at `234381b3` (PR #69).
 Deployment: `mission-ai-chat-test-mckee` and `mission-ai-gateway-mckee` on Render.
 
 The goal is to complete practical ChatGPT-like work with a manually selected
@@ -13,10 +13,10 @@ identified as such; it is not a fresh acceptance test.
 
 | ID / workflow | Current implementation | Missing step | Windows status | Mac status | End-to-end result | Blocker |
 | --- | --- | --- | --- | --- | --- | --- |
-| C1: inspect scoped repository | Attached Code API, pinned `primary` Mac worker; new Windows companion `repo_list`/`repo_read` bridge with explicit local root | Deploy/install new bridge; confirm worker build and repeat a model read | Native upstream code worker unsupported; Windows companion bridge passed offline list/read, not installed/live yet | PR #40 reported successful Claude read of checkout `package.json`; current Mac worker disconnected in checked window | **Offline Windows bridge pass; partial prior Mac model success** | Paid model call for fresh E2E; Mac worker connection/version; Windows companion update |
-| C2: edit repository files | Mac code worker `write_file` and patch preview; new Windows `repo_write` requires prior sha256 | Deploy/install bridge; prove model edit/readback/diff/undo | Disposable repository edit/readback passed offline; no live model action | Headless worker refuses mutations; detached `screen` helper requires exact local digest approval | **Offline Windows bridge pass; no complete model edit** | Paid model call, local Mac approval, Windows companion update |
-| C3: run checks and report changes | Mac Code API command execution; new Windows `repo_check` only runs checks in local owner settings | Deploy/install bridge; run model-selected check and verify response cites real changes | Disposable Git diff check failed as expected and returned its actual exit/output offline | Commands require detached worker and local exact-action approval | **Offline Windows check pass; model summary unverified** | Paid model call, local Mac approval, Windows companion update |
-| C4: continue long coding work in background | Agent jobs and Code API have stateful sessions; chat has context pruning | Persist/resume an actual coding job across disconnect/restart; report terminal state | No coding worker | Worker connection and daemon are designed to persist, but mutating job awaits local operator | **Unverified** | No no-cost model-run test; approval and job recovery unproven |
+| C1: inspect scoped repository | Attached Code API, pinned `primary` Mac worker; Windows companion `repo_list`/`repo_read` with explicit local root | Repeat a selected-model read on deployed head | Windows installed bridge listed checkout and read `package.json`; gateway advertised `repo.scoped` at 14:41:56 UTC | PR #40 reported successful Claude read of checkout `package.json`; current Mac worker disconnected in checked window | **Installed Windows no-model pass; partial prior Mac model success** | Paid model call for fresh E2E; Mac worker connection/version |
+| C2: edit repository files | Mac code worker `write_file` and patch preview; Windows `repo_write` requires prior sha256 | Prove deployed model edit/readback/diff/undo | Disposable repository edit/readback passed offline; installed live edit intentionally untried | Headless worker refuses mutations; detached `screen` helper requires exact local digest approval | **Offline Windows bridge pass; no complete model edit** | Paid model call and local Mac approval |
+| C3: run checks and report changes | Mac Code API command execution; Windows `repo_check` only runs locally named checks | Run model-selected check and verify response cites real changes | Disposable Git diff check failed as expected and returned actual exit/output; installed `status` returned exit 0 | Commands require detached worker and local exact-action approval | **Offline and installed Windows check pass; model summary unverified** | Paid model call and local Mac approval |
+| C4: continue long coding work in background | Core agent jobs/checkpointer code exists; active profile lacks `run_in_background`; new Windows check job under development | Prove check job across gateway disconnect; persist/resume an actual model coding job across restart and report terminal state | No persistent model coding worker; offline check-job test passed | Worker connection/daemon designed to persist, but mutating job awaits local operator | **Check job offline pass; model background task unverified** | Active profile gate, paid model E2E, Mac approval, durable job recovery |
 | F1: scoped local file read/write | Device MCP `file_read`/`file_write`; companion confines paths and approvals | Read, mutate, reopen, and confirm ownership on each OS | `windows-work` reconnected after gateway deploy and advertised `files.scoped`; action unverified | `mac-primary` disconnected during deploy and did not reconnect in the checked window | **Unverified full cycle** | Signed-in model call and paired-device acceptance |
 | F2: upload and analyze documents | PDF/DOCX/XLSX text extraction; bounded upload; optional Local Documents MCP | Verify correct extraction and response against source; make general uploads durable | Browser upload available, Local Documents endpoint availability unknown | Local Documents bridge exists; per-user tool availability not proved | **Partial implementation** | Paid model acceptance; local uploads are instance-local |
 | F3: create/edit/download DOCX, XLSX, PPTX, PDF | Edited-byte GridFS, owner-scoped publisher/download, Office validation, XLSX creator | Format-by-format create, edit, render/open, redeploy, download acceptance | Web client should work, local document editor not established | Local Documents bridge; PR #43 fixed first-response XLSX link | **Partial prior XLSX/document runs; suite incomplete** | Paid model call, connected document tool, render/open checks |
@@ -37,8 +37,8 @@ identified as such; it is not a fresh acceptance test.
 
 ## Current acceptance sequence
 
-1. Deploy and install the Windows scoped repository bridge, then validate its
-   MCP route against a disposable repository. Finish C4 and test Mac separately.
+1. Finish and deploy the Windows background check job, then validate it across
+   a gateway disconnect. Complete C4's model job separately and test Mac.
    Model-driven acceptance remains unverified until a paid call is permitted.
 2. Repair the proven schedule trigger contract before creating any recurring AI
    task. A one-shot no-provider delivery test may exercise the transport.
@@ -53,11 +53,13 @@ The chat startup log on 2026-10-16 showed `runCode: true`, schedules exposed,
 533 MB against a 537 MB limit; the cause is not proven. The schedule trigger
 returned HTTP 200 with `body=non_json`, `start=missing`, `conversation=false`,
 then dead-lettered. PR #68 is a bounded-memory fix, not proof of OOM resolution.
-The PR #68 gateway deploy disconnected both paired devices at 14:28 UTC;
-`windows-work` reconnected with browser and scoped-file capabilities, while a
-Mac reconnect was not observed in the checked logs. Gateway startup reported
-code-worker status unavailable. These are connection observations, not action
-acceptance.
+The PR #69 gateway deploy `dep-db93emk9v7es73edca80` is live at
+`234381b3`. The updated Windows companion reconnected at 14:41:54 UTC and
+advertised browser, file and `repo.scoped` capabilities at 14:41:56 UTC. Its
+installed module listed 38 checkout entries, read `package.json` and returned
+exit 0 for the locally named `status` check. Those are no-model observations,
+not model task acceptance. Mac worker connectivity and action acceptance are
+still unverified.
 
 The pinned upstream [code worker](https://github.com/LibreChat-AI/code-interpreter/blob/67d75d859aee891923c40cde1db073489d74a424/packages/code/README.md)
 does not support native Windows; it documents WSL2 on a native Linux filesystem

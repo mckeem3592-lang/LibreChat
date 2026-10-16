@@ -20,6 +20,8 @@ const DEVICE_TOOLS = [
   'repo_read',
   'repo_write',
   'repo_check',
+  'repo_start_check',
+  'repo_check_status',
   'mac_active_app',
   'mac_open_app',
   'mac_screenshot',

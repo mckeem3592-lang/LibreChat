@@ -30,6 +30,7 @@ export function createScopedRepo(config = {}, { run = execFileAsync } = {}) {
   const checks = config?.checks ?? {};
   if (typeof configured !== 'string' || !path.isAbsolute(configured)) return null;
   if (!checks || typeof checks !== 'object' || Array.isArray(checks)) throw new Error('repo_checks_invalid');
+  const jobs = new Map();
 
   async function root() {
     const resolved = await realpath(configured);
@@ -54,6 +55,30 @@ export function createScopedRepo(config = {}, { run = execFileAsync } = {}) {
     } catch (error) {
       if (allowNew && error?.code === 'ENOENT') return { base, full, exists: false };
       throw error;
+    }
+  }
+
+  async function runCheck({ checkId }) {
+    if (typeof checkId !== 'string' || !Object.hasOwn(checks, checkId)) throw new Error('repo_check_not_allowed');
+    const spec = checks[checkId];
+    if (!spec || typeof spec !== 'object' || typeof spec.command !== 'string' ||
+        !Array.isArray(spec.args) || !spec.args.every(arg => typeof arg === 'string') ||
+        spec.command.includes('/') || spec.command.includes('\\')) throw new Error('repo_check_invalid');
+    const timeoutMs = spec.timeoutMs ?? 120_000;
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 1_800_000) {
+      throw new Error('repo_check_invalid');
+    }
+    const cwd = await root();
+    try {
+      const { stdout, stderr } = await run(spec.command, spec.args, {
+        cwd, timeout: timeoutMs, maxBuffer: MAX_OUTPUT, windowsHide: true,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+      });
+      return { checkId, exitCode: 0, stdout: String(stdout).slice(0, MAX_OUTPUT), stderr: String(stderr).slice(0, MAX_OUTPUT) };
+    } catch (error) {
+      return { checkId, exitCode: Number.isInteger(error?.code) ? error.code : null,
+        stdout: String(error?.stdout ?? '').slice(0, MAX_OUTPUT),
+        stderr: String(error?.stderr ?? error?.message ?? '').slice(0, MAX_OUTPUT) };
     }
   }
 
@@ -89,24 +114,41 @@ export function createScopedRepo(config = {}, { run = execFileAsync } = {}) {
       await writeFile(full, text, { flag: exists ? 'w' : 'wx' });
       return { path: relativePath, sha256: digest(Buffer.from(text)), created: !exists };
     },
-    async check({ checkId }) {
+    check: runCheck,
+    async startCheck({ checkId }) {
       if (typeof checkId !== 'string' || !Object.hasOwn(checks, checkId)) throw new Error('repo_check_not_allowed');
-      const spec = checks[checkId];
-      if (!spec || typeof spec !== 'object' || typeof spec.command !== 'string' ||
-          !Array.isArray(spec.args) || !spec.args.every(arg => typeof arg === 'string') ||
-          spec.command.includes('/') || spec.command.includes('\\')) throw new Error('repo_check_invalid');
-      const cwd = await root();
-      try {
-        const { stdout, stderr } = await run(spec.command, spec.args, {
-          cwd, timeout: 120_000, maxBuffer: MAX_OUTPUT, windowsHide: true,
-          env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-        });
-        return { checkId, exitCode: 0, stdout: String(stdout).slice(0, MAX_OUTPUT), stderr: String(stderr).slice(0, MAX_OUTPUT) };
-      } catch (error) {
-        return { checkId, exitCode: Number.isInteger(error?.code) ? error.code : null,
-          stdout: String(error?.stdout ?? '').slice(0, MAX_OUTPUT),
-          stderr: String(error?.stderr ?? error?.message ?? '').slice(0, MAX_OUTPUT) };
+      if ([...jobs.values()].some(job => job.status === 'running')) throw new Error('repo_check_busy');
+      await root();
+      for (const [id, job] of jobs) {
+        if (job.status !== 'running' && Date.now() - job.finishedAt > 3_600_000) jobs.delete(id);
       }
+      if (jobs.size >= 20) {
+        const oldest = jobs.keys().next().value;
+        jobs.delete(oldest);
+      }
+      const jobId = crypto.randomUUID();
+      const job = { checkId, status: 'running', startedAt: Date.now() };
+      jobs.set(jobId, job);
+      void runCheck({ checkId }).then(result => {
+        job.status = result.exitCode === 0 ? 'completed' : 'failed';
+        job.result = result;
+        job.finishedAt = Date.now();
+      }, error => {
+        job.status = 'failed';
+        job.result = { checkId, exitCode: null, stdout: '', stderr: String(error?.message ?? error) };
+        job.finishedAt = Date.now();
+      });
+      return { jobId, status: 'running', checkId };
+    },
+    checkStatus({ jobId }) {
+      if (typeof jobId !== 'string' || !/^[0-9a-f-]{36}$/.test(jobId)) throw new Error('repo_job_not_found');
+      const job = jobs.get(jobId);
+      if (!job) throw new Error('repo_job_not_found');
+      if (job.status !== 'running' && Date.now() - job.finishedAt > 3_600_000) {
+        jobs.delete(jobId);
+        throw new Error('repo_job_not_found');
+      }
+      return { jobId, ...job };
     },
   };
 }
