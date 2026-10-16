@@ -10,6 +10,22 @@ const AGENT_NAME = 'Mission AI Scheduled Tasks';
 const AGENT_INSTRUCTIONS =
   "Complete the owner's scheduled prompt. Report what you actually did and any unmet requirement. Do not claim a tool action occurred unless its result confirms it.";
 
+const SAFE_BOOTSTRAP_ERRORS = new Set([
+  'invalid_schedule_bootstrap_settings',
+  'wrong_database',
+  'owner_identity_unavailable',
+  'agent_viewer_role_unavailable',
+  'schedule_agent_changed',
+  'schedule_agent_acl_changed',
+  'schedule_agent_acl_scope_changed',
+]);
+
+function bootstrapFailureCode(error) {
+  return SAFE_BOOTSTRAP_ERRORS.has(error?.message)
+    ? error.message
+    : 'schedule_agent_bootstrap_failed';
+}
+
 function expectedAgent(id, owner) {
   return {
     id,
@@ -188,11 +204,11 @@ async function main() {
 }
 
 if (require.main === module) {
-  main().catch(() => {
+  main().catch((error) => {
     // Keep credentials, emails, IDs, and database details out of deployment logs.
-    console.error(JSON.stringify({ status: 'failed', code: 'schedule_agent_bootstrap_failed' }));
+    console.error(JSON.stringify({ status: 'failed', code: bootstrapFailureCode(error) }));
     process.exitCode = 1;
   });
 }
 
-module.exports = { expectedAgent, isPinnedAgent, main };
+module.exports = { expectedAgent, isPinnedAgent, bootstrapFailureCode, main };
