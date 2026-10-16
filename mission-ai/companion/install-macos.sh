@@ -6,9 +6,11 @@ ROOT_DIR="$HOME/Library/Application Support/MissionAI/Bridge"
 EXTENSION_DIR="$HOME/Library/Application Support/MissionAI/ChromeExtension"
 if [[ "$SOURCE_DIR" != "$ROOT_DIR" ]]; then
   mkdir -p "$ROOT_DIR" "$EXTENSION_DIR"
-  cp "$SOURCE_DIR"/*.js "$SOURCE_DIR"/package.json "$SOURCE_DIR"/package-lock.json \
+  cp "$SOURCE_DIR"/*.js "$SOURCE_DIR"/*.mjs "$SOURCE_DIR"/package.json "$SOURCE_DIR"/package-lock.json \
     "$SOURCE_DIR"/pair-macos.sh "$SOURCE_DIR"/install-macos.sh "$ROOT_DIR/"
   /usr/bin/ditto "$SOURCE_DIR/../chrome-extension" "$EXTENSION_DIR"
+else
+  echo "Running from the installed Bridge folder; this does not copy a newer Chrome extension. Run the installer from a new setup package to update it."
 fi
 ENV_FILE="$ROOT_DIR/.env"
 PLIST="$HOME/Library/LaunchAgents/com.missionai.companion.plist"
@@ -148,3 +150,4 @@ echo "Long-lived credentials are stored in macOS Keychain, not the LaunchAgent."
 echo "Logs: $LOG_DIR"
 echo "Chrome native messaging host installed for Mission AI Browser Bridge."
 echo "Next: Chrome > Extensions > Developer mode > Load unpacked > $EXTENSION_DIR"
+"$NODE_PATH" "$ROOT_DIR/extension-registration.mjs" "$EXTENSION_DIR"

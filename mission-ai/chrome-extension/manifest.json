@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Mission AI Browser Bridge",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Lets the local Mission AI companion work with selected Chrome tabs in the background.",
   "permissions": [
     "activeTab",

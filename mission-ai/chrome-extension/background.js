@@ -1,4 +1,5 @@
 import { createSnapshot, pageUrlAllowed, validateSnapshot } from './browser-snapshot.js';
+import { collectPageState, PAGE_ELEMENT_SELECTOR } from './browser-page-state.js';
 
 const NATIVE_HOST = 'com.missionai.browser_bridge';
 let latestSnapshot = null;
@@ -201,43 +202,7 @@ async function execute(tool, args) {
 
   if (tool === 'browser.get_state') {
     const tab = await selectedTab(args, { requireWeb: true });
-    const page = await execInTab(tab, () => {
-      const keyFor = (el) => {
-        const tag = el.tagName.toLowerCase();
-        const type = el.getAttribute('type') || '';
-        const name = el.getAttribute('name') || '';
-        const aria = el.getAttribute('aria-label') || '';
-        const text = (
-          el.innerText ||
-          el.getAttribute('placeholder') ||
-          ''
-        ).trim().slice(0, 120);
-        return [tag, type, name, aria, text].join('|').slice(0, 400);
-      };
-
-      const elements = [...document.querySelectorAll('a,button,input,textarea,select,[role="button"],[contenteditable="true"],[role="textbox"]')]
-        .slice(0, 300)
-        .map((el, index) => ({
-          index,
-          key: keyFor(el),
-          tag: el.tagName.toLowerCase(),
-          text: (
-            el.innerText ||
-            el.getAttribute('aria-label') ||
-            el.getAttribute('placeholder') ||
-            ''
-          ).trim().slice(0, 200),
-          type: el.getAttribute('type') || null,
-          disabled: 'disabled' in el ? Boolean(el.disabled) : false,
-        }));
-
-      return {
-        title: document.title,
-        url: location.href,
-        text: document.body?.innerText?.slice(0, 40_000) || '',
-        elements,
-      };
-    });
+    const page = await execInTab(tab, collectPageState, [PAGE_ELEMENT_SELECTOR]);
 
     const snapshot = createSnapshot({
       id: crypto.randomUUID(),
@@ -264,9 +229,9 @@ async function execute(tool, args) {
       throw new Error('browser_element_reference_required');
     }
 
-    const result = await execInTab(tab, (elementIndex, elementKey, expectedUrl) => {
+    const result = await execInTab(tab, (elementIndex, elementKey, expectedUrl, selector) => {
       if (location.href !== expectedUrl) throw new Error('browser_snapshot_stale');
-      const all = [...document.querySelectorAll('a,button,input,textarea,select,[role="button"],[contenteditable="true"],[role="textbox"]')]
+      const all = [...document.querySelectorAll(selector)]
         .slice(0, 300);
       const el = all[elementIndex];
       if (!el) throw new Error('element_not_found');
@@ -287,7 +252,7 @@ async function execute(tool, args) {
       el.scrollIntoView({ block: 'center', inline: 'center' });
       el.click();
       return { clicked: elementIndex };
-    }, [index, expectedKey, snapshot.url]);
+    }, [index, expectedKey, snapshot.url, PAGE_ELEMENT_SELECTOR]);
 
     latestSnapshot = null;
     return result;
@@ -304,9 +269,9 @@ async function execute(tool, args) {
     }
     if (value.length > 20_000) throw new Error('text_too_long');
 
-    const result = await execInTab(tab, (elementIndex, elementKey, text, expectedUrl) => {
+    const result = await execInTab(tab, (elementIndex, elementKey, text, expectedUrl, selector) => {
       if (location.href !== expectedUrl) throw new Error('browser_snapshot_stale');
-      const all = [...document.querySelectorAll('a,button,input,textarea,select,[role="button"],[contenteditable="true"],[role="textbox"]')]
+      const all = [...document.querySelectorAll(selector)]
         .slice(0, 300);
       const el = all[elementIndex];
       if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ||
@@ -346,7 +311,7 @@ async function execute(tool, args) {
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
       return { typed: elementIndex, length: text.length };
-    }, [index, expectedKey, value, snapshot.url]);
+    }, [index, expectedKey, value, snapshot.url, PAGE_ELEMENT_SELECTOR]);
 
     latestSnapshot = null;
     return result;
