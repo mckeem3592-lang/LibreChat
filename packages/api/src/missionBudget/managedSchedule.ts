@@ -102,8 +102,12 @@ export function createManagedSchedulePinGuard(options: {
   enabled: boolean;
   agentId?: string;
   getScheduleById: (id: string, userId: string) => Promise<{ agent_id?: string } | null>;
-}) {
-  return async (req: ScheduleRequest, res: ScheduleResponse, next: () => unknown) => {
+}): (req: ScheduleRequest, res: ScheduleResponse, next: () => unknown) => Promise<unknown> {
+  return async (
+    req: ScheduleRequest,
+    res: ScheduleResponse,
+    next: () => unknown,
+  ): Promise<unknown> => {
     if (!options.enabled) return next();
     if (
       !options.agentId ||
