@@ -115,6 +115,52 @@ test('device MCP catalog exposes browser tools without paid delegation or deskto
   }
 });
 
+test('device budget snapshot excludes detailed spending and other private fields', async () => {
+  const handler = createMissionMcpNodeHandler({
+    allowedTools: deviceMcpAllowedTools(),
+    getDashboard: async () => ({
+      monthStart: '2026-10-01T06:00:00.000Z',
+      accountingMode: 'shared',
+      spendUsd: 0.21,
+      projectedSpendUsd: 0.23,
+      remainingUsd: 9.77,
+      reservedUsd: 0.02,
+      hardUsd: 10,
+      byProject: [{ project: 'private-project', spendUsd: 0.21 }],
+      native: { secret: 'never-return' },
+    }),
+    audit: () => {},
+  });
+  const { server, url } = await listen(handler);
+  const client = new Client({ name: 'mission-ai-budget-snapshot-test', version: '1.0.0' });
+  try {
+    await client.connect(new StreamableHTTPClientTransport(url));
+    const tools = (await client.listTools()).tools.map((tool) => tool.name);
+    assert.equal(tools.includes('mission_budget_snapshot'), true);
+    assert.equal(tools.includes('mission_cost_dashboard'), false);
+    const result = await client.callTool({ name: 'mission_budget_snapshot', arguments: {} });
+    assert.equal(result.isError, undefined);
+    const body = JSON.parse(result.content.find((block) => block.type === 'text').text);
+    assert.deepEqual(body, {
+      ok: true,
+      snapshot: {
+        monthStart: '2026-10-01T06:00:00.000Z',
+        accountingMode: 'shared',
+        spendUsd: 0.21,
+        projectedSpendUsd: 0.23,
+        remainingUsd: 9.77,
+        reservedUsd: 0.02,
+        hardUsd: 10,
+      },
+    });
+    assert.equal(JSON.stringify(body).includes('private-project'), false);
+    assert.equal(JSON.stringify(body).includes('never-return'), false);
+  } finally {
+    await client.close().catch(() => {});
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('opted-in device catalog exposes only the budget-backed image action', async () => {
   const calls = [];
   const handler = createMissionMcpNodeHandler({
