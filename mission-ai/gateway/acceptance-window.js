@@ -22,6 +22,6 @@ export function acceptanceWindow(env, now = new Date()) {
   return { ceilingUsd: baseline + allowance, expiresAt: new Date(end).toISOString(), scope,
     ...(workflows ? { runId: env.MISSION_AI_ACCEPTANCE_RUN_ID } : {}), maxOutputTokens: 256,
     allowedToolNames: workflows ? ['read_file', 'write_file', 'execute_command',
-      'browser_list_tabs_mcp_mission-ai', 'mac_screenshot_mcp_mission-ai',
-      'mission_generate_image_mcp_mission-ai'] : ['read_file'] };
+      'browser_list_tabs_mcp_mission-ai-device', 'mac_screenshot_mcp_mission-ai-device',
+      'mission_generate_image_mcp_mission-ai-device'] : ['read_file'] };
 }

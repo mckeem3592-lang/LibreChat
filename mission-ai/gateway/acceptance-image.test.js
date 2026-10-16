@@ -29,6 +29,12 @@ async function fixture(changes = {}) {
 }
 test('workflow window requires explicit scope, run identity, disabled general gates and at most fifty cents',()=>{
  assert.equal(acceptanceWindow(env,now).ceilingUsd,.594592775);
+ assert.deepEqual(acceptanceWindow(env,now).allowedToolNames, [
+  'read_file', 'write_file', 'execute_command',
+  'browser_list_tabs_mcp_mission-ai-device',
+  'mac_screenshot_mcp_mission-ai-device',
+  'mission_generate_image_mcp_mission-ai-device',
+ ]);
  for(const change of [{MISSION_AI_ACCEPTANCE_SCOPE:'anything'},{MISSION_AI_ACCEPTANCE_RUN_ID:''},
   {MISSION_AI_DELEGATION_ENABLED:'true'},{MISSION_AI_ACCEPTANCE_ALLOWANCE_USD:'.501'}])
   assert.equal(acceptanceWindow({...env,...change},now),null);
