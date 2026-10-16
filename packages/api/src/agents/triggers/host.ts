@@ -841,6 +841,7 @@ async function startRun(
       logger.warn(
         `[agent-triggers] invalid success response shape mode=${mode} http=${response.status} ` +
           `body=${responseShape} type=${contentType} redirected=${response.redirected === true} ` +
+          `empty=${boundedBody.text.length === 0} plainOk=${boundedBody.text === 'OK'} ` +
           `start=${responseFields.status} conversation=${responseFields.conversationId} ` +
           `stream=${responseFields.streamId}`,
       );
