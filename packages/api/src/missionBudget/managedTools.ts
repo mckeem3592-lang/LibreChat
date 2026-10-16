@@ -126,11 +126,17 @@ function githubResumeEnvelope(input: unknown, restored = false): Json {
   const coding = GITHUB_DEVICE_CODE && device &&
     body.ephemeralAgent != null && object(body.ephemeralAgent).execute_code === true;
   if (coding) {
-    if (body.codeEnvironmentMode !== 'attached' || body.codeApprovalMode !== 'ask' ||
-        !Array.isArray(body.codeWorkspaces) || body.codeWorkspaces.length !== 1) throw new Error();
-    const workspace = object(body.codeWorkspaces[0]);
-    exactKeys(workspace, ['environmentId', 'workspaceId']);
-    if (workspace.environmentId !== 'attached-workers' || workspace.workspaceId !== 'primary') throw new Error();
+    // The approval UI can omit settings held on the paused conversation. The
+    // resume route replaces them with the owner-scoped, pinned job context,
+    // and the post-restore guard requires the exact attached/ask/primary shape.
+    if (body.codeEnvironmentMode != null && body.codeEnvironmentMode !== 'attached') throw new Error();
+    if (body.codeApprovalMode != null && body.codeApprovalMode !== 'ask') throw new Error();
+    if (body.codeWorkspaces != null) {
+      if (!Array.isArray(body.codeWorkspaces) || body.codeWorkspaces.length !== 1) throw new Error();
+      const workspace = object(body.codeWorkspaces[0]);
+      exactKeys(workspace, ['environmentId', 'workspaceId']);
+      if (workspace.environmentId !== 'attached-workers' || workspace.workspaceId !== 'primary') throw new Error();
+    }
   } else {
     if (body.codeEnvironmentMode != null && body.codeEnvironmentMode !== 'without_attached') throw new Error();
     if (body.codeWorkspaces != null) same(body.codeWorkspaces, []);
