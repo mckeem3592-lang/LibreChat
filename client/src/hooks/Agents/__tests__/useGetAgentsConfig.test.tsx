@@ -15,3 +15,9 @@ it('does not infer workspace access without advertised metadata', () => {
   const { result } = renderHook(() => useGetAgentsConfig());
   expect(result.current.agentsConfig).toBeNull();
 });
+it('uses the owner coding metadata on the paid Claude endpoint', () => {
+  const inlineAgents = { capabilities: ['execute_code', 'stateful_code_sessions'], statefulCodeSessions: { environments: [{ id: 'attached-workers', type: 'attached' }] } };
+  query.mockReturnValue({ data: { MissionAI: {}, MissionAIClaudeCached: { inlineAgents } } });
+  const { result } = renderHook(() => useGetAgentsConfig());
+  expect(result.current.agentsConfig).toEqual(inlineAgents);
+});

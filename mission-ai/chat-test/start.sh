@@ -24,6 +24,7 @@ for variable in $(compgen -e); do
     CODEAPI_JWT_ISSUER|CODEAPI_JWT_AUDIENCE|CODEAPI_JWT_SINGLE_TENANT_ID|MISSION_AI_BOOTSTRAP_OWNER|\
     MISSION_AI_OWNER_EMAIL|MISSION_AI_OWNER_PASSWORD|MISSION_AI_CONTROL_OWNER_EMAIL|MISSION_AI_FREE_BASELINE|\
     MISSION_AI_GITHUB_EDITOR|MISSION_AI_GITHUB_MCP_TOKEN|MISSION_AI_DEVICE_MCP_ENABLED|MISSION_AI_DEVICE_MCP_TOKEN|\
+    MISSION_AI_DEVICE_CODE_ENABLED|\
     MISSION_AI_FREE_TITLES|LOCAL_MCP_PUBLIC_URL|LOCAL_MCP_TOKEN)
       continue ;;
     GOOGLE_KEY)
@@ -69,14 +70,39 @@ native_token="${MISSION_AI_NATIVE_TOKEN-}"
 [[ ${#native_token} -ge 32 && $native_token != *[[:space:]]* ]] ||
   fail 'MISSION_AI_NATIVE_TOKEN must contain at least 32 characters without whitespace'
 
+validate_code_credentials() {
+  local code_token="${MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN-}"
+  [[ ${#code_token} -ge 32 && $code_token != *[[:space:]]* &&
+     $code_token != "$native_token" && $code_token != "${MISSION_AI_TOOL_TOKEN-}" ]] ||
+    fail 'managed coding requires a separate existing Code API pairing credential'
+  [[ ${CODEAPI_AUTH_PROVIDER-} == librechat-jwt ]] ||
+    fail 'managed coding requires principal JWT authentication'
+  node <<'CODEJWT'
+const { createPrivateKey } = require('node:crypto');
+try {
+  const key = createPrivateKey(Buffer.from(process.env.CODEAPI_JWT_PRIVATE_KEY_BASE64 || '', 'base64'));
+  const algorithm = process.env.CODEAPI_JWT_ALGORITHM || 'EdDSA';
+  if ((algorithm === 'EdDSA' && key.asymmetricKeyType !== 'ed25519') ||
+      (algorithm === 'RS256' && (key.asymmetricKeyType !== 'rsa' || key.asymmetricKeyDetails.modulusLength < 2048)) ||
+      !['EdDSA', 'RS256'].includes(algorithm)) throw 0;
+  for (const field of ['CODEAPI_JWT_KID', 'CODEAPI_JWT_ISSUER', 'CODEAPI_JWT_AUDIENCE', 'CODEAPI_JWT_SINGLE_TENANT_ID']) {
+    if (!process.env[field] || process.env[field].length > 256) throw 0;
+  }
+} catch {
+  console.error('Mission AI test chat: reviewed Code API JWT signing and identity settings are required');
+  process.exit(1);
+}
+CODEJWT
+}
+
 case "${MISSION_AI_FREE_BASELINE-false}" in
   true)
     [[ ${MISSION_AI_MANAGED_TOOLS-false} == false ]] ||
       fail 'free baseline verification requires managed tools disabled'
     [[ -n ${GOOGLE_KEY-} && $GOOGLE_KEY != *[[:space:]]* ]] ||
       fail 'free baseline requires GOOGLE_KEY without whitespace'
-    [[ -z ${MISSION_AI_TOOL_TOKEN-} && -z ${MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN-} ]] ||
-      fail 'free baseline does not permit managed tool credentials'
+    [[ -z ${MISSION_AI_TOOL_TOKEN-} ]] ||
+      fail 'free baseline does not permit the managed-tools credential'
     case "${MISSION_AI_GITHUB_EDITOR-false}" in
       true)
         [[ -n ${MISSION_AI_CONTROL_OWNER_EMAIL-} ]] ||
@@ -91,13 +117,26 @@ case "${MISSION_AI_FREE_BASELINE-false}" in
             [[ ${#device_token} -ge 32 && $device_token != *[[:space:]]* &&
                $device_token != "$native_token" ]] ||
               fail 'device MCP requires a distinct private token'
-            managed_config="$repo_dir/mission-ai/config/librechat.github-device.yaml" ;;
+            case "${MISSION_AI_DEVICE_CODE_ENABLED-false}" in
+              true)
+                validate_code_credentials
+                managed_config="$repo_dir/mission-ai/config/librechat.github-device-code.yaml" ;;
+              false)
+                [[ -z ${MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN-} ]] ||
+                  fail 'Code API pairing credential requires the explicit device-code gate'
+                managed_config="$repo_dir/mission-ai/config/librechat.github-device.yaml" ;;
+              *) fail 'MISSION_AI_DEVICE_CODE_ENABLED must be true or false' ;;
+            esac ;;
           false)
+            [[ ${MISSION_AI_DEVICE_CODE_ENABLED-false} == false && -z ${MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN-} ]] ||
+              fail 'device coding requires the device MCP profile'
             [[ -z ${MISSION_AI_DEVICE_MCP_TOKEN-} ]] || fail 'device token requires the explicit device MCP gate'
             managed_config="$repo_dir/mission-ai/config/librechat.github-editor.yaml" ;;
           *) fail 'MISSION_AI_DEVICE_MCP_ENABLED must be true or false' ;;
         esac ;;
       false)
+        [[ ${MISSION_AI_DEVICE_CODE_ENABLED-false} == false && -z ${MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN-} ]] ||
+          fail 'device coding requires the GitHub editor profile'
         [[ -z ${MISSION_AI_GITHUB_MCP_TOKEN-} ]] ||
           fail 'GitHub editor token requires the explicit editor gate'
         [[ ${MISSION_AI_DEVICE_MCP_ENABLED-false} == false && -z ${MISSION_AI_DEVICE_MCP_TOKEN-} ]] ||
@@ -107,6 +146,8 @@ case "${MISSION_AI_FREE_BASELINE-false}" in
     esac
     ;;
   false)
+    [[ ${MISSION_AI_DEVICE_CODE_ENABLED-false} == false ]] ||
+      fail 'device coding requires the free-baseline profile'
     [[ ${MISSION_AI_GITHUB_EDITOR-false} == false && -z ${MISSION_AI_GITHUB_MCP_TOKEN-} ]] ||
       fail 'GitHub editor requires the free-baseline managed profile'
     [[ ${MISSION_AI_DEVICE_MCP_ENABLED-false} == false && -z ${MISSION_AI_DEVICE_MCP_TOKEN-} ]] ||
@@ -126,28 +167,7 @@ case "${MISSION_AI_FREE_BASELINE-false}" in
         tool_token="${MISSION_AI_TOOL_TOKEN-}"
         [[ ${#tool_token} -ge 32 && $tool_token != *[[:space:]]* && $tool_token != "$MISSION_AI_NATIVE_TOKEN" ]] ||
           fail 'managed tools require a separate gateway tool credential'
-        code_token="${MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN-}"
-        [[ ${#code_token} -ge 32 && $code_token != *[[:space:]]* && \
-           $code_token != "$native_token" && $code_token != "$tool_token" ]] ||
-          fail 'managed coding requires a separate existing Code API pairing credential'
-        [[ ${CODEAPI_AUTH_PROVIDER-} == librechat-jwt ]] ||
-          fail 'managed coding requires principal JWT authentication'
-        node <<'CODEJWT'
-const { createPrivateKey } = require('node:crypto');
-try {
-  const key = createPrivateKey(Buffer.from(process.env.CODEAPI_JWT_PRIVATE_KEY_BASE64 || '', 'base64'));
-  const algorithm = process.env.CODEAPI_JWT_ALGORITHM || 'EdDSA';
-  if ((algorithm === 'EdDSA' && key.asymmetricKeyType !== 'ed25519') ||
-      (algorithm === 'RS256' && (key.asymmetricKeyType !== 'rsa' || key.asymmetricKeyDetails.modulusLength < 2048)) ||
-      !['EdDSA', 'RS256'].includes(algorithm)) throw 0;
-  for (const field of ['CODEAPI_JWT_KID', 'CODEAPI_JWT_ISSUER', 'CODEAPI_JWT_AUDIENCE', 'CODEAPI_JWT_SINGLE_TENANT_ID']) {
-    if (!process.env[field] || process.env[field].length > 256) throw 0;
-  }
-} catch {
-  console.error('Mission AI test chat: reviewed Code API JWT signing and identity settings are required');
-  process.exit(1);
-}
-CODEJWT
+        validate_code_credentials
         ;;
       *)
         fail 'MISSION_AI_MANAGED_TOOLS must be explicitly true or false'

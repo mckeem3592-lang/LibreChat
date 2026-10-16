@@ -210,6 +210,7 @@ export async function loadEphemeralAgent(
     endpoint,
     enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
     toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+    deviceCodeEnabled: process.env.MISSION_AI_DEVICE_CODE_ENABLED === 'true',
     executeCode: tools.includes(Tools.execute_code),
     ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
     userEmail: req.user?.email,

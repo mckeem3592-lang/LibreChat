@@ -12,6 +12,15 @@ test('inline coding uses the existing named Mac workspace without a cloud enviro
   assert.deepEqual(managedWorkspaceBinding(valid), { stateful_code_sessions: true,
     stateful_code_environment: 'conversation', code_environment_id: 'attached-workers', code_workspace_id: 'primary' });
 });
+test('the device Claude route uses the same approved Mac workspace', () => {
+  assert.deepEqual(managedWorkspaceBinding({ ...valid, endpoint: 'MissionAIClaudeCached',
+    toolsEnabled: false, deviceCodeEnabled: true }), {
+    stateful_code_sessions: true, stateful_code_environment: 'conversation',
+    code_environment_id: 'attached-workers', code_workspace_id: 'primary',
+  });
+  assert.equal(managedWorkspaceBinding({ ...valid, endpoint: 'MissionAIClaudeCached',
+    toolsEnabled: false, deviceCodeEnabled: false }), undefined);
+});
 test('text, disabled tools, and original custom endpoints retain their existing agent behavior', () => {
   for (const override of [{executeCode:false},{enabled:false},{toolsEnabled:false},{endpoint:'OriginalChat'}]) {
     assert.equal(managedWorkspaceBinding({...valid,...override}),undefined);

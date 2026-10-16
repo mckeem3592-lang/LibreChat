@@ -3,13 +3,16 @@ export function managedWorkspaceBinding(input: {
   endpoint: string;
   enabled: boolean;
   toolsEnabled: boolean;
+  deviceCodeEnabled?: boolean;
   executeCode: boolean;
   ownerEmail?: string;
   userEmail?: string;
   body?: unknown;
   environments?: unknown;
 }) {
-  if (!input.enabled || !input.toolsEnabled || input.endpoint !== 'MissionAI' || !input.executeCode) {
+  const approvedEndpoint = input.endpoint === 'MissionAI' && input.toolsEnabled ||
+    input.endpoint === 'MissionAIClaudeCached' && input.deviceCodeEnabled === true;
+  if (!input.enabled || !approvedEndpoint || !input.executeCode) {
     return undefined;
   }
   const fail = () => { throw new Error('Mission AI requires the approved attached coding workspace'); };
