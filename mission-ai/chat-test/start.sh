@@ -60,10 +60,13 @@ case "${MISSION_AI_MANAGED_SCHEDULES-false}" in
     [[ -z ${MISSION_AI_SCHEDULE_AGENT_ID-} ]] ||
       fail 'a schedule agent id requires the explicit managed scheduling gate' ;;
   true)
-    [[ ${MISSION_AI_MANAGED_TOOLS-false} == true &&
+    [[ ${MISSION_AI_FREE_BASELINE-false} == true &&
+       ${MISSION_AI_GITHUB_EDITOR-false} == true &&
+       ${MISSION_AI_DEVICE_MCP_ENABLED-false} == true &&
+       ${MISSION_AI_DEVICE_CODE_ENABLED-false} == true &&
        ${MISSION_AI_SCHEDULE_AGENT_ID-} =~ ^agent_[A-Za-z0-9_-]{1,200}$ &&
        ${SCHEDULES_SINGLE_PROCESS-false} == true ]] ||
-      fail 'managed scheduling requires tools, a pinned agent, and one-process scheduling' ;;
+      fail 'managed scheduling requires the reviewed device-code profile, a pinned agent, and one-process scheduling' ;;
   *) fail 'MISSION_AI_MANAGED_SCHEDULES must be true or false' ;;
 esac
 [[ ${MISSION_AI_FREE_TITLES-false} == true || ${MISSION_AI_FREE_TITLES-false} == false ]] ||
@@ -131,7 +134,11 @@ case "${MISSION_AI_FREE_BASELINE-false}" in
             case "${MISSION_AI_DEVICE_CODE_ENABLED-false}" in
               true)
                 validate_code_credentials
-                managed_config="$repo_dir/mission-ai/config/librechat.github-device-code.yaml" ;;
+                if [[ ${MISSION_AI_MANAGED_SCHEDULES-false} == true ]]; then
+                  managed_config="$repo_dir/mission-ai/config/librechat.github-device-code-schedules.yaml"
+                else
+                  managed_config="$repo_dir/mission-ai/config/librechat.github-device-code.yaml"
+                fi ;;
               false)
                 [[ -z ${MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN-} ]] ||
                   fail 'Code API pairing credential requires the explicit device-code gate'

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createManagedToolAdmission, createManagedToolConfigGuard } from './generated/managedTools.js';
+import { createManagedToolAdmission, createManagedToolConfigGuard, createManagedToolOwnerGuard } from './generated/managedTools.js';
 
 const agentId = 'agent_owner_schedule';
 const scheduleId = 'sched_12345678-1234-1234-1234-123456789abc';
@@ -40,6 +40,21 @@ test('managed scheduling is off unless both the flag and fixed agent are supplie
   );
 });
 
+test('reviewed device-code profile admits only owner schedule reads and fixed create', () => {
+  const options = { toolsEnabled: false, schedulesEnabled: true, scheduleAgentId: agentId };
+  assert.equal(invoke(options, { method: 'GET', originalUrl: '/api/schedules' }).next, 1);
+  assert.equal(invoke(options, { method: 'POST', originalUrl: '/api/schedules', body: { agent_id: agentId } }).next, 1);
+  assert.equal(invoke(options, { method: 'POST', originalUrl: '/api/schedules', body: { agent_id: 'agent_other' } }).status, 403);
+  assert.equal(invoke(options, { method: 'GET', originalUrl: '/api/agents?requiredPermission=1&limit=1000' }).next, 1);
+  const guard = createManagedToolOwnerGuard({ enabled: true, ...options, ownerEmail: 'owner@example.com' });
+  let accepted = 0;
+  guard({ user: { email: 'owner@example.com' } }, {}, () => accepted++);
+  assert.equal(accepted, 1);
+  let denied;
+  guard({ user: { email: 'other@example.com' } }, { status(value) { denied = value; return this; }, json() {} }, () => {});
+  assert.equal(denied, 403);
+});
+
 test('schedule route aliases and unverified trigger posts remain denied', () => {
   const options = { schedulesEnabled: true, scheduleAgentId: agentId };
   const base = { method: 'GET', originalUrl: '/api/schedules' };
@@ -68,6 +83,19 @@ test('schedule route aliases and unverified trigger posts remain denied', () => 
     ).next,
     1,
   );
+});
+
+test('agent picker admits only fixed-agent VIEW reads when scheduling is enabled', () => {
+  const options = { schedulesEnabled: true, scheduleAgentId: agentId };
+  assert.equal(invoke(options, {
+    method: 'GET', originalUrl: '/api/agents?requiredPermission=1&limit=1000',
+  }).next, 1);
+  assert.equal(invoke(options, { method: 'GET', originalUrl: `/api/agents/${agentId}` }).next, 1);
+  assert.equal(invoke(options, {
+    method: 'GET', originalUrl: '/api/agents?requiredPermission=2&limit=1000',
+  }).status, 403);
+  assert.equal(invoke(options, { method: 'GET', originalUrl: '/api/agents/agent_other' }).status, 403);
+  assert.equal(invoke(options, { method: 'PATCH', originalUrl: `/api/agents/${agentId}` }).status, 403);
 });
 
 test('post-auth schedule fire admits only the owner and a verified fixed-agent trigger', () => {

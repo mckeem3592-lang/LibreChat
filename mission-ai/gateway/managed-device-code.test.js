@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { generateKeyPairSync } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import yaml from 'yaml';
 import { agentsEndpointSchema } from 'librechat-data-provider';
 import { AppService } from '@librechat/data-schemas';
@@ -19,6 +22,7 @@ process.env.TAVILY_API_KEY = 'fake-tavily-key-for-local-tests';
 const { createManagedToolAdmission, createManagedToolConfigGuard } =
   await import('./generated/managedTools.js');
 const raw = yaml.parse(readFileSync(new URL('../config/librechat.github-device-code.yaml', import.meta.url), 'utf8'));
+const scheduleRaw = yaml.parse(readFileSync(new URL('../config/librechat.github-device-code-schedules.yaml', import.meta.url), 'utf8'));
 const options = { enabled: true, toolsEnabled: false, ownerEmail: 'owner@example.test',
   gatewayURL: 'https://mission-ai-gateway.example',
   nativeToken: 'fake-managed-token-for-local-tests', titleConvo: 'false' };
@@ -40,6 +44,85 @@ function run(middleware, req) {
   middleware(req, { status(code) { status = code; return this; }, json() {} }, () => { next++; });
   return { next, status };
 }
+
+test('device-code schedule profile is exact and remains default-off', () => {
+  const scheduleOptions = { ...options, schedulesEnabled: true, scheduleAgentId: 'agent_owner_schedule' };
+  const guard = createManagedToolConfigGuard(scheduleOptions);
+  const scheduled = request();
+  scheduled.config = { ...structuredClone(scheduleRaw), config: structuredClone(scheduleRaw),
+    interfaceConfig: structuredClone(scheduleRaw.interface), mcpConfig: structuredClone(scheduleRaw.mcpServers) };
+  assert.equal(run(guard, scheduled).next, 1);
+  assert.equal(run(createManagedToolConfigGuard(options), scheduled).status, 503);
+  const broadened = request();
+  broadened.config = structuredClone(scheduled.config);
+  broadened.config.interfaceConfig.agents.create = true;
+  assert.equal(run(guard, broadened).status, 503);
+  const altered = request();
+  altered.config = structuredClone(scheduled.config);
+  altered.config.interfaceConfig.schedules.create = false;
+  assert.equal(run(guard, altered).status, 503);
+});
+
+test('schedule profile survives the native LibreChat configuration parser', async () => {
+  const req = request();
+  req.config = await AppService({ config: structuredClone(scheduleRaw) });
+  const guard = createManagedToolConfigGuard({
+    ...options, schedulesEnabled: true, scheduleAgentId: 'agent_owner_schedule',
+  });
+  assert.equal(run(guard, req).next, 1);
+});
+
+test('device-code signed schedule fire passes only for the fixed owner agent', () => {
+  const scheduleOptions = { ...options, schedulesEnabled: true,
+    scheduleAgentId: 'agent_owner_schedule', verifySignedScheduleTrigger: () => true };
+  const fire = request({ originalUrl: '/api/agents/chat/agents',
+    body: { endpoint: 'agents', agent_id: 'agent_owner_schedule' } });
+  assert.equal(run(createManagedToolAdmission(scheduleOptions), fire).next, 1);
+  assert.equal(run(createManagedToolConfigGuard(scheduleOptions), fire).next, 1);
+  assert.equal(run(createManagedToolConfigGuard(scheduleOptions),
+    { ...fire, user: { email: 'other@example.test' } }).status, 403);
+  assert.equal(run(createManagedToolAdmission(scheduleOptions),
+    { ...fire, body: { ...fire.body, agent_id: 'agent_other' } }).status, 403);
+  assert.equal(run(createManagedToolConfigGuard(scheduleOptions),
+    { ...fire, body: { ...fire.body, agent_id: 'agent_other' } }).status, 503);
+});
+
+test('schedule startup requires the device-code profile, fixed agent, and one process', () => {
+  const key = generateKeyPairSync('ed25519').privateKey.export({ type: 'pkcs8', format: 'pem' });
+  const env = {
+    PATH: process.env.PATH, HOME: process.env.HOME,
+    MISSION_AI_GATEWAY_URL: 'https://mission-ai-gateway-mckee.onrender.com',
+    MISSION_AI_MANAGED_CHAT: 'true', MISSION_AI_FREE_BASELINE: 'true',
+    MISSION_AI_GITHUB_EDITOR: 'true', MISSION_AI_DEVICE_MCP_ENABLED: 'true',
+    MISSION_AI_DEVICE_CODE_ENABLED: 'true', MISSION_AI_MANAGED_SCHEDULES: 'true',
+    MISSION_AI_SCHEDULE_AGENT_ID: 'agent_owner_schedule', SCHEDULES_SINGLE_PROCESS: 'true',
+    MISSION_AI_CONTROL_OWNER_EMAIL: 'owner@example.test',
+    MISSION_AI_NATIVE_TOKEN: 'fake-managed-native-token-for-local-tests',
+    MISSION_AI_GITHUB_MCP_TOKEN: process.env.MISSION_AI_GITHUB_MCP_TOKEN,
+    MISSION_AI_DEVICE_MCP_TOKEN: process.env.MISSION_AI_DEVICE_MCP_TOKEN,
+    MISSION_AI_CODE_BRIDGE_ADMIN_TOKEN: 'synthetic-code-admin-token-1234567890',
+    CODEAPI_AUTH_PROVIDER: 'librechat-jwt', CODEAPI_JWT_PRIVATE_KEY_BASE64: Buffer.from(key).toString('base64'),
+    CODEAPI_JWT_KID: 'synthetic', CODEAPI_JWT_ISSUER: 'synthetic',
+    CODEAPI_JWT_AUDIENCE: 'codeapi', CODEAPI_JWT_SINGLE_TENANT_ID: 'synthetic',
+    GOOGLE_KEY: 'fake-google-key-for-local-tests',
+    TAVILY_API_KEY: 'tvly-synthetic-test-key',
+    JWT_SECRET: 'a'.repeat(64), JWT_REFRESH_SECRET: 'b'.repeat(64),
+    CREDS_KEY: 'c'.repeat(64), CREDS_IV: 'd'.repeat(32),
+    MONGO_URI: 'mongodb+srv://mission_ai_chat_test:synthetic@fixture.mongodb.net/MissionAIChatTest?tls=true',
+    DOMAIN_CLIENT: 'https://synthetic.invalid', DOMAIN_SERVER: 'https://synthetic.invalid',
+    LOCAL_MCP_PUBLIC_URL: 'https://version-departure-blatantly.ngrok-free.dev/mcp',
+    LOCAL_MCP_TOKEN: 'synthetic-local-mcp-token-for-offline-tests-only-123456',
+  };
+  const script = fileURLToPath(new URL('../chat-test/start.sh', import.meta.url));
+  const check = (overrides = {}) => spawnSync('bash', [script, '--check'], {
+    env: { ...env, ...overrides }, encoding: 'utf8', timeout: 10000,
+  });
+  assert.equal(check().status, 0);
+  assert.notEqual(check({ SCHEDULES_SINGLE_PROCESS: 'false' }).status, 0);
+  assert.notEqual(check({ MISSION_AI_SCHEDULE_AGENT_ID: '' }).status, 0);
+  assert.notEqual(check({ MISSION_AI_DEVICE_CODE_ENABLED: 'false' }).status, 0);
+  assert.notEqual(check({ CONFIG_PATH: '/tmp/other.yaml' }).status, 0);
+});
 
 test('device coding accepts only the reviewed owner, workspace, and approval mode', () => {
   const admit = createManagedToolAdmission(options);

@@ -3,6 +3,7 @@ import { isAgentTriggerRequest } from '../crypto/jwt';
 import { readScheduleFireContext } from '../schedules/trigger';
 import {
   createManagedSchedulePinGuard,
+  isManagedScheduleAgentRead,
   isManagedScheduleRoute,
   isManagedScheduleTrigger,
 } from './managedSchedule';
@@ -116,6 +117,45 @@ describe('managed schedule trigger admission', () => {
         },
         agentId,
         verify,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('managed schedule agent picker admission', () => {
+  const agentId = 'agent_owner_schedule';
+  it('admits only VIEW-list and fixed-agent reads', () => {
+    expect(
+      isManagedScheduleAgentRead(
+        { method: 'GET', originalUrl: '/api/agents?requiredPermission=1&limit=1000' },
+        agentId,
+      ),
+    ).toBe(true);
+    expect(
+      isManagedScheduleAgentRead({ method: 'GET', originalUrl: `/api/agents/${agentId}` }, agentId),
+    ).toBe(true);
+    expect(
+      isManagedScheduleAgentRead(
+        { method: 'GET', originalUrl: '/api/agents?requiredPermission=2&limit=1000' },
+        agentId,
+      ),
+    ).toBe(false);
+    expect(
+      isManagedScheduleAgentRead(
+        { method: 'GET', originalUrl: '/api/agents?requiredPermission=1&limit=1000&cursor=x' },
+        agentId,
+      ),
+    ).toBe(false);
+    expect(
+      isManagedScheduleAgentRead(
+        { method: 'GET', originalUrl: '/api/agents/agent_other' },
+        agentId,
+      ),
+    ).toBe(false);
+    expect(
+      isManagedScheduleAgentRead(
+        { method: 'PATCH', originalUrl: `/api/agents/${agentId}` },
+        agentId,
       ),
     ).toBe(false);
   });

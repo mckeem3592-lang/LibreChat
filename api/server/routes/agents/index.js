@@ -3,6 +3,7 @@ const {
   reportLocatorTraversalFailure,
   isEnabled,
   createManagedToolConfigGuard,
+  createManagedToolOwnerGuard,
   createManagedGatewayReadiness,
   createManagedProjectGuard,
   GenerationJobManager,
@@ -143,6 +144,12 @@ router.use('/v1/skills', skills);
 router.use('/v1', openai);
 
 router.use(requireJwtAuth);
+router.use(createManagedToolOwnerGuard({
+  enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
+  toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
+  schedulesEnabled: process.env.MISSION_AI_MANAGED_SCHEDULES === 'true',
+  ownerEmail: process.env.MISSION_AI_CONTROL_OWNER_EMAIL,
+}));
 // Capture the short-lived trigger identity immediately after authentication. Downstream
 // middleware reads this stable decision instead of re-verifying an expired token.
 router.use((req, _res, next) => {

@@ -15,6 +15,27 @@ type ScheduleResponse = {
 const SCHEDULE_ID_PATH =
   /^\/api\/schedules\/(sched_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(\/run)?$/i;
 
+/** Only the native schedule picker and card may read the fixed agent. Native
+ * AGENTS:USE and resource VIEW checks remain in the agent routes. */
+export function isManagedScheduleAgentRead(
+  req: ScheduleRequest,
+  expectedAgentId?: string,
+): boolean {
+  if (
+    !expectedAgentId ||
+    !/^agent_[A-Za-z0-9_-]{1,200}$/.test(expectedAgentId) ||
+    req.method !== 'GET'
+  )
+    return false;
+  const path = req.originalUrl ?? req.url;
+  if (path === `/api/agents/${expectedAgentId}`) return true;
+  if (typeof path !== 'string' || !path.startsWith('/api/agents?')) return false;
+  const params = new URLSearchParams(path.slice('/api/agents?'.length));
+  return (
+    params.size === 2 && params.get('requiredPermission') === '1' && params.get('limit') === '1000'
+  );
+}
+
 /** Admission runs before authentication. A server-injected verifier checks the
  * signed schedule trigger; this helper checks the fixed agent pin. The chat
  * router authenticates again and enforces the owner's role and agent ACL. */
