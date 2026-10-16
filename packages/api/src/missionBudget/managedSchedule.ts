@@ -1,3 +1,5 @@
+import { readScheduleFireContext } from '../schedules/trigger';
+
 type ScheduleRequest = {
   method?: string;
   originalUrl?: string;
@@ -58,6 +60,30 @@ export function isManagedScheduleTrigger(
   const fields = body as Record<string, unknown>;
   if (fields.endpoint !== 'agents' || fields.agent_id !== expectedAgentId) return false;
   return true;
+}
+
+export function createManagedSchedulePayloadGuard(options: {
+  enabled: boolean;
+  agentId?: string;
+  isSignedTrigger: (request: ScheduleRequest) => boolean;
+}): (req: ScheduleRequest, res: ScheduleResponse, next: () => unknown) => unknown {
+  return (req, res, next) => {
+    if (!options.enabled || req.method !== 'POST' ||
+        (req.originalUrl ?? req.url) !== '/api/agents/chat/agents' ||
+        !options.isSignedTrigger(req)) return next();
+    const body = req.body;
+    if (body == null || typeof body !== 'object' || Array.isArray(body)) {
+      return res.status(400).json({ error: { code: 'invalid_schedule_trigger',
+        message: 'Invalid schedule trigger payload' } });
+    }
+    const fields = body as Record<string, unknown>;
+    if (fields.agent_id !== options.agentId || fields.conversationId != null) return next();
+    if (readScheduleFireContext({ _isAgentTrigger: true, body: fields }) == null) {
+      return res.status(400).json({ error: { code: 'invalid_schedule_trigger',
+        message: 'Invalid schedule trigger payload' } });
+    }
+    return next();
+  };
 }
 
 /** Exact route admission only. Authentication, schedule ownership, role checks,

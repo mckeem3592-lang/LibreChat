@@ -4,6 +4,8 @@ import { normalizeAnthropicMessages, validateAnthropicMessage, anthropicReservat
 type JsonObject = Record<string, unknown>;
 type Usage = { inputTokens: number; outputTokens: number; cachedInputTokens: number; cacheWriteTokens: number;
   cacheWrite5mTokens?: number; cacheWrite1hTokens?: number };
+type StreamProgress = { inputTokens?: number; outputTokens?: number;
+  final?: { usage: Usage; billable: boolean } };
 type Awaitable<T> = T | Promise<T>;
 type NativeStreamSink = { write(chunk: Uint8Array): Promise<void> };
 type NativeContext = { projectId?: unknown; signal?: AbortSignal; stream?: NativeStreamSink };
@@ -110,7 +112,7 @@ const MAX_SSE_FRAME_BYTES = 1_048_576;
 async function readAnthropicStream(
   response: { body?: ReadableStream<Uint8Array> | null }, sink: NativeStreamSink,
   model: string, controller: AbortController,
-  progress: { inputTokens?: number; outputTokens?: number },
+  progress: StreamProgress,
 ): Promise<{ usage: Usage; response: JsonObject; terminal: Uint8Array }> {
   if (!response.body) fail('native_provider_response_invalid', 502);
   const reader = response.body.getReader();
@@ -168,6 +170,12 @@ async function readAnthropicStream(
           usage = { ...usage, ...object(payload.usage) };
           progress.outputTokens = Number(usage.output_tokens);
           sawDelta = true;
+          if (stop.stop_reason != null) {
+            const verified = anthropicUsage({ model: start.model, usage,
+              stop_reason: stop.stop_reason, stop_details: stop.stop_details,
+              content: contentBlocks ? [{}] : [] }, model);
+            progress.final = { usage: verified.usage, billable: verified.billable };
+          }
         } else if (event === 'content_block_start') {
           contentBlocks++;
         } else if (event === 'message_stop') {
@@ -590,7 +598,7 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
       let response;
       let failure: NativeBridgeError | undefined;
       let terminal: Uint8Array | undefined;
-      const progress: { inputTokens?: number; outputTokens?: number } = {};
+      const progress: StreamProgress = {};
       let definitiveRejection = false;
       const controller = new AbortController();
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -652,9 +660,24 @@ export function createNativeBridge(deps: NativeBridgeDependencies): { handle(bod
           if (definitiveRejection) {
             await deps.ledger.release({ reservationId: reservation.reservationId, reason: 'native_provider_rejected' });
           } else {
+            let observedCost: { totalUsd: number; pricingVerifiedOn?: string | null } | undefined;
+            let observedUsd: number | undefined;
+            if (failure?.code === 'native_client_cancelled' && progress.final) {
+              try {
+                observedCost = progress.final.billable
+                  ? deps.calculateCost(provider, model, progress.final.usage, pricing)
+                  : { totalUsd: 0, pricingVerifiedOn: null };
+                const priced = amount(observedCost.totalUsd);
+                if (priced <= reserveUsd + 1e-9) observedUsd = priced;
+              } catch { observedCost = undefined; }
+            }
             await deps.ledger.settle({
-              reservationId: reservation.reservationId, actualUsd: reserveUsd,
-              usage: { ...metadata, estimated: true, error: failure?.code ?? 'native_provider_response_invalid',
+              reservationId: reservation.reservationId, actualUsd: observedUsd ?? reserveUsd,
+              usage: { ...metadata, ...(observedUsd !== undefined ? progress.final?.usage : {}),
+                serviceTier: provider === 'anthropic' ? 'standard' : 'default',
+                estimated: observedUsd === undefined, error: failure?.code ?? 'native_provider_response_invalid',
+                ...(observedUsd !== undefined ? { providerFinalDelta: true,
+                  pricingVerifiedOn: observedCost?.pricingVerifiedOn ?? null } : {}),
                 ...(Number.isSafeInteger(progress.inputTokens) ? { lastKnownInputTokens: progress.inputTokens } : {}),
                 ...(Number.isSafeInteger(progress.outputTokens) ? { lastKnownOutputTokens: progress.outputTokens } : {}),
                 ...(failure?.providerHttpStatus !== undefined ? { providerHttpStatus: failure.providerHttpStatus } : {}) },

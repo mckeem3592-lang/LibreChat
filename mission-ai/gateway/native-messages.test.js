@@ -302,6 +302,34 @@ test('stream cancellation aborts upstream and conservatively settles recorded pa
   assert.equal(settlement.usage.lastKnownOutputTokens, 1);
   assert(settlement.actualUsd > 0);
 });
+
+test('disconnect after provider final delta settles its verified usage before message_stop', async () => {
+  const controller = new AbortController();
+  const frame = (type, fields) => new TextEncoder().encode(
+    `event: ${type}\ndata: ${JSON.stringify({ type, ...fields })}\n\n`);
+  const f = await fixture(answer(), { fetchImpl: async (_url, init) => {
+    f.events.push({ type: 'fetch', init });
+    return { status: 200, body: new ReadableStream({ start(stream) {
+      stream.enqueue(frame('message_start', { message: { model, usage: {
+        input_tokens: 20, output_tokens: 1, service_tier: 'standard' } } }));
+      stream.enqueue(frame('message_delta', { delta: { stop_reason: 'end_turn' },
+        usage: { output_tokens: 4 } }));
+    } }) };
+  } });
+  await assert.rejects(f.bridge.handle(request({ stream: true }), {
+    signal: controller.signal,
+    stream: { write: async (chunk) => {
+      if (new TextDecoder().decode(chunk).includes('event: message_delta')) controller.abort();
+    } },
+  }), { code: 'native_client_cancelled' });
+  assert.equal(f.events.find((entry) => entry?.type === 'fetch').init.signal.aborted, true);
+  const settlement = f.events.find((entry) => entry?.type === 'settle').input;
+  assert.equal(settlement.usage.estimated, false);
+  assert.equal(settlement.usage.providerFinalDelta, true);
+  assert.equal(settlement.usage.outputTokens, 4);
+  assert(Math.abs(settlement.actualUsd - 0.00008) < 1e-12);
+  assert.equal((await f.ledger.summary({ now })).reservedUsd, 0);
+});
 test('native token, disabled gate and query checks deny without calling a provider', () => {
   let called = 0;
   for (const [enabled, token, query, status] of [[false, 'x'.repeat(32), {}, 404],

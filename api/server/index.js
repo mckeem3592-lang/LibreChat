@@ -28,6 +28,7 @@ const {
   performStartupChecks,
   handleJsonParseError,
   createManagedToolAdmission,
+  createManagedSchedulePayloadGuard,
   isAgentTriggerRequest,
   readScheduleFireContext,
   GenerationJobManager,
@@ -338,6 +339,11 @@ const startServer = async () => {
   app.use(express.json({ limit: '3mb' }));
   app.use(express.urlencoded({ extended: true, limit: '3mb' }));
   app.use(handleJsonParseError);
+  app.use(createManagedSchedulePayloadGuard({
+    enabled: process.env.MISSION_AI_MANAGED_SCHEDULES === 'true',
+    agentId: process.env.MISSION_AI_SCHEDULE_AGENT_ID,
+    isSignedTrigger: isAgentTriggerRequest,
+  }));
   app.use(createManagedToolAdmission({ enabled: process.env.MISSION_AI_MANAGED_CHAT === 'true',
     toolsEnabled: process.env.MISSION_AI_MANAGED_TOOLS === 'true',
     schedulesEnabled: process.env.MISSION_AI_MANAGED_SCHEDULES === 'true',

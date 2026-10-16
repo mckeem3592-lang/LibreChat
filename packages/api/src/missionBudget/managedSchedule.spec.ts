@@ -2,6 +2,7 @@ import { generateAgentTriggerToken, generateShortLivedToken } from '../crypto/jw
 import { isAgentTriggerRequest } from '../crypto/jwt';
 import { readScheduleFireContext } from '../schedules/trigger';
 import {
+  createManagedSchedulePayloadGuard,
   createManagedSchedulePinGuard,
   isManagedScheduleAgentRead,
   isManagedScheduleRoute,
@@ -119,6 +120,42 @@ describe('managed schedule trigger admission', () => {
         verify,
       ),
     ).toBe(false);
+  });
+});
+
+describe('managed schedule payload guard', () => {
+  const agentId = 'agent_owner_schedule';
+  const invoke = (body: unknown, signed = true) => {
+    const guard = createManagedSchedulePayloadGuard({
+      enabled: true, agentId, isSignedTrigger: () => signed,
+    });
+    const result = { status: 200, body: undefined as unknown, next: 0 };
+    const response = {
+      status(code: number) { result.status = code; return this; },
+      json(value: unknown) { result.body = value; },
+    };
+    guard({ method: 'POST', originalUrl: '/api/agents/chat/agents', body },
+      response, () => { result.next++; });
+    return result;
+  };
+
+  it('returns a JSON 400 for a signed malformed fire before admission', () => {
+    for (const body of ['not-json', null, [], { agent_id: agentId, endpoint: 'agents' },
+      { agent_id: agentId, endpoint: 'agents', agentTrigger: { version: 2 } }]) {
+      expect(invoke(body)).toEqual({ status: 400, body: { error: {
+        code: 'invalid_schedule_trigger', message: 'Invalid schedule trigger payload',
+      } }, next: 0 });
+    }
+  });
+
+  it('passes valid, unsigned, and unrelated requests to their existing handlers', () => {
+    expect(invoke({ agent_id: agentId, endpoint: 'agents', agentTrigger: {
+      version: 1, event: { type: 'schedule.occurrence', occurredAt: Date.now(),
+        source: { type: 'schedule', id: 'sched_1' } },
+    } }).next).toBe(1);
+    expect(invoke('not-json', false).next).toBe(1);
+    expect(invoke({ agent_id: 'agent_other' }).next).toBe(1);
+    expect(invoke({ agent_id: agentId, conversationId: 'existing' }).next).toBe(1);
   });
 });
 
@@ -242,7 +279,7 @@ describe('managed schedule route admission', () => {
   });
 
   it('checks stored ownership and agent pin before a no-agent edit or manual run', async () => {
-    const getScheduleById = jest.fn(async (_id: string, _userId: string) => ({
+    const getScheduleById = jest.fn(async (_id: string, _userId: string): Promise<{ agent_id: string } | null> => ({
       agent_id: agentId,
     }));
     const guard = createManagedSchedulePinGuard({ enabled: true, agentId, getScheduleById });
