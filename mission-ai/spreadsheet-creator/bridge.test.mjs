@@ -125,6 +125,7 @@ test('the stdio MCP tool creates and publishes for its injected LibreChat user',
     const result = JSON.parse(called.content[0].text);
     assert.equal(result.ok, true);
     assert.equal(result.bytes, expectedBytes);
+    assert.equal(result.downloadMarkdown, `[Download workbook](${result.downloadUrl})`);
     assert.equal(seenPath, '/api/files/edited/mcp');
     assert.equal(seenUser, 'a'.repeat(24));
   } finally {
