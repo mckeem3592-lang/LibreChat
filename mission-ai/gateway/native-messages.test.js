@@ -279,6 +279,36 @@ test('Messages SSE forwards incremental signed blocks and settles before the ter
   assert.equal(parsed[parsed.length - 1].type, 'message_stop');
   assert.equal(JSON.parse(f.events.find((entry) => entry?.type === 'fetch').init.body).stream, true);
 });
+test('Messages SSE preserves long Unicode text across byte-split LF and CRLF frames', async () => {
+  const text = 'Résumé 🧭 '.repeat(300);
+  const frame = (type, fields, ending) =>
+    `event: ${type}${ending}data: ${JSON.stringify({ type, ...fields })}${ending}${ending}`;
+  const source = [
+    frame('message_start', { message: { model, usage: {
+      input_tokens: 20, output_tokens: 1, service_tier: 'standard' } } }, '\r\n'),
+    frame('content_block_start', { index: 0, content_block: { type: 'text', text: '' } }, '\n'),
+    frame('content_block_delta', { index: 0, delta: { type: 'text_delta', text } }, '\r\n'),
+    frame('content_block_stop', { index: 0 }, '\n'),
+    frame('message_delta', { delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 10 } }, '\r\n'),
+    frame('message_stop', {}, '\n'),
+  ].join('');
+  const bytes = new TextEncoder().encode(source);
+  const f = await fixture(answer(), { fetchImpl: async () => ({ status: 200,
+    body: new ReadableStream({ start(controller) {
+      for (let offset = 0; offset < bytes.length; offset++) {
+        controller.enqueue(bytes.subarray(offset, offset + 1));
+      }
+      controller.close();
+    } }),
+  }) });
+  const written = [];
+  await f.bridge.handle(request({ stream: true }), {
+    stream: { write: async (chunk) => written.push(chunk) },
+  });
+  const actual = Buffer.concat(written.map((chunk) => Buffer.from(chunk))).toString('utf8');
+  assert.equal(actual, source);
+  assert.equal(f.events.at(-1).type, 'settle');
+});
 test('stream cancellation aborts upstream and conservatively settles recorded partial usage', async () => {
   const controller = new AbortController();
   const frame = (type, fields) => new TextEncoder().encode(

@@ -8,6 +8,8 @@ Restart the worker to load source changes; in-flight tasks do not survive that r
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import gc
 import hmac
 import ipaddress
 import json
@@ -126,6 +128,7 @@ AUTOMATION_LOG = Path.home() / "Library" / "Logs" / "MissionAI" / "local-mcp-aut
 AUTOMATION_RESULTS: dict[str, dict[str, Any]] = {}
 AUTOMATION_TASKS: dict[str, asyncio.Task[None]] = {}
 AUTOMATION_LIMIT = asyncio.Semaphore(1)  # Serialize edits so two jobs cannot overwrite the same file.
+AUTOMATION_THREADS = ThreadPoolExecutor(max_workers=4, thread_name_prefix="mission-ai-automation")
 MAX_PENDING_AUTOMATIONS = 16
 MAX_AUTOMATION_RESULTS = 128
 RESULT_TTL_SECONDS = 3600
@@ -146,6 +149,14 @@ def log_automation(task_id: str, tool: str, status: str, error: str | None = Non
         os.write(descriptor, (json.dumps(event, separators=(",", ":")) + "\n").encode("utf-8"))
     finally:
         os.close(descriptor)
+
+
+def run_file_operation(operation: Callable[[], Any]) -> Any:
+    try:
+        return operation()
+    finally:
+        # The document libraries can retain reference cycles after a completed edit.
+        gc.collect()
 
 
 async def run_automation(
@@ -178,6 +189,7 @@ async def run_automation(
 
 def start_automation(tool: str, operation: Callable[[], Awaitable[Any]]) -> dict[str, Any]:
     """Return a receipt immediately; the worker event loop owns the operation."""
+    asyncio.get_running_loop().set_default_executor(AUTOMATION_THREADS)
     now = time.monotonic()
     for task_id, state in list(AUTOMATION_RESULTS.items()):
         if now - state.get("finished_at", now) > RESULT_TTL_SECONDS:
@@ -222,7 +234,7 @@ async def modify_word_doc(path: str, text_to_append: str) -> dict[str, Any]:
         atomic_save(document.save, target)
         return relative_result(target)
 
-    return start_automation("modify_word_doc", lambda: asyncio.to_thread(edit))
+    return start_automation("modify_word_doc", lambda: asyncio.to_thread(run_file_operation, edit))
 
 
 @mcp.tool()
@@ -260,7 +272,7 @@ async def write_excel_sheet(path: str, matrix_data: list[list[str | int | float 
         atomic_save(workbook.save, target)
         return relative_result(target)
 
-    return start_automation("write_excel_sheet", lambda: asyncio.to_thread(edit))
+    return start_automation("write_excel_sheet", lambda: asyncio.to_thread(run_file_operation, edit))
 
 
 @mcp.tool()
@@ -309,7 +321,7 @@ async def modify_pdf_text(path: str, search_text: str, replace_text: str) -> dic
             if not document.is_closed:
                 document.close()
 
-    return start_automation("modify_pdf_text", lambda: asyncio.to_thread(edit))
+    return start_automation("modify_pdf_text", lambda: asyncio.to_thread(run_file_operation, edit))
 
 
 @mcp.tool()
@@ -331,7 +343,7 @@ async def move_local_file(source: str, destination: str) -> dict[str, Any]:
             raise
         return relative_result(target)
 
-    return start_automation("move_local_file", lambda: asyncio.to_thread(move))
+    return start_automation("move_local_file", lambda: asyncio.to_thread(run_file_operation, move))
 
 
 async def run_local_browser_control(url: str, action: str, selector: str = "", text: str = "") -> dict[str, str]:

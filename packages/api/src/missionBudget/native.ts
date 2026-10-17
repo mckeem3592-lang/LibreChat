@@ -109,6 +109,20 @@ const PROVIDER_TIMEOUT_MS = 30_000;
 const UPSTREAM_URL = 'https://api.openai.com/v1/chat/completions';
 const MAX_SSE_FRAME_BYTES = 1_048_576;
 
+function parseSseFrame(frame: Uint8Array, decoder: TextDecoder): { event?: string; data: string } {
+  let event: string | undefined;
+  const dataLines: string[] = [];
+  for (const line of decoder.decode(frame).split(/\r?\n/)) {
+    if (line.startsWith('event:')) event = line.slice(6).trim();
+    if (line.startsWith('data:')) {
+      const value = line.slice(5);
+      // SSE removes at most one optional space after the colon; preserve the rest.
+      dataLines.push(value.startsWith(' ') ? value.slice(1) : value);
+    }
+  }
+  return { event, data: dataLines.join('\n') };
+}
+
 async function readAnthropicStream(
   response: { body?: ReadableStream<Uint8Array> | null }, sink: NativeStreamSink,
   model: string, controller: AbortController,
@@ -118,6 +132,10 @@ async function readAnthropicStream(
   const reader = response.body.getReader();
   const decoder = new TextDecoder('utf-8', { fatal: true });
   let pending = new Uint8Array(0);
+  let frameBytes = 0;
+  let last1 = -1;
+  let last2 = -1;
+  let last3 = -1;
   let start: JsonObject | undefined;
   let usage: JsonObject | undefined;
   let stop: JsonObject | undefined;
@@ -125,31 +143,61 @@ async function readAnthropicStream(
   let sawDelta = false;
   let contentBlocks = 0;
   let complete = false;
-  const frameEnd = (bytes: Uint8Array): number => {
-    for (let i = 1; i < bytes.length; i++) {
-      if (bytes[i] === 10 && bytes[i - 1] === 10) return i + 1;
-      if (i >= 3 && bytes[i] === 10 && bytes[i - 1] === 13 && bytes[i - 2] === 10 && bytes[i - 3] === 13) return i + 1;
+  const remember = (bytes: Uint8Array, startIndex: number, endIndex: number): void => {
+    const length = endIndex - startIndex;
+    if (length >= 3) {
+      last3 = bytes[endIndex - 3];
+      last2 = bytes[endIndex - 2];
+      last1 = bytes[endIndex - 1];
+    } else if (length === 2) {
+      last3 = last1;
+      last2 = bytes[startIndex];
+      last1 = bytes[startIndex + 1];
+    } else if (length === 1) {
+      last3 = last2;
+      last2 = last1;
+      last1 = bytes[startIndex];
     }
-    return -1;
+  };
+  const append = (bytes: Uint8Array, startIndex: number, endIndex: number): void => {
+    if (endIndex === startIndex) return;
+    const required = frameBytes + endIndex - startIndex;
+    if (required > MAX_SSE_FRAME_BYTES) fail('native_provider_response_invalid', 502);
+    if (required > pending.length) {
+      const grown = new Uint8Array(Math.min(MAX_SSE_FRAME_BYTES,
+        Math.max(required, pending.length * 2, 4096)));
+      grown.set(pending.subarray(0, frameBytes));
+      pending = grown;
+    }
+    pending.set(bytes.subarray(startIndex, endIndex), frameBytes);
+    frameBytes = required;
+  };
+  const takeFrame = (): Uint8Array => {
+    const frame = pending.slice(0, frameBytes);
+    frameBytes = 0;
+    last1 = last2 = last3 = -1;
+    return frame;
   };
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       if (controller.signal.aborted) fail('native_client_cancelled', 499);
-      if (pending.length + value.length > MAX_SSE_FRAME_BYTES * 2) fail('native_provider_response_invalid', 502);
-      const joined = new Uint8Array(pending.length + value.length);
-      joined.set(pending);
-      joined.set(value, pending.length);
-      pending = joined;
-      let end: number;
-      while ((end = frameEnd(pending)) >= 0) {
-        const frame = pending.slice(0, end);
-        pending = pending.slice(end);
-        if (frame.length > MAX_SSE_FRAME_BYTES) fail('native_provider_response_invalid', 502);
-        const lines = decoder.decode(frame).split(/\r?\n/);
-        const event = lines.find(line => line.startsWith('event:'))?.slice(6).trim();
-        const data = lines.filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n');
+      if (value.length > MAX_SSE_FRAME_BYTES * 2) fail('native_provider_response_invalid', 502);
+      let cursor = 0;
+      let newline: number;
+      while ((newline = value.indexOf(10, cursor)) >= 0) {
+        remember(value, cursor, newline);
+        const completeFrame = last1 === 10 || (last1 === 13 && last2 === 10 && last3 === 13);
+        append(value, cursor, newline + 1);
+        if (!completeFrame) {
+          remember(value, newline, newline + 1);
+          cursor = newline + 1;
+          continue;
+        }
+        const frame = takeFrame();
+        cursor = newline + 1;
+        const { event, data } = parseSseFrame(frame, decoder);
         if (!event || !data) { await sink.write(frame); continue; }
         const payload = object(JSON.parse(data));
         if (payload.type !== event) fail('native_provider_response_invalid', 502);
@@ -186,9 +234,10 @@ async function readAnthropicStream(
         if (terminal) fail('native_provider_response_invalid', 502);
         await sink.write(frame);
       }
-      if (pending.length > MAX_SSE_FRAME_BYTES) fail('native_provider_response_invalid', 502);
+      append(value, cursor, value.length);
+      remember(value, cursor, value.length);
     }
-    if (!terminal || pending.length || !start || !stop || !usage) fail('native_provider_response_invalid', 502);
+    if (!terminal || frameBytes || !start || !stop || !usage) fail('native_provider_response_invalid', 502);
     const raw = { model: start.model, usage, stop_reason: stop.stop_reason,
       stop_details: stop.stop_details, content: contentBlocks ? [{}] : [] };
     const verified = anthropicUsage(raw, model);
