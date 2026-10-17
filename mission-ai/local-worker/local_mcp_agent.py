@@ -1,18 +1,26 @@
-"""Owner-scoped MCP worker for local documents and allowlisted browser actions."""
+"""Owner-scoped MCP worker for local documents and allowlisted browser actions.
+
+Queued work survives an MCP request disconnect, but an OS process restart interrupts it.
+Status polling uses new requests; it does not extend the original HTTP request.
+Restart the worker to load source changes; in-flight tasks do not survive that restart.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import hmac
 import ipaddress
+import json
 import math
 import os
 import re
+import secrets
 import socket
 import stat
 import tempfile
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 from urllib.parse import urlsplit
 
 from docx import Document
@@ -114,10 +122,96 @@ def public_site(url: str) -> bool:
 
 mcp = MCPServer("mission-ai-local-documents")
 
+AUTOMATION_LOG = Path.home() / "Library" / "Logs" / "MissionAI" / "local-mcp-automation.log"
+AUTOMATION_RESULTS: dict[str, dict[str, Any]] = {}
+AUTOMATION_TASKS: dict[str, asyncio.Task[None]] = {}
+AUTOMATION_LIMIT = asyncio.Semaphore(1)  # Serialize edits so two jobs cannot overwrite the same file.
+MAX_PENDING_AUTOMATIONS = 16
+MAX_AUTOMATION_RESULTS = 128
+RESULT_TTL_SECONDS = 3600
+
+
+def log_automation(task_id: str, tool: str, status: str, error: str | None = None) -> None:
+    """Record lifecycle metadata only; never write file contents or browser text."""
+    AUTOMATION_LOG.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(AUTOMATION_LOG, flags, 0o600)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise OSError("Automation log is not a regular file")
+        os.fchmod(descriptor, 0o600)
+        event = {"task_id": task_id, "tool": tool, "status": status, "at": time.time()}
+        if error:
+            event["error"] = error
+        os.write(descriptor, (json.dumps(event, separators=(",", ":")) + "\n").encode("utf-8"))
+    finally:
+        os.close(descriptor)
+
+
+async def run_automation(
+    task_id: str, tool: str, operation: Callable[[], Awaitable[Any]],
+) -> None:
+    state = AUTOMATION_RESULTS[task_id]
+    try:
+        await asyncio.to_thread(log_automation, task_id, tool, "queued")
+        async with AUTOMATION_LIMIT:
+            state.update(status="processing", step=2)
+            await asyncio.to_thread(log_automation, task_id, tool, "processing")
+            result = await operation()
+            state.update(status="completed", step=3, result=result)
+    except asyncio.CancelledError:
+        state.update(status="failed", step=3, error="worker_stopped")
+        raise
+    except Exception as error:
+        state.update(status="failed", step=3, error=type(error).__name__,
+                     message=str(error)[:300])
+    finally:
+        state["finished_at"] = time.monotonic()
+        try:
+            await asyncio.to_thread(
+                log_automation, task_id, tool, state["status"], state.get("error"),
+            )
+        except OSError:
+            pass  # The result remains queryable even if the audit log becomes unavailable.
+        AUTOMATION_TASKS.pop(task_id, None)
+
+
+def start_automation(tool: str, operation: Callable[[], Awaitable[Any]]) -> dict[str, Any]:
+    """Return a receipt immediately; the worker event loop owns the operation."""
+    now = time.monotonic()
+    for task_id, state in list(AUTOMATION_RESULTS.items()):
+        if now - state.get("finished_at", now) > RESULT_TTL_SECONDS:
+            AUTOMATION_RESULTS.pop(task_id, None)
+    while len(AUTOMATION_RESULTS) >= MAX_AUTOMATION_RESULTS:
+        oldest_finished = next((key for key in AUTOMATION_RESULTS
+                                if key not in AUTOMATION_TASKS), None)
+        if oldest_finished is None:
+            break
+        AUTOMATION_RESULTS.pop(oldest_finished)
+    if len(AUTOMATION_TASKS) >= MAX_PENDING_AUTOMATIONS:
+        raise RuntimeError("Automation queue is full; retry later")
+    task_id = secrets.token_hex(16)
+    AUTOMATION_RESULTS[task_id] = {"status": "processing", "step": 1}
+    AUTOMATION_TASKS[task_id] = asyncio.create_task(run_automation(task_id, tool, operation))
+    return {"status": "processing", "task_id": task_id, "step": 1, "poll_after_seconds": 15}
+
 
 @mcp.tool()
-async def modify_word_doc(path: str, text_to_append: str) -> str:
-    """Append text to a Word document within LOCAL_MCP_ROOT."""
+async def check_automation_status(task_id: str) -> dict[str, Any]:
+    """Poll a submitted local automation after about 15 seconds for its result."""
+    if not re.fullmatch(r"[0-9a-f]{32}", task_id):
+        raise ValueError("Invalid task ID")
+    state = AUTOMATION_RESULTS.get(task_id)
+    if state is None:
+        return {"task_id": task_id, "status": "unknown",
+                "message": "Task not found, expired, or worker restarted"}
+    return {"task_id": task_id, **{key: value for key, value in state.items()
+                                   if key in {"status", "step", "result", "error", "message"}}}
+
+
+@mcp.tool()
+async def modify_word_doc(path: str, text_to_append: str) -> dict[str, Any]:
+    """Queue a Word edit; poll check_automation_status with the returned task_id."""
     if not text_to_append or len(text_to_append) > 100_000:
         raise ValueError("Text must contain 1 to 100000 characters")
 
@@ -128,12 +222,12 @@ async def modify_word_doc(path: str, text_to_append: str) -> str:
         atomic_save(document.save, target)
         return relative_result(target)
 
-    return await asyncio.to_thread(edit)
+    return start_automation("modify_word_doc", lambda: asyncio.to_thread(edit))
 
 
 @mcp.tool()
-async def write_excel_sheet(path: str, matrix_data: list[list[str | int | float | bool | None]]) -> str:
-    """Create or update cells starting at A1 in an Excel workbook within LOCAL_MCP_ROOT."""
+async def write_excel_sheet(path: str, matrix_data: list[list[str | int | float | bool | None]]) -> dict[str, Any]:
+    """Queue an Excel edit; poll check_automation_status with the returned task_id."""
     if not isinstance(matrix_data, list) or len(matrix_data) > 1000 or any(
         not isinstance(row, list) or len(row) > 100 for row in matrix_data
     ) or sum(map(len, matrix_data)) > 20_000:
@@ -166,12 +260,12 @@ async def write_excel_sheet(path: str, matrix_data: list[list[str | int | float 
         atomic_save(workbook.save, target)
         return relative_result(target)
 
-    return await asyncio.to_thread(edit)
+    return start_automation("write_excel_sheet", lambda: asyncio.to_thread(edit))
 
 
 @mcp.tool()
-async def modify_pdf_text(path: str, search_text: str, replace_text: str) -> dict[str, str | int]:
-    """Replace selectable PDF text by redacting matches and inserting the replacement."""
+async def modify_pdf_text(path: str, search_text: str, replace_text: str) -> dict[str, Any]:
+    """Queue a PDF text replacement; poll check_automation_status for the result."""
     if (not search_text or len(search_text) > 500 or not replace_text
             or len(replace_text) > 500 or "\n" in replace_text or "\r" in replace_text):
         raise ValueError("Search and replacement must be single-line text of 1 to 500 characters")
@@ -215,12 +309,12 @@ async def modify_pdf_text(path: str, search_text: str, replace_text: str) -> dic
             if not document.is_closed:
                 document.close()
 
-    return await asyncio.to_thread(edit)
+    return start_automation("modify_pdf_text", lambda: asyncio.to_thread(edit))
 
 
 @mcp.tool()
-async def move_local_file(source: str, destination: str) -> str:
-    """Move a regular file without overwriting an existing destination."""
+async def move_local_file(source: str, destination: str) -> dict[str, Any]:
+    """Queue a scoped file move; poll check_automation_status for the result."""
 
     def move() -> str:
         current = existing_file(source)
@@ -237,11 +331,10 @@ async def move_local_file(source: str, destination: str) -> str:
             raise
         return relative_result(target)
 
-    return await asyncio.to_thread(move)
+    return start_automation("move_local_file", lambda: asyncio.to_thread(move))
 
 
-@mcp.tool()
-async def local_browser_control(url: str, action: str, selector: str = "", text: str = "") -> dict[str, str]:
+async def run_local_browser_control(url: str, action: str, selector: str = "", text: str = "") -> dict[str, str]:
     """Navigate, click, fill, or extract text on an allowlisted public HTTPS site."""
     if (len(url) > 2048 or action not in {"navigate", "click", "fill", "extract"}
             or len(selector) > 500 or len(text) > 10_000
@@ -290,6 +383,22 @@ async def local_browser_control(url: str, action: str, selector: str = "", text:
             return {"url": final_url, "title": title, "text": extracted, "action": action}
         finally:
             await browser.close()
+
+
+@mcp.tool()
+async def local_browser_control(
+    url: str, action: str, selector: str = "", text: str = "",
+) -> dict[str, Any]:
+    """Queue an allowlisted browser action; poll check_automation_status for the result."""
+    if (len(url) > 2048 or action not in {"navigate", "click", "fill", "extract"}
+            or len(selector) > 500 or len(text) > 10_000
+            or (action in {"click", "fill"} and not selector)
+            or (action == "fill" and not text)):
+        raise ValueError("Invalid browser action")
+    return start_automation(
+        "local_browser_control",
+        lambda: run_local_browser_control(url, action, selector, text),
+    )
 
 
 class BearerAuth:
