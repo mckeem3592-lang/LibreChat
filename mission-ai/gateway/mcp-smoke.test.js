@@ -280,6 +280,38 @@ test('device MCP routes scoped text tools to the configured Windows device', asy
   }
 });
 
+test('file_write routes an exact paired device ID and rejects a service-suffixed ID', async () => {
+  const calls = [];
+  const handler = createMissionMcpNodeHandler({
+    allowedTools: new Set(['file_write']),
+    invoke: async (...args) => { calls.push(args); return { ok: true }; },
+    audit: () => {},
+  });
+  const { server, url } = await listen(handler);
+  const client = new Client({ name: 'mission-ai-device-id-test', version: '1.0.0' });
+  try {
+    await client.connect(new StreamableHTTPClientTransport(url));
+    const argumentsBase = { root: 'Documents', path: 'notes.txt', text: 'updated' };
+    const valid = await client.callTool({
+      name: 'file_write',
+      arguments: { ...argumentsBase, deviceId: 'mac-primary' },
+    });
+    assert.equal(valid.isError, undefined);
+    const invalid = await client.callTool({
+      name: 'file_write',
+      arguments: { ...argumentsBase, deviceId: 'mac-primary-srv-datadph7lnhs73c9qs3g' },
+    });
+    assert.equal(invalid.isError, true);
+    assert.match(JSON.parse(invalid.content[0].text).error, /^invalid_device_id:/);
+    assert.deepEqual(calls.map(([device, tool]) => [device, tool]), [
+      ['mac-primary', 'file.write'],
+    ]);
+  } finally {
+    await client.close().catch(() => {});
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('device MCP exposes scoped repository read, write and named checks without accepting a command', async () => {
   const calls = [];
   const handler = createMissionMcpNodeHandler({
