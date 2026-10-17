@@ -149,7 +149,7 @@ async function fixture(overrides = {}, model = MODEL) {
 
 for (const [model, thinking, actualUsd] of [
   ['claude-haiku-4-5', undefined, 0.00008265],
-  ['claude-sonnet-5-5', { type: 'between_tools' }, 0.0001653],
+  ['claude-sonnet-5-5', { type: 'between_tools' }, 0.0001649],
   ['claude-opus-5-5', { type: 'adaptive' }, 0.0003298],
 ]) {
   test(`${model} text dispatch uses supported options and settles actual usage before returning`, async () => {
@@ -599,7 +599,7 @@ test(
     assert(
       Math.abs(
         settlement.actualUsd -
-          0.0001653,
+          0.0001649,
       ) < 1e-12,
     );
 

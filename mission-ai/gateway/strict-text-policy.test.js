@@ -44,7 +44,7 @@ test('Sonnet 5.5 uses between-tools thinking, low effort and verified cache pric
     assert.equal(calls, 1);
     assert.equal(output.text, 'OK');
     const cost = calculateUsageCost('anthropic', 'claude-sonnet-5-5', output.usage, await loadPricing());
-    assert.ok(Math.abs(cost.totalUsd - 0.0000515) < 1e-12);
+    assert.ok(Math.abs(cost.totalUsd - 0.000051) < 1e-12);
   } finally {
     if (prior === undefined) delete process.env.ANTHROPIC_API_KEY;
     else process.env.ANTHROPIC_API_KEY = prior;

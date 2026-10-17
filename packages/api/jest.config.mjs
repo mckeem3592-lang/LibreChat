@@ -42,6 +42,7 @@ export default {
   },
   transformIgnorePatterns: [`/node_modules/(?!(${esModules})/).*/`],
   moduleNameMapper: {
+    '^\\./scheduleFireContext\\.js$': '<rootDir>/src/missionBudget/scheduleFireContext.ts',
     '^@src/(.*)$': '<rootDir>/src/$1',
     '~/(.*)': '<rootDir>/src/$1',
   },

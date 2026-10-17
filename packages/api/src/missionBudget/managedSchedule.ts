@@ -1,4 +1,4 @@
-import { readScheduleFireContext } from '../schedules/trigger';
+import { readScheduleFireContext } from './scheduleFireContext.js';
 
 type ScheduleRequest = {
   method?: string;
