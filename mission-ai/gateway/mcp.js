@@ -29,8 +29,13 @@ function errorResult(error) {
   };
 }
 
-const defaultDeviceId = deviceId =>
-  deviceId || process.env.MISSION_AI_DEFAULT_DEVICE_ID || 'mac-primary';
+const defaultDeviceId = (deviceId) => {
+  const selected = deviceId || process.env.MISSION_AI_DEFAULT_DEVICE_ID || 'mac-primary';
+  if (/-srv-[a-z0-9]+$/i.test(selected)) {
+    throw new Error('invalid_device_id: use the exact paired device ID without a service suffix');
+  }
+  return selected;
+};
 
 export function createMissionMcpNodeHandler({
   invoke,
@@ -504,7 +509,7 @@ export function createMissionMcpNodeHandler({
     });
 
     registerTool('file_write', {
-      description: 'Create or update one UTF-8 text file up to 1 MB within Desktop, Documents, or Downloads. An update requires the sha256 from the latest read.',
+      description: 'Create or update one UTF-8 text file up to 1 MB within Desktop, Documents, or Downloads. Use the exact paired device ID (mac-primary on the Mac); never append a Render service ID. Omit deviceId to use the configured default. An update requires the sha256 from the latest read.',
       inputSchema: z.object({ deviceId: z.string().optional(),
         root: z.enum(['Desktop', 'Documents', 'Downloads']),
         path: z.string().min(1).max(2000), text: z.string().max(1_000_000),
